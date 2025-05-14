@@ -1,0 +1,32 @@
+[package]
+name = "furcons-bsky-labeler"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1"
+atrium-api = "0.25"
+atrium-crypto = "0.1"
+atrium-xrpc-client = "0.5"
+axum = { version = "0.8", features = ["ws"] }
+axum-extra = { version = "0.10", features = ["query"] }
+base64 = "0.22"
+chrono = "0.4"
+cid = "0.11"
+config = "0.15"
+env_logger = "0.11"
+futures = "0.3"
+html-escape = "0.2"
+icalendar = "0.16"
+ipld-core = "0.4"
+jetstream-oxide = "0.1"
+jiff = "0.2"
+log = "0.4"
+rand = "0.8"
+reqwest = "0.12"
+serde = { version = "1", features = ["derive"] }
+serde_ipld_dagcbor = "0.6"
+r2d2 = "0.8"
+r2d2_sqlite = "0.28"
+rusqlite = "0.35"
+tokio = { version = "1", features = ["full"] }
