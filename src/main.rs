@@ -1060,12 +1060,11 @@ async fn main() -> Result<(), anyhow::Error> {
                             let pending = PendingLabel {
                                 cts: chrono::DateTime::from_timestamp_micros(info.time_us as i64)
                                     .unwrap(),
-                                // exp: Some(
-                                //     (event.dtend + chrono::Duration::days(1))
-                                //         .and_time(chrono::NaiveTime::MIN)
-                                //         .and_utc(),
-                                // ),
-                                exp: None,
+                                exp: Some(
+                                    (event.dtend + chrono::Duration::days(1))
+                                        .and_time(chrono::NaiveTime::MIN)
+                                        .and_utc(),
+                                ),
                                 cid: None,
                                 neg: false,
                                 uri: info.did.to_string(),
