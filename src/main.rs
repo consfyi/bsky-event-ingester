@@ -549,7 +549,7 @@ async fn subscribe_labels(
                     if let Some(cursor) = params.cursor {
                         let db_conn = app_state.db_pool.get()?;
 
-                        let mut messages = vec![];
+                        let mut pending = vec![];
 
                         {
                             let mut stmt = db_conn.prepare(
@@ -565,18 +565,18 @@ async fn subscribe_labels(
                             while let Some(row) = rows.next()? {
                                 let (seq, label) = row_to_label(&app_state.did, &row)?;
 
-                                messages.push(atrium_api::com::atproto::label::subscribe_labels::Message::Labels(Box::new(
+                                pending.push(
                                     atrium_api::com::atproto::label::subscribe_labels::LabelsData {
                                         seq,
                                         labels: vec![label],
                                     }
                                     .into(),
-                                )));
+                                );
                             }
                         }
 
-                        for message in messages {
-                            subscriber.send(&message).await?;
+                        for labels in pending {
+                            subscriber.send(&labels).await?;
                         }
                     }
                 }
@@ -809,13 +809,12 @@ impl AppState {
             )?
         };
 
-        let message = atrium_api::com::atproto::label::subscribe_labels::Message::Labels(Box::new(
+        let labels: atrium_api::com::atproto::label::subscribe_labels::Labels =
             atrium_api::com::atproto::label::subscribe_labels::LabelsData {
                 labels: vec![signed_label],
                 seq,
             }
-            .into(),
-        ));
+            .into();
 
         let subscribers = self
             .subscribers_state
@@ -827,9 +826,9 @@ impl AppState {
             .collect::<Vec<_>>();
 
         futures::future::join_all(subscribers.into_iter().map(move |subscriber| {
-            let message = message.clone();
+            let labels = labels.clone();
             async move {
-                let _ = subscriber.lock().await.send(&message).await;
+                let _ = subscriber.lock().await.send(&labels).await;
             }
         }))
         .await;
@@ -857,13 +856,25 @@ impl Subscriber {
 
     async fn send(
         &mut self,
-        message: &atrium_api::com::atproto::label::subscribe_labels::Message,
+        message: &atrium_api::com::atproto::label::subscribe_labels::Labels,
     ) -> Result<(), anyhow::Error> {
+        let mut buf = vec![];
+
+        #[derive(serde::Serialize)]
+        struct Header {
+            t: String,
+            op: i64,
+        }
+        buf.extend(serde_ipld_dagcbor::to_vec(&Header {
+            t: "#labels".to_string(),
+            op: 1,
+        })?);
+        buf.extend(serde_ipld_dagcbor::to_vec(message)?);
+
         self.sink
-            .send(axum::extract::ws::Message::Binary(
-                serde_ipld_dagcbor::to_vec(message)?.into(),
-            ))
+            .send(axum::extract::ws::Message::Binary(buf.into()))
             .await?;
+
         Ok(())
     }
 }
@@ -1062,9 +1073,9 @@ async fn main() -> Result<(), anyhow::Error> {
 
                             let mut stmt = db_conn.prepare(
                                 "
-                            SELECT val FROM labels
-                            WHERE like_rkey = ? AND uri = ? AND NOT neg
-                            ",
+                                SELECT val FROM labels
+                                WHERE like_rkey = ? AND uri = ? AND NOT neg
+                                ",
                             )?;
 
                             let Some(uid) = stmt
