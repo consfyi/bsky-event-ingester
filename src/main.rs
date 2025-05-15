@@ -481,6 +481,8 @@ async fn sync_labels(ics_url: &str, app_state: &AppState) -> Result<(), anyhow::
         )
         .await?;
 
+    metrics::gauge!("label_sync_time").set(chrono::Utc::now().timestamp_micros() as f64);
+
     Ok(())
 }
 
@@ -836,6 +838,8 @@ impl AppState {
             )?
         };
 
+        metrics::gauge!("label_seq").set(seq as f64);
+
         let labels: atrium_api::com::atproto::label::subscribe_labels::Labels =
             atrium_api::com::atproto::label::subscribe_labels::LabelsData {
                 labels: vec![signed_label],
@@ -1035,6 +1039,8 @@ async fn service_jetstream(
 
         let db_conn = app_state.db_pool.get()?;
 
+        metrics::gauge!("jetstream_cursor").set(cursor as f64);
+
         db_conn.execute(
             "
             INSERT OR REPLACE INTO jetstream_cursor (id, cursor)
@@ -1049,6 +1055,20 @@ async fn service_jetstream(
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
+    metrics::describe_gauge!(
+        "jetstream_cursor",
+        metrics::Unit::Microseconds,
+        "jetstream cursor location"
+    );
+
+    metrics::describe_gauge!("label_seq", "sequence number of currently emitted label");
+
+    metrics::describe_gauge!(
+        "label_sync_time",
+        metrics::Unit::Microseconds,
+        "last label sync time"
+    );
+
     env_logger::init();
 
     let config: Config = config::Config::builder()
@@ -1102,6 +1122,8 @@ async fn main() -> Result<(), anyhow::Error> {
         })),
     };
 
+    let handle = metrics_exporter_prometheus::PrometheusBuilder::new().install_recorder()?;
+
     let app = axum::Router::new()
         .nest(
             "/xrpc",
@@ -1117,6 +1139,10 @@ async fn main() -> Result<(), anyhow::Error> {
                     &format!("/{}", atrium_api::com::atproto::label::query_labels::NSID),
                     axum::routing::get(query_labels),
                 ),
+        )
+        .route(
+            "/metrics",
+            axum::routing::get(move || async move { handle.render() }),
         )
         .route("/", axum::routing::get(|| async { ">:3" }))
         .with_state(app_state.clone());

@@ -24,6 +24,8 @@ ipld-core = "0.4"
 jetstream-oxide = "0.1"
 jiff = "0.2"
 log = "0.4"
+metrics = "0.24"
+metrics-exporter-prometheus = "0.17"
 rand = "0.8"
 reqwest = "0.12"
 serde = { version = "1", features = ["derive"] }
