@@ -664,7 +664,7 @@ async fn query_labels(
 
     let mut labels = vec![];
 
-    let mut out_cursor = 0;
+    let mut out_cursor = None;
 
     {
         let db_conn = app_state.db_pool.get()?;
@@ -707,7 +707,7 @@ async fn query_labels(
 
         while let Some(row) = rows.next()? {
             let (seq, mut label) = row_to_label(&app_state.did, &row)?;
-            out_cursor = seq;
+            out_cursor = Some(seq);
             let mut sig = None;
             std::mem::swap(&mut sig, &mut label.sig);
             let label = QueryLabelsLabel { sig, label };
@@ -716,7 +716,7 @@ async fn query_labels(
     }
 
     Ok(axum::response::Json(QueryLabelsOutputData {
-        cursor: Some(out_cursor.to_string()),
+        cursor: out_cursor.map(|c| c.to_string()),
         labels,
     }))
 }
@@ -791,10 +791,10 @@ impl AppState {
             let cid = label.cid.as_ref().map(|v| v.to_string());
             db_conn.query_row(
                 "
-                    INSERT INTO labels (cts, exp, cid, sig, uri, val, neg, like_rkey)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                    RETURNING seq
-                    ",
+                INSERT INTO labels (cts, exp, cid, sig, uri, val, neg, like_rkey)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                RETURNING seq
+                ",
                 rusqlite::params![
                     cts,
                     exp,
