@@ -959,6 +959,9 @@ async fn main() -> Result<(), anyhow::Error> {
         .route("/", axum::routing::get(|| async { ">:3" }))
         .with_state(app_state.clone());
 
+    log::info!("syncing initial labels");
+    sync_labels(&config.ics_url, &app_state).await?;
+
     tokio::try_join!(
         {
             // Sync labels.
@@ -966,9 +969,8 @@ async fn main() -> Result<(), anyhow::Error> {
 
             async move {
                 loop {
-                    log::info!("syncing labels");
-                    sync_labels(&config.ics_url, &app_state).await?;
                     tokio::time::sleep(std::time::Duration::from_secs(60 * 60 * 12)).await;
+                    sync_labels(&config.ics_url, &app_state).await?;
                 }
 
                 #[allow(unreachable_code)]
