@@ -434,8 +434,8 @@ async fn sync_labels(ics_url: &str, app_state: &AppState) -> Result<(), anyhow::
                                             "date".to_string(),
                                             ipld_core::ipld::Ipld::String(format!(
                                                 "{}/{}",
-                                                event.dtstart.format("%Y%m%d"),
-                                                event.dtend.format("%Y%m%d")
+                                                event.dtstart.format("%Y-%m-%d"),
+                                                event.dtend.format("%Y-%m-%d")
                                             )),
                                         ),
                                         (
