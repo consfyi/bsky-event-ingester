@@ -558,6 +558,10 @@ async fn subscribe_labels(
                 subscribers_state
                     .subscribers
                     .insert(subscriber_id, cloned_subscriber);
+
+                metrics::gauge!("num_subscriptions")
+                    .set(subscribers_state.subscribers.len() as f64);
+
                 subscriber_id
             };
 
@@ -613,12 +617,12 @@ async fn subscribe_labels(
                 }
             }
 
-            app_state
-                .subscribers_state
-                .lock()
-                .await
-                .subscribers
-                .remove(&subscriber_id);
+            {
+                let mut subscribers_state = app_state.subscribers_state.lock().await;
+                subscribers_state.subscribers.remove(&subscriber_id);
+                metrics::gauge!("num_subscriptions")
+                    .set(subscribers_state.subscribers.len() as f64);
+            }
         }
     })
 }
@@ -1062,6 +1066,8 @@ async fn main() -> Result<(), anyhow::Error> {
     );
 
     metrics::describe_gauge!("label_seq", "sequence number of currently emitted label");
+
+    metrics::describe_gauge!("num_subscriptions", "number of active subscriptions");
 
     metrics::describe_gauge!(
         "label_sync_time",
