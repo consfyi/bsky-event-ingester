@@ -121,6 +121,8 @@ impl Event {
 }
 
 async fn sync_labels(ics_url: &str, app_state: &AppState) -> Result<(), anyhow::Error> {
+    let mut events_state = app_state.events_state.lock().await;
+
     const EXTRA_DATA_POST_RKEY: &str = "fbl_postRkey";
     const EXTRA_DATA_LABEL_VAL: &str = "fbl_labelVal";
 
@@ -448,18 +450,15 @@ async fn sync_labels(ics_url: &str, app_state: &AppState) -> Result<(), anyhow::
 
     log::info!("applying writes:\n{writes:#?}");
 
-    {
-        let mut events_state = app_state.events_state.lock().await;
+    events_state.events = events
+        .into_iter()
+        .map(|event| (event.val.clone(), event))
+        .collect();
 
-        events_state.events = events
-            .into_iter()
-            .map(|event| (event.val.clone(), event))
-            .collect();
-        events_state.rkeys_to_label_vals = current_events
-            .into_iter()
-            .map(|(val, rkey)| (rkey, val))
-            .collect();
-    }
+    events_state.rkeys_to_label_vals = current_events
+        .into_iter()
+        .map(|(val, rkey)| (rkey, val))
+        .collect();
 
     app_state
         .agent
