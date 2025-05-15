@@ -414,9 +414,9 @@ async fn sync_labels(ics_url: &str, app_state: &AppState) -> Result<(), anyhow::
                     ),
                 }
                 .into(),
-                reason_types: Some(vec!["com.atproto.moderation.defs#reasonOther".to_string()]),
-                subject_collections: Some(vec![atrium_api::app::bsky::actor::Profile::nsid()]),
-                subject_types: Some(vec!["record".to_string()]),
+                reason_types: None,
+                subject_collections: None,
+                subject_types: None,
             }
             .into();
 
@@ -1041,11 +1041,7 @@ async fn main() -> Result<(), anyhow::Error> {
                             ),
                             cid: None,
                             neg: false,
-                            uri: format!(
-                                "at://{}/{}/self",
-                                info.did.to_string(),
-                                atrium_api::app::bsky::actor::Profile::NSID
-                            ),
+                            uri: info.did.to_string(),
                             val: uid,
                         };
 
@@ -1057,11 +1053,7 @@ async fn main() -> Result<(), anyhow::Error> {
                     jetstream_oxide::events::commit::CommitEvent::Delete { info, commit } => {
                         let db_conn = app_state.db_pool.get()?;
 
-                        let uri = format!(
-                            "at://{}/{}/self",
-                            info.did.to_string(),
-                            atrium_api::app::bsky::actor::Profile::NSID
-                        );
+                        let uri = info.did.to_string();
 
                         let mut stmt = db_conn.prepare(
                             "
