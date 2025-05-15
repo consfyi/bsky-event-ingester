@@ -287,7 +287,13 @@ async fn sync_labels(ics_url: &str, app_state: &AppState) -> Result<(), anyhow::
                     .unwrap()]),
                     reply: None,
                     tags: None,
-                    text: format!("{summary}", summary = event.summary),
+                    text: format!(
+                        "{summary}\n\n📅 {dtstart} – {dtend}\n📍 {location}",
+                        summary = event.summary,
+                        location = event.location,
+                        dtstart = event.dtstart,
+                        dtend = event.dtend
+                    ),
                 }
                 .into();
             let ipld_core::ipld::Ipld::Map(extra_data) = &mut record.extra_data else {
