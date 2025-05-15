@@ -856,7 +856,7 @@ impl Subscriber {
 
     async fn send(
         &mut self,
-        message: &atrium_api::com::atproto::label::subscribe_labels::Labels,
+        labels: &atrium_api::com::atproto::label::subscribe_labels::Labels,
     ) -> Result<(), anyhow::Error> {
         let mut buf = vec![];
 
@@ -869,7 +869,7 @@ impl Subscriber {
             t: "#labels".to_string(),
             op: 1,
         })?);
-        buf.extend(serde_ipld_dagcbor::to_vec(message)?);
+        buf.extend(serde_ipld_dagcbor::to_vec(labels)?);
 
         self.sink
             .send(axum::extract::ws::Message::Binary(buf.into()))
