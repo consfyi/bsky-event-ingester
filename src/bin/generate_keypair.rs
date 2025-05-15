@@ -10,6 +10,7 @@ fn main() -> Result<(), anyhow::Error> {
 
     let config: Config = config::Config::builder()
         .add_source(config::File::with_name("config.toml"))
+        .set_default("keypair_path", "signing.key")?
         .build()?
         .try_deserialize()?;
 
