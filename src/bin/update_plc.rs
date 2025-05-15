@@ -1,7 +1,7 @@
-use std::io::Write;
+use std::io::Write as _;
 
 use atrium_api::types::TryIntoUnknown as _;
-use atrium_crypto::keypair::{Did as _, Export as _};
+use atrium_crypto::keypair::Did as _;
 
 #[derive(serde::Deserialize)]
 struct Config {
@@ -9,6 +9,7 @@ struct Config {
     bsky_plc_password: String,
     pds: String,
     labeler_endpoint: String,
+    keypair_path: String,
 }
 
 #[tokio::main]
@@ -20,8 +21,8 @@ async fn main() -> Result<(), anyhow::Error> {
         .build()?
         .try_deserialize()?;
 
-    let keypair = atrium_crypto::keypair::Secp256k1Keypair::create(&mut rand::thread_rng());
-    std::fs::write("signing.key", keypair.export())?;
+    let keypair =
+        atrium_crypto::keypair::Secp256k1Keypair::import(&std::fs::read(&config.keypair_path)?)?;
 
     let session = atrium_api::agent::atp_agent::CredentialSession::new(
         atrium_xrpc_client::reqwest::ReqwestClient::new(&config.pds),
