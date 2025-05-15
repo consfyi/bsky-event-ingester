@@ -773,11 +773,23 @@ struct PendingLabel {
     val: String,
 }
 
+fn sign_label(
+    keypair: &atrium_crypto::keypair::Secp256k1Keypair,
+    mut label: atrium_api::com::atproto::label::defs::Label,
+) -> Result<atrium_api::com::atproto::label::defs::Label, anyhow::Error> {
+    label.sig = None;
+
+    let encoded_label = serde_ipld_dagcbor::to_vec(&label)?;
+    label.sig = Some(keypair.sign(&encoded_label)?);
+
+    Ok(label)
+}
+
 impl AppState {
     async fn add_label(&self, label: PendingLabel, like_rkey: &str) -> Result<(), anyhow::Error> {
         let signed_label = sign_label(
             &self.keypair,
-            &atrium_api::com::atproto::label::defs::LabelData {
+            atrium_api::com::atproto::label::defs::LabelData {
                 cid: None,
                 cts: atrium_api::types::string::Datetime::new(label.cts.fixed_offset()),
                 exp: label
@@ -1141,17 +1153,4 @@ async fn main() -> Result<(), anyhow::Error> {
     )?;
 
     Ok(())
-}
-
-fn sign_label(
-    keypair: &atrium_crypto::keypair::Secp256k1Keypair,
-    label: &atrium_api::com::atproto::label::defs::Label,
-) -> Result<atrium_api::com::atproto::label::defs::Label, anyhow::Error> {
-    let mut label = label.clone();
-    label.sig = None;
-
-    let encoded_label = serde_ipld_dagcbor::to_vec(&label)?;
-    label.sig = Some(keypair.sign(&encoded_label)?);
-
-    Ok(label)
 }
