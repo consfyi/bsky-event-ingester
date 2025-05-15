@@ -430,9 +430,18 @@ async fn sync_labels(ics_url: &str, app_state: &AppState) -> Result<(), anyhow::
                                 extra_data.insert(
                                     EXTRA_DATA_EVENT_INFO.to_string(),
                                     ipld_core::ipld::Ipld::Map(std::collections::BTreeMap::from([
-                                        ("start".to_string(), ipld_core::ipld::Ipld::String(event.dtstart.format("%Y%m%d").to_string())),
-                                        ("end".to_string(), ipld_core::ipld::Ipld::String(event.dtend.format("%Y%m%d").to_string())),
-                                        ("location".to_string(), ipld_core::ipld::Ipld::String(event.location.clone())),
+                                        (
+                                            "date".to_string(),
+                                            ipld_core::ipld::Ipld::String(format!(
+                                                "{}/{}",
+                                                event.dtstart.format("%Y%m%d"),
+                                                event.dtend.format("%Y%m%d")
+                                            )),
+                                        ),
+                                        (
+                                            "location".to_string(),
+                                            ipld_core::ipld::Ipld::String(event.location.clone()),
+                                        ),
                                     ])),
                                 );
                                 def
