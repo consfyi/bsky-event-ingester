@@ -66,7 +66,7 @@ CREATE INDEX IF NOT EXISTS labels_like_rkey ON labels (like_rkey) WHERE NOT neg;
 
 CREATE TABLE IF NOT EXISTS jetstream_cursor
 ( id INTEGER PRIMARY KEY CHECK (id = 0)
-, cursor TEXT NOT NULL
+, cursor INTEGER NOT NULL
 ) STRICT;
 ";
 
@@ -972,11 +972,9 @@ async fn main() -> Result<(), anyhow::Error> {
                         let cursor = db_conn.query_row(
                             "SELECT COALESCE((SELECT cursor FROM jetstream_cursor WHERE id = 0), NULL)",
                             [],
-                            |row| row.get::<_, Option<String>>(0),
+                            |row| row.get::<_, Option<i64>>(0),
                         )?;
-                        cursor
-                            .map(|d| chrono::DateTime::parse_from_rfc3339(&d).map(|v| v.to_utc()))
-                            .map_or(Ok(None), |v| v.map(Some))?
+                        cursor.map(|d| chrono::DateTime::from_timestamp_micros(d).unwrap())
                     },
                     ..Default::default()
                 },
@@ -1029,11 +1027,9 @@ async fn main() -> Result<(), anyhow::Error> {
 
                         let event = events_state.events.get(&uid).unwrap();
 
-                        let ts =
-                            chrono::DateTime::from_timestamp_micros(info.time_us as i64).unwrap();
-
                         let pending = PendingLabel {
-                            cts: ts,
+                            cts: chrono::DateTime::from_timestamp_micros(info.time_us as i64)
+                                .unwrap(),
                             exp: Some(
                                 (event.dtend + chrono::Duration::days(1))
                                     .and_time(chrono::NaiveTime::MIN)
@@ -1048,7 +1044,7 @@ async fn main() -> Result<(), anyhow::Error> {
                         log::info!("applying label: {:?}", pending);
                         app_state.add_label(pending, &commit.info.rkey).await?;
 
-                        ts
+                        info.time_us
                     }
                     jetstream_oxide::events::commit::CommitEvent::Delete { info, commit } => {
                         let db_conn = app_state.db_pool.get()?;
@@ -1071,11 +1067,9 @@ async fn main() -> Result<(), anyhow::Error> {
                             continue;
                         };
 
-                        let ts =
-                            chrono::DateTime::from_timestamp_micros(info.time_us as i64).unwrap();
-
                         let pending = PendingLabel {
-                            cts: ts,
+                            cts: chrono::DateTime::from_timestamp_micros(info.time_us as i64)
+                                .unwrap(),
                             exp: None,
                             cid: None,
                             neg: true,
@@ -1086,10 +1080,10 @@ async fn main() -> Result<(), anyhow::Error> {
                         log::info!("removing label: {:?}", pending);
                         app_state.add_label(pending, &commit.rkey).await?;
 
-                        ts
+                        info.time_us
                     }
                     jetstream_oxide::events::commit::CommitEvent::Update { info, .. } => {
-                        chrono::DateTime::from_timestamp_micros(info.time_us as i64).unwrap()
+                        info.time_us
                     }
                 };
 
@@ -1102,7 +1096,7 @@ async fn main() -> Result<(), anyhow::Error> {
                     VALUES (0, ?)
                     ON CONFLICT (id) DO UPDATE SET cursor = excluded.cursor
                     ",
-                    [cursor.to_rfc3339_opts(chrono::SecondsFormat::Micros, true)],
+                    [cursor],
                 )?;
             }
 
