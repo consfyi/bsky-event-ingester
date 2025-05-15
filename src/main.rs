@@ -987,7 +987,7 @@ async fn main() -> Result<(), anyhow::Error> {
                     continue;
                 };
 
-                let ts = match commit {
+                let cursor = match commit {
                     jetstream_oxide::events::commit::CommitEvent::Create { info, commit } => {
                         let atrium_api::record::KnownRecord::AppBskyFeedLike(like) = commit.record
                         else {
@@ -1088,13 +1088,11 @@ async fn main() -> Result<(), anyhow::Error> {
                 };
 
                 let db_conn = app_state.db_pool.get()?;
-                let cursor = ts;
 
                 db_conn.execute(
                     "
-                    INSERT INTO jetstream_cursor (id, cursor)
+                    INSERT OR REPLACE INTO jetstream_cursor (id, cursor)
                     VALUES (0, ?)
-                    ON CONFLICT (id) DO UPDATE SET cursor = excluded.cursor
                     ",
                     [cursor],
                 )?;
