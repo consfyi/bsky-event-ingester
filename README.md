@@ -1,6 +1,6 @@
 # furcons-bsky-labeler
 
-This is the code behind https://furcons.bsky.social/.
+This is the code behind [@furcons.bsky.social](https://bsky.app/profile/furcons.bsky.social).
 
 ## First-time setup
 
