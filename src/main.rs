@@ -39,7 +39,7 @@ struct Config {
 
 #[derive(Debug)]
 struct Event {
-    uid: String,
+    val: String,
     url: String,
     summary: String,
     location: String,
@@ -69,6 +69,12 @@ CREATE TABLE IF NOT EXISTS jetstream_cursor
 , cursor INTEGER NOT NULL
 ) STRICT;
 ";
+
+const ALPHABETICAL_ENCODING: data_encoding::Encoding = data_encoding_macro::new_encoding! {
+    symbols: "abcdefghijklmnop",
+    translate_from: "ABCDEFGHIJKLMNOP",
+    translate_to: "abcdefghijklmnop",
+};
 
 impl Event {
     fn from_icalendar_event(event: &icalendar::Event) -> Option<Event> {
@@ -104,7 +110,7 @@ impl Event {
         }
 
         Some(Event {
-            uid: uid?.to_string(),
+            val: ALPHABETICAL_ENCODING.encode(uid?.to_string().as_bytes()),
             url: url?.to_string(),
             summary: summary?.to_string(),
             location: location?.to_string(),
@@ -115,8 +121,8 @@ impl Event {
 }
 
 async fn sync_labels(ics_url: &str, app_state: &AppState) -> Result<(), anyhow::Error> {
-    const EXTRA_DATA_POST_RKEY: &str = "furcon_labeler_postRkey";
-    const EXTRA_DATA_EVENT_UID: &str = "furcon_labeler_eventUid";
+    const EXTRA_DATA_POST_RKEY: &str = "fbl_postRkey";
+    const EXTRA_DATA_LABEL_VAL: &str = "fbl_labelVal";
 
     let mut writes = vec![];
 
@@ -139,7 +145,7 @@ async fn sync_labels(ics_url: &str, app_state: &AppState) -> Result<(), anyhow::
 
     let next_events = events
         .iter()
-        .map(|event| (event.uid.clone(), event))
+        .map(|event| (event.val.clone(), event))
         .collect::<std::collections::HashMap<_, _>>();
 
     let original_record = match app_state
@@ -217,8 +223,8 @@ async fn sync_labels(ics_url: &str, app_state: &AppState) -> Result<(), anyhow::
         .unwrap_or_default();
 
     // Delete events.
-    for (uid, rkey) in current_events.clone() {
-        if next_events.contains_key(&uid) {
+    for (val, rkey) in current_events.clone() {
+        if next_events.contains_key(&val) {
             continue;
         }
 
@@ -240,14 +246,14 @@ async fn sync_labels(ics_url: &str, app_state: &AppState) -> Result<(), anyhow::
                 .into(),
             )),
         );
-        current_events.remove(&uid);
+        current_events.remove(&val);
     }
 
     let mut now = chrono::Utc::now();
 
     // Create new events.
     for event in events.iter() {
-        if current_events.contains_key(&event.uid) {
+        if current_events.contains_key(&event.val) {
             continue;
         }
 
@@ -300,8 +306,8 @@ async fn sync_labels(ics_url: &str, app_state: &AppState) -> Result<(), anyhow::
                 unreachable!()
             };
             extra_data.insert(
-                EXTRA_DATA_EVENT_UID.to_string(),
-                ipld_core::ipld::Ipld::String(event.uid.clone()),
+                EXTRA_DATA_LABEL_VAL.to_string(),
+                ipld_core::ipld::Ipld::String(event.val.clone()),
             );
 
             writes.push(
@@ -361,7 +367,7 @@ async fn sync_labels(ics_url: &str, app_state: &AppState) -> Result<(), anyhow::
             )
             .await?;
 
-        current_events.insert(event.uid.clone(), rkey);
+        current_events.insert(event.val.clone(), rkey);
 
         // https://github.com/bluesky-social/atproto/issues/2468#issuecomment-2100947405
         now += chrono::Duration::milliseconds(1);
@@ -373,7 +379,7 @@ async fn sync_labels(ics_url: &str, app_state: &AppState) -> Result<(), anyhow::
                 created_at: atrium_api::types::string::Datetime::now(),
                 labels: None,
                 policies: atrium_api::app::bsky::labeler::defs::LabelerPoliciesData {
-                    label_values: events.iter().map(|event| event.uid.clone()).collect(),
+                    label_values: events.iter().map(|event| event.val.clone()).collect(),
                     label_value_definitions: Some(
                         events
                             .iter()
@@ -382,7 +388,7 @@ async fn sync_labels(ics_url: &str, app_state: &AppState) -> Result<(), anyhow::
                                     adult_only: Some(false),
                                     blurs: "none".to_string(),
                                     default_setting: Some("warn".to_string()),
-                                    identifier: event.uid.clone(),
+                                    identifier: event.val.clone(),
                                     locales: vec![atrium_api::com::atproto::label::defs::LabelValueDefinitionStringsData {
                                         lang: atrium_api::types::string::Language::new(
                                             "en".to_string(),
@@ -408,7 +414,7 @@ async fn sync_labels(ics_url: &str, app_state: &AppState) -> Result<(), anyhow::
                                     EXTRA_DATA_POST_RKEY.to_string(),
                                     ipld_core::ipld::Ipld::String(
                                         current_events
-                                            .get(&event.uid)
+                                            .get(&event.val)
                                             .cloned()
                                             .unwrap()
                                             .to_string(),
@@ -447,11 +453,11 @@ async fn sync_labels(ics_url: &str, app_state: &AppState) -> Result<(), anyhow::
 
         events_state.events = events
             .into_iter()
-            .map(|event| (event.uid.clone(), event))
+            .map(|event| (event.val.clone(), event))
             .collect();
-        events_state.rkeys_to_labels = current_events
+        events_state.rkeys_to_label_vals = current_events
             .into_iter()
-            .map(|(uid, rkey)| (rkey, uid))
+            .map(|(val, rkey)| (rkey, val))
             .collect();
     }
 
@@ -728,7 +734,7 @@ async fn query_labels(
 }
 
 struct EventsState {
-    rkeys_to_labels: std::collections::HashMap<atrium_api::types::string::RecordKey, String>,
+    rkeys_to_label_vals: std::collections::HashMap<atrium_api::types::string::RecordKey, String>,
     events: std::collections::HashMap<String, Event>,
 }
 
@@ -935,7 +941,7 @@ async fn main() -> Result<(), anyhow::Error> {
             subscribers: std::collections::HashMap::new(),
         })),
         events_state: std::sync::Arc::new(tokio::sync::Mutex::new(EventsState {
-            rkeys_to_labels: std::collections::HashMap::new(),
+            rkeys_to_label_vals: std::collections::HashMap::new(),
             events: std::collections::HashMap::new(),
         })),
     };
@@ -1044,8 +1050,8 @@ async fn main() -> Result<(), anyhow::Error> {
 
                             let events_state = app_state.events_state.lock().await;
 
-                            let Some(uid) = events_state
-                                .rkeys_to_labels
+                            let Some(val) = events_state
+                                .rkeys_to_label_vals
                                 .get(
                                     &atrium_api::types::string::RecordKey::new(rkey.to_string())
                                         .unwrap(),
@@ -1055,7 +1061,7 @@ async fn main() -> Result<(), anyhow::Error> {
                                 return Ok(());
                             };
 
-                            let event = events_state.events.get(&uid).unwrap();
+                            let event = events_state.events.get(&val).unwrap();
 
                             let pending = PendingLabel {
                                 cts: chrono::DateTime::from_timestamp_micros(info.time_us as i64)
@@ -1068,7 +1074,7 @@ async fn main() -> Result<(), anyhow::Error> {
                                 cid: None,
                                 neg: false,
                                 uri: info.did.to_string(),
-                                val: uid,
+                                val: val,
                             };
 
                             log::info!("applying label: {:?}", pending);
@@ -1086,7 +1092,7 @@ async fn main() -> Result<(), anyhow::Error> {
                                 ",
                             )?;
 
-                            let Some(uid) = stmt
+                            let Some(val) = stmt
                                 .query_row(rusqlite::params![commit.rkey, uri], |row| {
                                     row.get::<_, String>(0)
                                 })
@@ -1102,7 +1108,7 @@ async fn main() -> Result<(), anyhow::Error> {
                                 cid: None,
                                 neg: true,
                                 uri: uri,
-                                val: uid,
+                                val: val,
                             };
 
                             log::info!("removing label: {:?}", pending);
