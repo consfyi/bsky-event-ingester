@@ -129,6 +129,7 @@ async fn sync_labels(ics_url: &str, app_state: &AppState) -> Result<(), anyhow::
 
     const EXTRA_DATA_POST_RKEY: &str = "fbl_postRkey";
     const EXTRA_DATA_LABEL_VAL: &str = "fbl_labelVal";
+    const EXTRA_DATA_EVENT_INFO: &str = "fbl_eventInfo";
 
     let mut writes = vec![];
 
@@ -425,6 +426,14 @@ async fn sync_labels(ics_url: &str, app_state: &AppState) -> Result<(), anyhow::
                                             .unwrap()
                                             .to_string(),
                                     ),
+                                );
+                                extra_data.insert(
+                                    EXTRA_DATA_EVENT_INFO.to_string(),
+                                    ipld_core::ipld::Ipld::Map(std::collections::BTreeMap::from([
+                                        ("start".to_string(), ipld_core::ipld::Ipld::String(event.dtstart.format("%Y%m%d").to_string())),
+                                        ("end".to_string(), ipld_core::ipld::Ipld::String(event.dtend.format("%Y%m%d").to_string())),
+                                        ("location".to_string(), ipld_core::ipld::Ipld::String(event.location.clone())),
+                                    ])),
                                 );
                                 def
                             })
