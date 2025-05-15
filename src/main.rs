@@ -121,6 +121,10 @@ impl Event {
 }
 
 async fn sync_labels(ics_url: &str, app_state: &AppState) -> Result<(), anyhow::Error> {
+    // Lock the entire events state while labels are syncing.
+    //
+    // This means that we hold the mutex while events are being created, such that any likes on those posts must wait until the mutex is unlocked.
+    // This ensures that we don't get into a state where if someone likes a post but we haven't saved it into the events state yet we end up missing their like.
     let mut events_state = app_state.events_state.lock().await;
 
     const EXTRA_DATA_POST_RKEY: &str = "fbl_postRkey";
@@ -890,6 +894,147 @@ impl Subscriber {
     }
 }
 
+async fn service_jetstream(
+    app_state: &AppState,
+    jetstream_endpoint: &str,
+) -> Result<(), anyhow::Error> {
+    let jetstream = jetstream_oxide::JetstreamConnector::new(jetstream_oxide::JetstreamConfig {
+        endpoint: jetstream_endpoint.to_string(),
+        compression: jetstream_oxide::JetstreamCompression::Zstd,
+        wanted_collections: vec![atrium_api::app::bsky::feed::Like::nsid()],
+        cursor: {
+            let db_conn = app_state.db_pool.get()?;
+            let cursor = db_conn.query_row(
+                "SELECT COALESCE((SELECT cursor FROM jetstream_cursor WHERE id = 0), NULL)",
+                [],
+                |row| row.get::<_, Option<i64>>(0),
+            )?;
+            cursor.map(|d| chrono::DateTime::from_timestamp_micros(d).unwrap())
+        },
+        ..Default::default()
+    })?;
+
+    let receiver = jetstream.connect().await?;
+
+    while let Ok(event) = receiver.recv_async().await {
+        let jetstream_oxide::events::JetstreamEvent::Commit(commit) = event else {
+            continue;
+        };
+
+        let cursor = match &commit {
+            jetstream_oxide::events::commit::CommitEvent::Create { info, .. }
+            | jetstream_oxide::events::commit::CommitEvent::Update { info, .. }
+            | jetstream_oxide::events::commit::CommitEvent::Delete { info, .. } => info.time_us,
+        };
+
+        async {
+            match commit {
+                jetstream_oxide::events::commit::CommitEvent::Create { info, commit } => {
+                    let atrium_api::record::KnownRecord::AppBskyFeedLike(like) = commit.record
+                    else {
+                        return Ok(());
+                    };
+
+                    let parts = like
+                        .subject
+                        .uri
+                        .strip_prefix("at://")
+                        .map(|v| v.splitn(3, '/').collect::<Vec<_>>());
+
+                    let Some(&[did, collection, rkey]) = parts.as_ref().map(|v| &v[..]) else {
+                        return Ok(());
+                    };
+
+                    if did != app_state.did.to_string() {
+                        return Ok(());
+                    }
+
+                    if collection != atrium_api::app::bsky::feed::Post::NSID {
+                        return Ok(());
+                    }
+
+                    let events_state = app_state.events_state.lock().await;
+
+                    let Some(val) = events_state
+                        .rkeys_to_label_vals
+                        .get(&atrium_api::types::string::RecordKey::new(rkey.to_string()).unwrap())
+                        .cloned()
+                    else {
+                        return Ok(());
+                    };
+
+                    let event = events_state.events.get(&val).unwrap();
+
+                    let pending = PendingLabel {
+                        cts: chrono::DateTime::from_timestamp_micros(info.time_us as i64).unwrap(),
+                        exp: Some(
+                            (event.dtend + chrono::Duration::days(1))
+                                .and_time(chrono::NaiveTime::MIN)
+                                .and_utc(),
+                        ),
+                        cid: None,
+                        neg: false,
+                        uri: info.did.to_string(),
+                        val: val,
+                    };
+
+                    log::info!("applying label: {:?}", pending);
+                    app_state.add_label(pending, &commit.info.rkey).await?;
+                }
+                jetstream_oxide::events::commit::CommitEvent::Delete { info, commit } => {
+                    let db_conn = app_state.db_pool.get()?;
+
+                    let uri = info.did.to_string();
+
+                    let mut stmt = db_conn.prepare(
+                        "
+                        SELECT val FROM labels
+                        WHERE like_rkey = ? AND uri = ? AND NOT neg
+                        ",
+                    )?;
+
+                    let Some(val) = stmt
+                        .query_row(rusqlite::params![commit.rkey, uri], |row| {
+                            row.get::<_, String>(0)
+                        })
+                        .optional()?
+                    else {
+                        return Ok(());
+                    };
+
+                    let pending = PendingLabel {
+                        cts: chrono::DateTime::from_timestamp_micros(info.time_us as i64).unwrap(),
+                        exp: None,
+                        cid: None,
+                        neg: true,
+                        uri: uri,
+                        val: val,
+                    };
+
+                    log::info!("removing label: {:?}", pending);
+                    app_state.add_label(pending, &commit.rkey).await?;
+                }
+                _ => {}
+            }
+
+            Ok::<_, anyhow::Error>(())
+        }
+        .await?;
+
+        let db_conn = app_state.db_pool.get()?;
+
+        db_conn.execute(
+            "
+            INSERT OR REPLACE INTO jetstream_cursor (id, cursor)
+            VALUES (0, ?)
+            ",
+            [cursor],
+        )?;
+    }
+
+    Ok(())
+}
+
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     env_logger::init();
@@ -967,175 +1112,29 @@ async fn main() -> Result<(), anyhow::Error> {
     log::info!("syncing initial labels");
     sync_labels(&config.ics_url, &app_state).await?;
 
+    let listener = tokio::net::TcpListener::bind(&config.bind).await?;
+
     tokio::try_join!(
-        {
+        async {
             // Sync labels.
             let app_state = app_state.clone();
-
-            async move {
-                loop {
-                    tokio::time::sleep(std::time::Duration::from_secs(60 * 60 * 12)).await;
-                    sync_labels(&config.ics_url, &app_state).await?;
-                }
-
-                #[allow(unreachable_code)]
-                Ok::<_, anyhow::Error>(())
+            loop {
+                tokio::time::sleep(std::time::Duration::from_secs(60 * 60 * 12)).await;
+                log::info!("syncing labels");
+                sync_labels(&config.ics_url, &app_state).await?;
             }
+
+            #[allow(unreachable_code)]
+            Ok::<_, anyhow::Error>(())
         },
         async {
             // Wait on events.
             let app_state = app_state.clone();
-
-            let jetstream = jetstream_oxide::JetstreamConnector::new(
-                jetstream_oxide::JetstreamConfig {
-                    endpoint: config.jetstream_endpoint.clone(),
-                    compression: jetstream_oxide::JetstreamCompression::Zstd,
-                    wanted_collections: vec![atrium_api::app::bsky::feed::Like::nsid()],
-                    cursor: {
-                        let db_conn = app_state.db_pool.get()?;
-                        let cursor = db_conn.query_row(
-                            "SELECT COALESCE((SELECT cursor FROM jetstream_cursor WHERE id = 0), NULL)",
-                            [],
-                            |row| row.get::<_, Option<i64>>(0),
-                        )?;
-                        cursor.map(|d| chrono::DateTime::from_timestamp_micros(d).unwrap())
-                    },
-                    ..Default::default()
-                },
-            )?;
-
-            let receiver = jetstream.connect().await?;
-
-            while let Ok(event) = receiver.recv_async().await {
-                let jetstream_oxide::events::JetstreamEvent::Commit(commit) = event else {
-                    continue;
-                };
-
-                let cursor = match &commit {
-                    jetstream_oxide::events::commit::CommitEvent::Create { info, .. }
-                    | jetstream_oxide::events::commit::CommitEvent::Update { info, .. }
-                    | jetstream_oxide::events::commit::CommitEvent::Delete { info, .. } => {
-                        info.time_us
-                    }
-                };
-
-                async {
-                    match commit {
-                        jetstream_oxide::events::commit::CommitEvent::Create { info, commit } => {
-                            let atrium_api::record::KnownRecord::AppBskyFeedLike(like) =
-                                commit.record
-                            else {
-                                return Ok(());
-                            };
-
-                            let parts = like
-                                .subject
-                                .uri
-                                .strip_prefix("at://")
-                                .map(|v| v.splitn(3, '/').collect::<Vec<_>>());
-
-                            let Some(&[did, collection, rkey]) = parts.as_ref().map(|v| &v[..])
-                            else {
-                                return Ok(());
-                            };
-
-                            if did != app_state.did.to_string() {
-                                return Ok(());
-                            }
-
-                            if collection != atrium_api::app::bsky::feed::Post::NSID {
-                                return Ok(());
-                            }
-
-                            let events_state = app_state.events_state.lock().await;
-
-                            let Some(val) = events_state
-                                .rkeys_to_label_vals
-                                .get(
-                                    &atrium_api::types::string::RecordKey::new(rkey.to_string())
-                                        .unwrap(),
-                                )
-                                .cloned()
-                            else {
-                                return Ok(());
-                            };
-
-                            let event = events_state.events.get(&val).unwrap();
-
-                            let pending = PendingLabel {
-                                cts: chrono::DateTime::from_timestamp_micros(info.time_us as i64)
-                                    .unwrap(),
-                                exp: Some(
-                                    (event.dtend + chrono::Duration::days(1))
-                                        .and_time(chrono::NaiveTime::MIN)
-                                        .and_utc(),
-                                ),
-                                cid: None,
-                                neg: false,
-                                uri: info.did.to_string(),
-                                val: val,
-                            };
-
-                            log::info!("applying label: {:?}", pending);
-                            app_state.add_label(pending, &commit.info.rkey).await?;
-                        }
-                        jetstream_oxide::events::commit::CommitEvent::Delete { info, commit } => {
-                            let db_conn = app_state.db_pool.get()?;
-
-                            let uri = info.did.to_string();
-
-                            let mut stmt = db_conn.prepare(
-                                "
-                                SELECT val FROM labels
-                                WHERE like_rkey = ? AND uri = ? AND NOT neg
-                                ",
-                            )?;
-
-                            let Some(val) = stmt
-                                .query_row(rusqlite::params![commit.rkey, uri], |row| {
-                                    row.get::<_, String>(0)
-                                })
-                                .optional()?
-                            else {
-                                return Ok(());
-                            };
-
-                            let pending = PendingLabel {
-                                cts: chrono::DateTime::from_timestamp_micros(info.time_us as i64)
-                                    .unwrap(),
-                                exp: None,
-                                cid: None,
-                                neg: true,
-                                uri: uri,
-                                val: val,
-                            };
-
-                            log::info!("removing label: {:?}", pending);
-                            app_state.add_label(pending, &commit.rkey).await?;
-                        }
-                        _ => {}
-                    }
-
-                    Ok::<_, anyhow::Error>(())
-                }
-                .await?;
-
-                let db_conn = app_state.db_pool.get()?;
-
-                db_conn.execute(
-                    "
-                    INSERT OR REPLACE INTO jetstream_cursor (id, cursor)
-                    VALUES (0, ?)
-                    ",
-                    [cursor],
-                )?;
-            }
-
+            service_jetstream(&app_state, &config.jetstream_endpoint).await?;
             Ok(())
         },
         async {
             // Serve labeler.
-            let listener = tokio::net::TcpListener::bind(&config.bind).await?;
             axum::serve(listener, app).await?;
             Ok(())
         }
