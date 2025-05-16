@@ -1010,8 +1010,6 @@ dependencies = [
  "chrono",
  "cid",
  "config",
- "data-encoding",
- "data-encoding-macro",
  "env_logger",
  "futures",
  "html-escape",

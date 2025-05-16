@@ -1,3 +1,5 @@
+mod base26;
+
 use std::str::FromStr as _;
 
 use atrium_api::types::{Collection as _, TryFromUnknown as _, TryIntoUnknown as _};
@@ -40,7 +42,7 @@ struct Config {
 
 #[derive(Debug)]
 struct Event {
-    val: String,
+    id: u64,
     url: String,
     summary: String,
     location: String,
@@ -71,15 +73,9 @@ CREATE TABLE IF NOT EXISTS jetstream_cursor
 ) STRICT;
 ";
 
-const ALPHABETICAL_ENCODING: data_encoding::Encoding = data_encoding_macro::new_encoding! {
-    symbols: "abcdefghijklmnop",
-    translate_from: "ABCDEFGHIJKLMNOP",
-    translate_to: "abcdefghijklmnop",
-};
-
 impl Event {
     fn from_icalendar_event(event: &icalendar::Event) -> Option<Event> {
-        let mut uid = None;
+        let mut id = None;
         let mut url = None;
         let mut summary = None;
         let mut location = None;
@@ -89,13 +85,17 @@ impl Event {
         for (_, property) in event.properties() {
             match property.key() {
                 "UID" => {
-                    uid = Some(property.value());
+                    id = property
+                        .value()
+                        .split_once("-")
+                        .and_then(|(x, _)| x.parse().ok());
                 }
                 "URL" => {
-                    url = Some(html_escape::decode_html_entities(property.value()));
+                    url = Some(html_escape::decode_html_entities(property.value()).to_string());
                 }
                 "LOCATION" => {
-                    location = Some(html_escape::decode_html_entities(property.value()));
+                    location =
+                        Some(html_escape::decode_html_entities(property.value()).to_string());
                 }
                 "DTSTART" => {
                     dtstart = chrono::NaiveDate::parse_from_str(property.value(), "%Y%m%d").ok();
@@ -104,17 +104,17 @@ impl Event {
                     dtend = chrono::NaiveDate::parse_from_str(property.value(), "%Y%m%d").ok();
                 }
                 "SUMMARY" => {
-                    summary = Some(html_escape::decode_html_entities(property.value()));
+                    summary = Some(html_escape::decode_html_entities(property.value()).to_string());
                 }
                 _ => continue,
             }
         }
 
         Some(Event {
-            val: ALPHABETICAL_ENCODING.encode(uid?.to_string().as_bytes()),
-            url: url?.to_string(),
-            summary: summary?.to_string(),
-            location: location?.to_string(),
+            id: id?,
+            url: url?,
+            summary: summary?,
+            location: location?,
             dtstart: dtstart?,
             dtend: dtend?,
         })
@@ -152,7 +152,7 @@ async fn sync_labels(ics_url: &str, app_state: &AppState) -> Result<(), anyhow::
 
     let next_events = events
         .iter()
-        .map(|event| (event.val.clone(), event))
+        .map(|event| (event.id, event))
         .collect::<std::collections::HashMap<_, _>>();
 
     let original_record = match app_state
@@ -211,7 +211,7 @@ async fn sync_labels(ics_url: &str, app_state: &AppState) -> Result<(), anyhow::
                     defs.iter()
                         .flat_map(|v| {
                             Some((
-                                v.identifier.clone(),
+                                base26::decode(&v.identifier).unwrap(),
                                 match v.extra_data.get(EXTRA_DATA_POST_RKEY).ok()?? {
                                     ipld_core::ipld::Ipld::String(v) => {
                                         atrium_api::types::string::RecordKey::new(v.clone())
@@ -230,8 +230,8 @@ async fn sync_labels(ics_url: &str, app_state: &AppState) -> Result<(), anyhow::
         .unwrap_or_default();
 
     // Delete events.
-    for (val, rkey) in current_events.clone() {
-        if next_events.contains_key(&val) {
+    for (id, rkey) in current_events.clone() {
+        if next_events.contains_key(&id) {
             continue;
         }
 
@@ -253,14 +253,14 @@ async fn sync_labels(ics_url: &str, app_state: &AppState) -> Result<(), anyhow::
                 .into(),
             )),
         );
-        current_events.remove(&val);
+        current_events.remove(&id);
     }
 
     let mut now = chrono::Utc::now();
 
     // Create new events.
     for event in events.iter() {
-        if current_events.contains_key(&event.val) {
+        if current_events.contains_key(&event.id) {
             continue;
         }
 
@@ -367,7 +367,7 @@ async fn sync_labels(ics_url: &str, app_state: &AppState) -> Result<(), anyhow::
             )
             .await?;
 
-        current_events.insert(event.val.clone(), rkey);
+        current_events.insert(event.id, rkey);
 
         // https://github.com/bluesky-social/atproto/issues/2468#issuecomment-2100947405
         now += chrono::Duration::milliseconds(1);
@@ -379,7 +379,7 @@ async fn sync_labels(ics_url: &str, app_state: &AppState) -> Result<(), anyhow::
                 created_at: atrium_api::types::string::Datetime::now(),
                 labels: None,
                 policies: atrium_api::app::bsky::labeler::defs::LabelerPoliciesData {
-                    label_values: events.iter().map(|event| event.val.clone()).collect(),
+                    label_values: events.iter().map(|event| base26::encode(event.id)).collect(),
                     label_value_definitions: Some(
                         events
                             .iter()
@@ -388,7 +388,7 @@ async fn sync_labels(ics_url: &str, app_state: &AppState) -> Result<(), anyhow::
                                     adult_only: Some(false),
                                     blurs: "none".to_string(),
                                     default_setting: Some("warn".to_string()),
-                                    identifier: event.val.clone(),
+                                    identifier: base26::encode(event.id),
                                     locales: vec![atrium_api::com::atproto::label::defs::LabelValueDefinitionStringsData {
                                         lang: atrium_api::types::string::Language::new(
                                             "en".to_string(),
@@ -414,7 +414,7 @@ async fn sync_labels(ics_url: &str, app_state: &AppState) -> Result<(), anyhow::
                                     EXTRA_DATA_POST_RKEY.to_string(),
                                     ipld_core::ipld::Ipld::String(
                                         current_events
-                                            .get(&event.val)
+                                            .get(&event.id)
                                             .cloned()
                                             .unwrap()
                                             .to_string(),
@@ -469,14 +469,11 @@ async fn sync_labels(ics_url: &str, app_state: &AppState) -> Result<(), anyhow::
 
     log::info!("applying writes:\n{writes:#?}");
 
-    events_state.events = events
-        .into_iter()
-        .map(|event| (event.val.clone(), event))
-        .collect();
+    events_state.events = events.into_iter().map(|event| (event.id, event)).collect();
 
-    events_state.rkeys_to_label_vals = current_events
+    events_state.rkeys_to_ids = current_events
         .into_iter()
-        .map(|(val, rkey)| (rkey, val))
+        .map(|(id, rkey)| (rkey, id))
         .collect();
 
     app_state
@@ -767,8 +764,8 @@ async fn query_labels(
 }
 
 struct EventsState {
-    rkeys_to_label_vals: std::collections::HashMap<atrium_api::types::string::RecordKey, String>,
-    events: std::collections::HashMap<String, Event>,
+    rkeys_to_ids: std::collections::HashMap<atrium_api::types::string::RecordKey, u64>,
+    events: std::collections::HashMap<u64, Event>,
 }
 
 struct SubscribersState {
@@ -999,15 +996,15 @@ async fn service_jetstream(
 
                     let events_state = app_state.events_state.lock().await;
 
-                    let Some(val) = events_state
-                        .rkeys_to_label_vals
+                    let Some(id) = events_state
+                        .rkeys_to_ids
                         .get(&atrium_api::types::string::RecordKey::new(rkey.to_string()).unwrap())
                         .cloned()
                     else {
                         return Ok(());
                     };
 
-                    let event = events_state.events.get(&val).unwrap();
+                    let event = events_state.events.get(&id).unwrap();
 
                     let pending = PendingLabel {
                         cts: chrono::DateTime::from_timestamp_micros(info.time_us as i64).unwrap(),
@@ -1019,7 +1016,7 @@ async fn service_jetstream(
                         cid: None,
                         neg: false,
                         uri: info.did.to_string(),
-                        val: val,
+                        val: base26::encode(event.id),
                     };
 
                     log::info!("applying label: {:?}", pending);
@@ -1148,7 +1145,7 @@ async fn main() -> Result<(), anyhow::Error> {
             subscribers: std::collections::HashMap::new(),
         })),
         events_state: std::sync::Arc::new(tokio::sync::Mutex::new(EventsState {
-            rkeys_to_label_vals: std::collections::HashMap::new(),
+            rkeys_to_ids: std::collections::HashMap::new(),
             events: std::collections::HashMap::new(),
         })),
     };
