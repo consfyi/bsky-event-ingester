@@ -23,6 +23,7 @@ import { Like, Profile } from "~/bluesky";
 import { LABELER_DID } from "~/config";
 import { useContext, useEffect, useMemo } from "react";
 import { UserViewContext } from "~/context";
+import { sortBy } from "lodash-es";
 
 function Actor({ actor }: { actor: Profile }) {
   return (
@@ -94,8 +95,8 @@ export default function Index() {
     }
 
     let isSelfAttending = false;
-    const knownLikes: Like[] = [];
-    const unknownLikes: Like[] = [];
+    let knownLikes: Like[] = [];
+    let unknownLikes: Like[] = [];
 
     for (const like of likes) {
       if (userView != null && like.actor.did == userView.profile.did) {
@@ -108,6 +109,9 @@ export default function Index() {
           : unknownLikes;
       out.push(like);
     }
+
+    knownLikes = sortBy(knownLikes, (like) => like.actor.handle);
+    unknownLikes = sortBy(unknownLikes, (like) => like.actor.handle);
 
     return [isSelfAttending, knownLikes, unknownLikes];
   }, [userView, likes, follows]);

@@ -35,8 +35,7 @@ export function useCons(opts?: SWRConfiguration) {
       };
     });
 
-    sortBy(cons, (con) => con.start);
-    return cons;
+    return sortBy(cons, (con) => con.start);
   }, [data]);
 
   return { cons, error, isLoading };
