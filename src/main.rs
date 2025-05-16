@@ -118,13 +118,15 @@ async fn sync_labels(
 
     let today = chrono::Utc::now().date_naive();
 
-    let events = calendar
+    let mut events = calendar
         .components
         .iter()
         .flat_map(|component| Some(Event::from_icalendar_event(component.as_event()?)?))
         .filter(|e| e.dtend + chrono::Days::new(1) >= today)
         // .filter(|_| false)
         .collect::<Vec<_>>();
+
+    events.sort_by_key(|event| event.dtstart);
 
     let next_events = events
         .iter()
