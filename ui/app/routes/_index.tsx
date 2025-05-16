@@ -12,10 +12,9 @@ import type { MetaFunction } from "@remix-run/node";
 import { Link } from "@remix-run/react";
 import { groupBy } from "lodash-es";
 import { format as formatDate, addMonths, setDate } from "date-fns";
-import { Fragment, useContext, useMemo } from "react";
+import { Fragment, useMemo } from "react";
 import { useCons, useUserViewLabels } from "~/hooks";
 import { IconCalendar, IconMapPin } from "@tabler/icons-react";
-import { UserViewContext } from "~/context";
 
 function* monthRange(start: Date, end: Date): Generator<Date> {
   while (start < end) {
@@ -31,7 +30,6 @@ export const meta: MetaFunction = () => {
 export default function Index() {
   const { cons, error, isLoading } = useCons();
 
-  const { userView } = useContext(UserViewContext);
   const { data: userViewLabels } = useUserViewLabels();
 
   const consByMonth = useMemo(() => {
