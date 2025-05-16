@@ -1,3 +1,5 @@
+import { LABELER_DID } from "./config";
+
 export interface Profile {
   did: string;
   handle: string;
@@ -97,6 +99,28 @@ export class Client {
 
       const payload = await resp.json();
       yield* payload.likes;
+      if (!payload.cursor) {
+        break;
+      }
+      cursor = payload.cursor;
+    }
+  }
+
+  async *getLabels(did: string): AsyncGenerator<string> {
+    const LIMIT = 250;
+    let cursor = "";
+    while (true) {
+      const resp = await fetch(
+        `${this.endpoint}/xrpc/com.atproto.label.queryLabels?sources=${LABELER_DID}&uriPatterns=${did}&limit=${LIMIT}&cursor=${cursor}`
+      );
+      if (!resp.ok) {
+        throw resp;
+      }
+
+      const payload = await resp.json();
+      for (const label of payload.labels) {
+        yield label.val;
+      }
       if (!payload.cursor) {
         break;
       }

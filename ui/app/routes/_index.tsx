@@ -1,11 +1,21 @@
-import { Alert, Anchor, Center, Loader, Table, Text } from "@mantine/core";
+import {
+  Alert,
+  Anchor,
+  Badge,
+  Center,
+  Group,
+  Loader,
+  Table,
+  Text,
+} from "@mantine/core";
 import type { MetaFunction } from "@remix-run/node";
 import { Link } from "@remix-run/react";
 import { groupBy } from "lodash-es";
 import { format as formatDate, addMonths, setDate } from "date-fns";
-import { Fragment, useMemo } from "react";
+import { Fragment, useContext, useMemo } from "react";
 import { useCons } from "~/hooks";
 import { IconCalendar, IconMapPin } from "@tabler/icons-react";
+import { UserViewContext } from "~/context";
 
 function* monthRange(start: Date, end: Date): Generator<Date> {
   while (start < end) {
@@ -20,6 +30,7 @@ export const meta: MetaFunction = () => {
 
 export default function Index() {
   const { cons, error, isLoading } = useCons();
+  const { userView } = useContext(UserViewContext);
 
   const consByMonth = useMemo(() => {
     if (cons == null) {
@@ -76,15 +87,24 @@ export default function Index() {
               {(consByMonth[groupKey] ?? []).map((con) => (
                 <Table.Tr key={con.identifier}>
                   <Table.Td>
-                    <Text size="sm">
-                      <Anchor<typeof Link>
-                        fw={500}
-                        component={Link}
-                        to={`/cons/${con.identifier}`}
-                      >
-                        {con.name}
-                      </Anchor>
-                    </Text>
+                    <Group gap={7}>
+                      {userView != null &&
+                      userView.labels.has(con.identifier) ? (
+                        <Badge size="sm" color="red">
+                          Attending
+                        </Badge>
+                      ) : null}
+
+                      <Text size="sm">
+                        <Anchor<typeof Link>
+                          fw={500}
+                          component={Link}
+                          to={`/cons/${con.identifier}`}
+                        >
+                          {con.name}
+                        </Anchor>
+                      </Text>
+                    </Group>
                     <Text size="sm">
                       <IconCalendar size={12} />{" "}
                       {WEEKDAY_FORMAT.format(con.start)}{" "}
