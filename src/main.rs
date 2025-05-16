@@ -3,11 +3,8 @@ mod base26;
 use std::str::FromStr as _;
 
 use atrium_api::types::{Collection as _, TryFromUnknown as _, TryIntoUnknown as _};
-use base64::Engine as _;
 use futures::{SinkExt as _, StreamExt as _};
 use icalendar::Component as _;
-use rusqlite::{OptionalExtension as _, ToSql as _};
-use serde::Serialize as _;
 
 struct AppError(anyhow::Error);
 
@@ -36,7 +33,7 @@ struct Config {
     jetstream_endpoint: String,
     ics_url: String,
     bind: std::net::SocketAddr,
-    db_path: String,
+    postgres_url: String,
     keypair_path: String,
     label_sync_delay_secs: u64,
 }
@@ -50,29 +47,6 @@ struct Event {
     dtstart: chrono::NaiveDate,
     dtend: chrono::NaiveDate,
 }
-
-const SCHEMA: &str = "
-CREATE TABLE IF NOT EXISTS labels
-( seq INTEGER PRIMARY KEY AUTOINCREMENT
-, cts TEXT NOT NULL
-, exp TEXT
-, cid TEXT
-, sig BLOB
-, uri TEXT NOT NULL
-, val TEXT NOT NULL
-, neg INTEGER NOT NULL DEFAULT 0
-, like_rkey TEXT NOT NULL
-) STRICT;
-
-CREATE INDEX IF NOT EXISTS labels_uri ON labels (uri);
-
-CREATE INDEX IF NOT EXISTS labels_like_rkey ON labels (like_rkey) WHERE NOT neg;
-
-CREATE TABLE IF NOT EXISTS jetstream_cursor
-( id INTEGER PRIMARY KEY CHECK (id = 0)
-, cursor INTEGER NOT NULL
-) STRICT;
-";
 
 impl Event {
     fn from_icalendar_event(event: &icalendar::Event) -> Option<Event> {
@@ -507,50 +481,6 @@ async fn sync_labels(
     Ok(())
 }
 
-fn row_to_label(
-    did: &atrium_api::types::string::Did,
-    row: &rusqlite::Row,
-) -> Result<(i64, atrium_api::com::atproto::label::defs::Label), anyhow::Error> {
-    let seq = row.get::<_, i64>(0)?;
-    let cts = atrium_api::types::string::Datetime::new(chrono::DateTime::parse_from_rfc3339(
-        &row.get::<_, String>(1)?,
-    )?);
-    let exp = row
-        .get::<_, Option<String>>(2)?
-        .map(|exp| {
-            chrono::DateTime::parse_from_rfc3339(&exp).map(atrium_api::types::string::Datetime::new)
-        })
-        .map_or(Ok(None), |v| v.map(Some))?;
-    let cid = row
-        .get::<_, Option<String>>(3)?
-        .map(|cid| atrium_api::types::string::Cid::from_str(&cid))
-        .map_or(Ok(None), |v| v.map(Some))?;
-    let sig = row.get::<_, Option<Vec<u8>>>(4)?;
-    let uri = row.get::<_, String>(5)?;
-    let val = row.get::<_, String>(6)?;
-    let neg = if row.get::<_, i64>(7)? == 0 {
-        None
-    } else {
-        Some(true)
-    };
-
-    Ok((
-        seq,
-        atrium_api::com::atproto::label::defs::LabelData {
-            cid: cid,
-            cts: cts,
-            exp: exp,
-            neg: neg,
-            src: did.clone(),
-            uri,
-            val,
-            ver: Some(1),
-            sig,
-        }
-        .into(),
-    ))
-}
-
 async fn subscribe_labels(
     axum::extract::State(app_state): axum::extract::State<AppState>,
     ws: axum::extract::ws::WebSocketUpgrade,
@@ -595,32 +525,54 @@ async fn subscribe_labels(
             match async {
                 {
                     if let Some(cursor) = params.cursor {
-                        let db_conn = app_state.db_pool.get()?;
+                        let mut db_conn = app_state.db_pool.acquire().await?;
 
                         let mut pending = vec![];
 
-                        {
-                            let mut stmt = db_conn.prepare(
-                                "
-                                SELECT seq, cts, exp, cid, sig, uri, val, neg
-                                FROM labels
-                                WHERE seq > ?
-                                ",
-                            )?;
+                        let mut rows = sqlx::query!(
+                            "
+                            SELECT seq, cts, exp, cid, sig, uri, val, neg
+                            FROM labels
+                            WHERE seq > $1
+                            ",
+                            cursor
+                        )
+                        .fetch(&mut *db_conn);
 
-                            let mut rows = stmt.query(rusqlite::params![cursor])?;
+                        while let Some(row) = rows.next().await {
+                            let row = row?;
 
-                            while let Some(row) = rows.next()? {
-                                let (seq, label) = row_to_label(&app_state.did, &row)?;
-
-                                pending.push(
-                                    atrium_api::com::atproto::label::subscribe_labels::LabelsData {
-                                        seq,
-                                        labels: vec![label],
-                                    }
-                                    .into(),
-                                );
-                            }
+                            pending.push(
+                                atrium_api::com::atproto::label::subscribe_labels::LabelsData {
+                                    seq: row.seq,
+                                    labels: vec![
+                                        atrium_api::com::atproto::label::defs::LabelData {
+                                            cid: row
+                                                .cid
+                                                .map(|cid| {
+                                                    atrium_api::types::string::Cid::from_str(&cid)
+                                                })
+                                                .map_or(Ok(None), |v| v.map(Some))?,
+                                            cts: atrium_api::types::string::Datetime::new(
+                                                row.cts.fixed_offset(),
+                                            ),
+                                            exp: row.exp.map(|exp| {
+                                                atrium_api::types::string::Datetime::new(
+                                                    exp.fixed_offset(),
+                                                )
+                                            }),
+                                            neg: if row.neg { None } else { Some(true) },
+                                            sig: row.sig,
+                                            src: app_state.did.clone(),
+                                            uri: row.uri,
+                                            val: row.val,
+                                            ver: Some(1),
+                                        }
+                                        .into(),
+                                    ],
+                                }
+                                .into(),
+                            );
                         }
 
                         for labels in pending {
@@ -657,121 +609,6 @@ async fn subscribe_labels(
     })
 }
 
-#[derive(Debug, serde::Serialize)]
-struct QueryLabelsLabel {
-    #[serde(flatten)]
-    label: atrium_api::com::atproto::label::defs::Label,
-    #[serde(
-        skip_serializing_if = "Option::is_none",
-        serialize_with = "serialize_query_labels_label_sig"
-    )]
-    sig: Option<Vec<u8>>,
-}
-
-fn serialize_query_labels_label_sig<S>(v: &Option<Vec<u8>>, s: S) -> Result<S::Ok, S::Error>
-where
-    S: serde::Serializer,
-{
-    let Some(v) = v else {
-        return Option::<Vec<u8>>::None.serialize(s);
-    };
-
-    #[derive(serde::Serialize)]
-    struct BytesWrapper {
-        #[serde(rename = "$bytes")]
-        bytes: String,
-    }
-
-    BytesWrapper {
-        bytes: base64::engine::general_purpose::STANDARD_NO_PAD.encode(v),
-    }
-    .serialize(s)
-}
-
-#[derive(serde::Serialize)]
-struct QueryLabelsOutputData {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    cursor: Option<String>,
-    labels: Vec<QueryLabelsLabel>,
-}
-
-async fn query_labels(
-    axum::extract::State(app_state): axum::extract::State<AppState>,
-    axum_extra::extract::Query(params): axum_extra::extract::Query<
-        atrium_api::com::atproto::label::query_labels::ParametersData,
-    >,
-) -> Result<axum::response::Json<QueryLabelsOutputData>, AppError> {
-    if !params
-        .sources
-        .as_ref()
-        .map(|sources| sources.contains(&app_state.did))
-        .unwrap_or(true)
-    {
-        return Ok(axum::response::Json(QueryLabelsOutputData {
-            cursor: None,
-            labels: vec![],
-        }));
-    }
-
-    let mut labels = vec![];
-
-    let mut out_cursor = None;
-
-    {
-        let db_conn = app_state.db_pool.get()?;
-
-        let limit = params.limit.map(|v| v.into()).unwrap_or(250u8);
-
-        let mut stmt = db_conn.prepare(&format!(
-            "
-            SELECT seq, cts, exp, cid, sig, uri, val, neg
-            FROM labels
-            WHERE seq > ? AND ({})
-            LIMIT ?
-            ",
-            {
-                let mut buf = "uri LIKE ? ESCAPE '\\'".to_string();
-                for _ in 0..params.uri_patterns.len() - 1 {
-                    buf.push_str(" OR uri LIKE ? ESCAPE '\\'");
-                }
-                buf
-            }
-        ))?;
-        let mut query_params = vec![];
-
-        let cursor = params.cursor.unwrap_or_else(|| "0".to_string());
-        query_params.push(cursor.to_sql()?);
-
-        let sql_uri_patterns = params
-            .uri_patterns
-            .iter()
-            .map(|pattern| pattern.replace("%", "\\%").replace("*", "%"))
-            .collect::<Vec<_>>();
-
-        for sql_uri_pattern in sql_uri_patterns.iter() {
-            query_params.push(sql_uri_pattern.to_sql()?);
-        }
-
-        query_params.push(limit.to_sql()?);
-
-        let mut rows = stmt.query(rusqlite::params_from_iter(query_params.iter()))?;
-
-        while let Some(row) = rows.next()? {
-            let (seq, mut label) = row_to_label(&app_state.did, &row)?;
-            out_cursor = Some(seq);
-            let mut sig = None;
-            std::mem::swap(&mut sig, &mut label.sig);
-            let label = QueryLabelsLabel { sig, label };
-            labels.push(label);
-        }
-    }
-
-    Ok(axum::response::Json(QueryLabelsOutputData {
-        cursor: out_cursor.map(|c| c.to_string()),
-        labels,
-    }))
-}
-
 struct EventsState {
     rkeys_to_ids: std::collections::HashMap<atrium_api::types::string::RecordKey, u64>,
     events: std::collections::HashMap<u64, Event>,
@@ -794,7 +631,7 @@ struct AppState {
         >,
     >,
     did: atrium_api::types::string::Did,
-    db_pool: r2d2::Pool<r2d2_sqlite::SqliteConnectionManager>,
+    db_pool: sqlx::PgPool,
     subscribers_state: std::sync::Arc<tokio::sync::Mutex<SubscribersState>>,
     events_state: std::sync::Arc<tokio::sync::Mutex<EventsState>>,
 }
@@ -822,7 +659,12 @@ fn sign_label(
 }
 
 impl AppState {
-    async fn add_label(&self, label: PendingLabel, like_rkey: &str) -> Result<(), anyhow::Error> {
+    async fn add_label(
+        &self,
+        db_conn: &mut sqlx::PgConnection,
+        label: PendingLabel,
+        like_rkey: &str,
+    ) -> Result<(), anyhow::Error> {
         let signed_label = sign_label(
             &self.keypair,
             atrium_api::com::atproto::label::defs::LabelData {
@@ -843,33 +685,26 @@ impl AppState {
         )?;
 
         let seq = {
-            let db_conn = self.db_pool.get()?;
-            let cts = label
-                .cts
-                .to_rfc3339_opts(chrono::SecondsFormat::Micros, true);
-            let exp = label
-                .exp
-                .as_ref()
-                .map(|v| v.to_rfc3339_opts(chrono::SecondsFormat::Micros, true));
             let cid = label.cid.as_ref().map(|v| v.to_string());
-            db_conn.query_row(
+
+            sqlx::query!(
                 "
                 INSERT INTO labels (cts, exp, cid, sig, uri, val, neg, like_rkey)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
                 RETURNING seq
                 ",
-                rusqlite::params![
-                    cts,
-                    exp,
-                    cid,
-                    signed_label.sig,
-                    label.uri,
-                    label.val,
-                    label.neg,
-                    like_rkey,
-                ],
-                |row| row.get(0),
-            )?
+                label.cts,
+                label.exp,
+                cid,
+                signed_label.sig,
+                label.uri,
+                label.val,
+                label.neg,
+                like_rkey,
+            )
+            .fetch_one(db_conn)
+            .await?
+            .seq
         };
 
         metrics::gauge!("label_seq").set(seq as f64);
@@ -953,13 +788,11 @@ async fn service_jetstream(
         compression: jetstream_oxide::JetstreamCompression::Zstd,
         wanted_collections: vec![atrium_api::app::bsky::feed::Like::nsid()],
         cursor: {
-            let db_conn = app_state.db_pool.get()?;
-            let cursor = db_conn.query_row(
-                "SELECT COALESCE((SELECT cursor FROM jetstream_cursor WHERE id = 0), NULL)",
-                [],
-                |row| row.get::<_, Option<i64>>(0),
-            )?;
-            cursor.map(|d| chrono::DateTime::from_timestamp_micros(d).unwrap())
+            let mut db_conn = app_state.db_pool.acquire().await?;
+            sqlx::query!("SELECT cursor FROM jetstream_cursor")
+                .fetch_optional(&mut *db_conn)
+                .await?
+                .map(|d| chrono::DateTime::from_timestamp_micros(d.cursor).unwrap())
         },
         ..Default::default()
     })?;
@@ -976,6 +809,8 @@ async fn service_jetstream(
             | jetstream_oxide::events::commit::CommitEvent::Update { info, .. }
             | jetstream_oxide::events::commit::CommitEvent::Delete { info, .. } => info.time_us,
         };
+
+        let mut db_conn = app_state.db_pool.acquire().await?;
 
         async {
             match commit {
@@ -1029,28 +864,26 @@ async fn service_jetstream(
                     };
 
                     log::info!("applying label: {:?}", pending);
-                    app_state.add_label(pending, &commit.info.rkey).await?;
+                    app_state
+                        .add_label(&mut *db_conn, pending, &commit.info.rkey)
+                        .await?;
                 }
                 jetstream_oxide::events::commit::CommitEvent::Delete { info, commit } => {
-                    let db_conn = app_state.db_pool.get()?;
-
                     let uri = info.did.to_string();
 
-                    let mut stmt = db_conn.prepare(
+                    let Some(val) = sqlx::query!(
                         "
                         SELECT val FROM labels
-                        WHERE like_rkey = ? AND uri = ? AND NOT neg
+                        WHERE like_rkey = $1 AND uri = $2 AND NOT neg
                         ORDER BY seq DESC
                         LIMIT 1
                         ",
-                    )?;
-
-                    let Some(val) = stmt
-                        .query_row(rusqlite::params![commit.rkey, uri], |row| {
-                            row.get::<_, String>(0)
-                        })
-                        .optional()?
-                    else {
+                        commit.rkey,
+                        uri
+                    )
+                    .fetch_optional(&mut *db_conn)
+                    .await?
+                    .map(|v| v.val) else {
                         return Ok(());
                     };
 
@@ -1064,7 +897,9 @@ async fn service_jetstream(
                     };
 
                     log::info!("removing label: {:?}", pending);
-                    app_state.add_label(pending, &commit.rkey).await?;
+                    app_state
+                        .add_label(&mut *db_conn, pending, &commit.rkey)
+                        .await?;
                 }
                 _ => {}
             }
@@ -1073,17 +908,17 @@ async fn service_jetstream(
         }
         .await?;
 
-        let db_conn = app_state.db_pool.get()?;
-
         metrics::gauge!("jetstream_cursor").set(cursor as f64);
 
-        db_conn.execute(
+        sqlx::query!(
             "
-            INSERT OR REPLACE INTO jetstream_cursor (id, cursor)
-            VALUES (0, ?)
+            INSERT INTO jetstream_cursor (cursor) VALUES ($1)
+            ON CONFLICT ((true)) DO UPDATE SET cursor = excluded.cursor
             ",
-            [cursor],
-        )?;
+            cursor as i64,
+        )
+        .execute(&mut *db_conn)
+        .await?;
     }
 
     Ok(())
@@ -1136,13 +971,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     let did = agent.did().await.unwrap();
 
-    let db_pool = r2d2::Pool::new(
-        r2d2_sqlite::SqliteConnectionManager::file(&config.db_path)
-            .with_init(|c| c.execute_batch("PRAGMA journal_mode=WAL;")),
-    )
-    .unwrap();
-
-    db_pool.get()?.execute_batch(SCHEMA)?;
+    let db_pool = sqlx::PgPool::connect(&config.postgres_url).await?;
 
     let keypair =
         atrium_crypto::keypair::Secp256k1Keypair::import(&std::fs::read(&config.keypair_path)?)?;
@@ -1167,18 +996,13 @@ async fn main() -> Result<(), anyhow::Error> {
     let app = axum::Router::new()
         .nest(
             "/xrpc",
-            axum::Router::new()
-                .route(
-                    &format!(
-                        "/{}",
-                        atrium_api::com::atproto::label::subscribe_labels::NSID
-                    ),
-                    axum::routing::get(subscribe_labels),
-                )
-                .route(
-                    &format!("/{}", atrium_api::com::atproto::label::query_labels::NSID),
-                    axum::routing::get(query_labels),
+            axum::Router::new().route(
+                &format!(
+                    "/{}",
+                    atrium_api::com::atproto::label::subscribe_labels::NSID
                 ),
+                axum::routing::get(subscribe_labels),
+            ),
         )
         .route(
             "/metrics",

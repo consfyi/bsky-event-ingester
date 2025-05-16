@@ -1,1 +1,1 @@
-export const LABELER_DID = "did:plc:6kmwmb4idmuoohuadcn7h2wk";
+export const LABELER_DID = "did:plc:cagegj2wx26jxjlj5odsfzj4";
