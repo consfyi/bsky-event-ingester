@@ -8,6 +8,7 @@ import {
   Alert,
   Anchor,
   Avatar,
+  Badge,
   Box,
   Center,
   Group,
@@ -146,8 +147,15 @@ export default function Index() {
   return (
     <Box px="sm">
       <Box mt="sm">
-        <Text size="lg" fw={500}>
-          {con.name}{" "}
+        <Group gap={7}>
+          {userView != null && userView.labels.has(con.identifier) ? (
+            <Badge size="md" color="red">
+              Attending
+            </Badge>
+          ) : null}
+          <Text size="lg" fw={500}>
+            {con.name}
+          </Text>
           <Anchor
             href={`https://bsky.app/profile/${LABELER_DID}/post/${con.rkey}`}
             target="_blank"
@@ -156,7 +164,7 @@ export default function Index() {
           >
             <IconExternalLink size={12} /> View Bluesky Post
           </Anchor>
-        </Text>
+        </Group>
         <Box mt={4}>
           <Text size="sm" mb={5}>
             <IconCalendar size={12} /> {WEEKDAY_FORMAT.format(con.start)}{" "}
