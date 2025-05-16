@@ -50,14 +50,7 @@ async function fetchUserView(actor: string): Promise<UserView> {
       return follows;
     })(),
   ]);
-  const labels = await (async () => {
-    const labels = new Set<string>();
-    for await (const label of CLIENT.getLabels(profile.did)) {
-      labels.add(label);
-    }
-    return labels;
-  })();
-  return { profile, follows, labels };
+  return { profile, follows };
 }
 
 const VIEW_AS_LOCAL_STORAGE_KEY = "viewAs";

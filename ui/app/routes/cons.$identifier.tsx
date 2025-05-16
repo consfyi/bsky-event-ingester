@@ -17,7 +17,7 @@ import {
   Text,
   Tooltip,
 } from "@mantine/core";
-import { useCons, useLikes } from "~/hooks";
+import { useCons, useLikes, useUserViewLabels } from "~/hooks";
 import { format as formatDate } from "date-fns";
 import { Like, Profile } from "~/bluesky";
 import { LABELER_DID } from "~/config";
@@ -46,7 +46,7 @@ function Actor({ actor }: { actor: Profile }) {
               </Text>
 
               <Text size="xs" truncate>
-                {actor.handle}
+                @{actor.handle}
               </Text>
             </div>
           }
@@ -59,7 +59,7 @@ function Actor({ actor }: { actor: Profile }) {
           </Text>
 
           <Text size="xs" truncate>
-            {actor.handle}
+            @{actor.handle}
           </Text>
         </div>
       </Group>
@@ -87,6 +87,8 @@ export default function Index() {
   );
 
   const { userView } = useContext(UserViewContext);
+  const { data: userViewLabels } = useUserViewLabels();
+
   const follows = userView?.follows;
 
   const [isSelfAttending, knownLikes, unknownLikes] = useMemo(() => {
@@ -152,7 +154,7 @@ export default function Index() {
     <Box px="sm">
       <Box mt="sm">
         <Group gap={7}>
-          {userView != null && userView.labels.has(con.identifier) ? (
+          {userViewLabels != null && userViewLabels.has(con.identifier) ? (
             <Badge size="md" color="red">
               Attending
             </Badge>

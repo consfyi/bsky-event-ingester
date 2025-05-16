@@ -1,10 +1,11 @@
 import { sortBy } from "lodash-es";
-import { useMemo } from "react";
+import { useContext, useMemo } from "react";
 import useSWR, { SWRConfiguration } from "swr";
 import { CLIENT } from "~/bluesky";
 import { LABELER_DID } from "~/config";
 
 import { parse as parseDate } from "date-fns";
+import { UserViewContext } from "./context";
 
 export function useCons(opts?: SWRConfiguration) {
   const { data, error, isLoading } = useSWR(
@@ -53,4 +54,23 @@ export function useLikes(uri: string | null, opts?: SWRConfiguration) {
     },
     { revalidateOnFocus: false, revalidateOnReconnect: false, ...opts }
   );
+}
+
+export function useLabels(did: string | null, opts?: SWRConfiguration) {
+  return useSWR(
+    did != null ? `labels:${did}` : null,
+    async () => {
+      const labels = new Set();
+      for await (const label of CLIENT.getLabels(did!)) {
+        labels.add(label);
+      }
+      return labels;
+    },
+    { revalidateOnFocus: false, revalidateOnReconnect: false, ...opts }
+  );
+}
+
+export function useUserViewLabels(opts?: SWRConfiguration) {
+  const { userView } = useContext(UserViewContext);
+  return useLabels(userView != null ? userView.profile.did : null, opts);
 }

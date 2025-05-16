@@ -13,7 +13,7 @@ import { Link } from "@remix-run/react";
 import { groupBy } from "lodash-es";
 import { format as formatDate, addMonths, setDate } from "date-fns";
 import { Fragment, useContext, useMemo } from "react";
-import { useCons } from "~/hooks";
+import { useCons, useUserViewLabels } from "~/hooks";
 import { IconCalendar, IconMapPin } from "@tabler/icons-react";
 import { UserViewContext } from "~/context";
 
@@ -30,7 +30,9 @@ export const meta: MetaFunction = () => {
 
 export default function Index() {
   const { cons, error, isLoading } = useCons();
+
   const { userView } = useContext(UserViewContext);
+  const { data: userViewLabels } = useUserViewLabels();
 
   const consByMonth = useMemo(() => {
     if (cons == null) {
@@ -88,8 +90,8 @@ export default function Index() {
                 <Table.Tr key={con.identifier}>
                   <Table.Td>
                     <Group gap={7}>
-                      {userView != null &&
-                      userView.labels.has(con.identifier) ? (
+                      {userViewLabels != null &&
+                      userViewLabels.has(con.identifier) ? (
                         <Badge size="sm" color="red">
                           Attending
                         </Badge>
