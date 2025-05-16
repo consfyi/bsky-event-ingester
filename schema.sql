@@ -1,12 +1,9 @@
 CREATE TABLE labels (
     seq BIGSERIAL PRIMARY KEY,
-    cts TIMESTAMPTZ NOT NULL,
-    exp TIMESTAMPTZ,
-    cid TEXT,
-    sig BYTEA,
-    uri TEXT NOT NULL,
     val TEXT NOT NULL,
+    uri TEXT NOT NULL,
     neg BOOLEAN NOT NULL DEFAULT FALSE,
+    payload BYTEA NOT NULL,
     like_rkey TEXT NOT NULL
 );
 

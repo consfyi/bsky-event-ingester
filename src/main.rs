@@ -1,7 +1,5 @@
 mod base26;
 
-use std::str::FromStr as _;
-
 use atrium_api::types::{Collection as _, TryFromUnknown as _, TryIntoUnknown as _};
 use futures::{SinkExt as _, StreamExt as _};
 use icalendar::Component as _;
@@ -531,7 +529,7 @@ async fn subscribe_labels(
 
                         let mut rows = sqlx::query!(
                             "
-                            SELECT seq, cts, exp, cid, sig, uri, val, neg
+                            SELECT seq, payload
                             FROM labels
                             WHERE seq > $1
                             ",
@@ -545,31 +543,11 @@ async fn subscribe_labels(
                             pending.push(
                                 atrium_api::com::atproto::label::subscribe_labels::LabelsData {
                                     seq: row.seq,
-                                    labels: vec![
-                                        atrium_api::com::atproto::label::defs::LabelData {
-                                            cid: row
-                                                .cid
-                                                .map(|cid| {
-                                                    atrium_api::types::string::Cid::from_str(&cid)
-                                                })
-                                                .map_or(Ok(None), |v| v.map(Some))?,
-                                            cts: atrium_api::types::string::Datetime::new(
-                                                row.cts.fixed_offset(),
-                                            ),
-                                            exp: row.exp.map(|exp| {
-                                                atrium_api::types::string::Datetime::new(
-                                                    exp.fixed_offset(),
-                                                )
-                                            }),
-                                            neg: if row.neg { None } else { Some(true) },
-                                            sig: row.sig,
-                                            src: app_state.did.clone(),
-                                            uri: row.uri,
-                                            val: row.val,
-                                            ver: Some(1),
-                                        }
-                                        .into(),
-                                    ],
+                                    labels: vec![serde_ipld_dagcbor::from_slice::<
+                                        atrium_api::com::atproto::label::defs::Label,
+                                    >(
+                                        &row.payload
+                                    )?],
                                 }
                                 .into(),
                             );
@@ -668,7 +646,9 @@ impl AppState {
         let signed_label = sign_label(
             &self.keypair,
             atrium_api::com::atproto::label::defs::LabelData {
-                cid: None,
+                cid: label
+                    .cid
+                    .map(|cid| atrium_api::types::string::Cid::new(cid)),
                 cts: atrium_api::types::string::Datetime::new(label.cts.fixed_offset()),
                 exp: label
                     .exp
@@ -685,21 +665,16 @@ impl AppState {
         )?;
 
         let seq = {
-            let cid = label.cid.as_ref().map(|v| v.to_string());
-
             sqlx::query!(
                 "
-                INSERT INTO labels (cts, exp, cid, sig, uri, val, neg, like_rkey)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                INSERT INTO labels (val, uri, neg, payload, like_rkey)
+                VALUES ($1, $2, $3, $4, $5)
                 RETURNING seq
                 ",
-                label.cts,
-                label.exp,
-                cid,
-                signed_label.sig,
-                label.uri,
                 label.val,
+                label.uri,
                 label.neg,
+                serde_ipld_dagcbor::to_vec(&signed_label)?,
                 like_rkey,
             )
             .fetch_one(db_conn)
