@@ -35,6 +35,7 @@ struct Config {
     bind: std::net::SocketAddr,
     db_path: String,
     keypair_path: String,
+    label_sync_delay_secs: u64,
 }
 
 #[derive(Debug)]
@@ -1106,6 +1107,7 @@ async fn main() -> Result<(), anyhow::Error> {
             "jetstream_endpoint",
             String::from(jetstream_oxide::DefaultJetstreamEndpoints::USEastOne),
         )?
+        .set_default("label_sync_delay_secs", 60 * 60)?
         .build()?
         .try_deserialize()?;
 
@@ -1181,7 +1183,8 @@ async fn main() -> Result<(), anyhow::Error> {
             // Sync labels.
             let app_state = app_state.clone();
             loop {
-                tokio::time::sleep(std::time::Duration::from_secs(60 * 60 * 12)).await;
+                tokio::time::sleep(std::time::Duration::from_secs(config.label_sync_delay_secs))
+                    .await;
                 log::info!("syncing labels");
                 sync_labels(&config.ics_url, &app_state).await?;
             }
