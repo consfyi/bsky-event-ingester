@@ -16,3 +16,17 @@ pub fn decode(s: &str) -> Option<u64> {
         Some(acc * 26 + (c as u64 - 'a' as u64 + 1))
     })
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_encode_decode() {
+        for i in 0..20000 {
+            let s = encode(i);
+            println!("{i} -> {s}");
+            assert_eq!(i, decode(&s).unwrap());
+        }
+    }
+}
