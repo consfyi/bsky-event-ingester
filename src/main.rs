@@ -758,32 +758,34 @@ async fn service_jetstream(
     app_state: &AppState,
     jetstream_endpoint: &str,
 ) -> Result<(), anyhow::Error> {
+    let mut cursor = {
+        let mut db_conn = app_state.db_pool.acquire().await?;
+        sqlx::query!("SELECT cursor FROM jetstream_cursor")
+            .fetch_optional(&mut *db_conn)
+            .await?
+            .map(|d| d.cursor)
+    };
+
     let jetstream = jetstream_oxide::JetstreamConnector::new(jetstream_oxide::JetstreamConfig {
         endpoint: jetstream_endpoint.to_string(),
         compression: jetstream_oxide::JetstreamCompression::Zstd,
         wanted_collections: vec![atrium_api::app::bsky::feed::Like::nsid()],
-        cursor: {
-            let mut db_conn = app_state.db_pool.acquire().await?;
-            sqlx::query!("SELECT cursor FROM jetstream_cursor")
-                .fetch_optional(&mut *db_conn)
-                .await?
-                .map(|d| chrono::DateTime::from_timestamp_micros(d.cursor).unwrap())
-        },
+        cursor: cursor.map(|cursor| chrono::DateTime::from_timestamp_micros(cursor).unwrap()),
         ..Default::default()
     })?;
 
-    let receiver = jetstream.connect().await?;
+    let mut stream = jetstream.connect().await?.into_stream();
 
-    while let Ok(event) = receiver.recv_async().await {
+    while let Some(event) = stream.next().await {
         let jetstream_oxide::events::JetstreamEvent::Commit(commit) = event else {
             continue;
         };
 
-        let cursor = match &commit {
+        let next_cursor = match &commit {
             jetstream_oxide::events::commit::CommitEvent::Create { info, .. }
             | jetstream_oxide::events::commit::CommitEvent::Update { info, .. }
             | jetstream_oxide::events::commit::CommitEvent::Delete { info, .. } => info.time_us,
-        };
+        } as i64;
 
         let mut db_conn = app_state.db_pool.acquire().await?;
 
@@ -883,17 +885,26 @@ async fn service_jetstream(
         }
         .await?;
 
-        metrics::gauge!("jetstream_cursor").set(cursor as f64);
+        if let Some(cursor) = cursor {
+            if cursor > next_cursor {
+                log::warn!("got non-monotonic cursor? {cursor} (current) > {next_cursor} (next)");
+                continue;
+            }
+        }
+
+        metrics::gauge!("jetstream_cursor").set(next_cursor as f64);
 
         sqlx::query!(
             "
             INSERT INTO jetstream_cursor (cursor) VALUES ($1)
             ON CONFLICT ((true)) DO UPDATE SET cursor = excluded.cursor
             ",
-            cursor as i64,
+            next_cursor as i64,
         )
         .execute(&mut *db_conn)
         .await?;
+
+        cursor = Some(next_cursor);
     }
 
     Ok(())
