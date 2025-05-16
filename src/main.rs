@@ -32,6 +32,7 @@ struct Config {
     bsky_username: String,
     bsky_password: String,
     bsky_endpoint: String,
+    ui_endpoint: String,
     jetstream_endpoint: String,
     ics_url: String,
     bind: std::net::SocketAddr,
@@ -121,7 +122,11 @@ impl Event {
     }
 }
 
-async fn sync_labels(ics_url: &str, app_state: &AppState) -> Result<(), anyhow::Error> {
+async fn sync_labels(
+    ics_url: &str,
+    ui_endpoint: &str,
+    app_state: &AppState,
+) -> Result<(), anyhow::Error> {
     // Lock the entire events state while labels are syncing.
     //
     // This means that we hold the mutex while events are being created, such that any likes on those posts must wait until the mutex is unlocked.
@@ -280,7 +285,11 @@ async fn sync_labels(ics_url: &str, app_state: &AppState) -> Result<(), anyhow::
                             atrium_api::app::bsky::richtext::facet::MainFeaturesItem::Link(
                                 Box::new(
                                     atrium_api::app::bsky::richtext::facet::LinkData {
-                                        uri: event.url.clone(),
+                                        uri: format!(
+                                            "{}/cons/{}",
+                                            ui_endpoint,
+                                            base26::encode(event.id)
+                                        ),
                                     }
                                     .into(),
                                 ),
@@ -1107,6 +1116,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .set_default("bind", "127.0.0.1:3001")?
         .set_default("db_path", "db.db")?
         .set_default("keypair_path", "signing.key")?
+        .set_default("ui_endpoint", "https://conlabels.furryli.st")?
         .set_default(
             "jetstream_endpoint",
             String::from(jetstream_oxide::DefaultJetstreamEndpoints::USEastOne),
@@ -1178,7 +1188,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .with_state(app_state.clone());
 
     log::info!("syncing initial labels");
-    sync_labels(&config.ics_url, &app_state).await?;
+    sync_labels(&config.ics_url, &config.ui_endpoint, &app_state).await?;
 
     let listener = tokio::net::TcpListener::bind(&config.bind).await?;
 
@@ -1190,7 +1200,7 @@ async fn main() -> Result<(), anyhow::Error> {
                 tokio::time::sleep(std::time::Duration::from_secs(config.label_sync_delay_secs))
                     .await;
                 log::info!("syncing labels");
-                sync_labels(&config.ics_url, &app_state).await?;
+                sync_labels(&config.ics_url, &config.ui_endpoint, &app_state).await?;
             }
 
             #[allow(unreachable_code)]
