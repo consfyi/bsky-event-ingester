@@ -578,6 +578,12 @@ async fn subscribe_labels(
                     .subscribers
                     .insert(subscriber_id, cloned_subscriber);
 
+                log::info!(
+                    "added websocket subscriber {}, cursor = {:?}",
+                    subscriber_id,
+                    params.cursor,
+                );
+
                 metrics::gauge!("num_subscriptions")
                     .set(subscribers_state.subscribers.len() as f64);
 
@@ -639,6 +645,9 @@ async fn subscribe_labels(
             {
                 let mut subscribers_state = app_state.subscribers_state.lock().await;
                 subscribers_state.subscribers.remove(&subscriber_id);
+
+                log::info!("removed websocket subscriber {}", subscriber_id);
+
                 metrics::gauge!("num_subscriptions")
                     .set(subscribers_state.subscribers.len() as f64);
             }
@@ -1193,6 +1202,11 @@ async fn main() -> Result<(), anyhow::Error> {
             Ok::<_, anyhow::Error>(())
         },
         async {
+            if config.jetstream_endpoint.is_empty() {
+                log::warn!("no jetstream endpoint configured, won't service jetstream events");
+                return Ok(());
+            }
+
             // Wait on events.
             let app_state = app_state.clone();
             service_jetstream(&app_state, &config.jetstream_endpoint).await?;
