@@ -10,6 +10,7 @@ struct Config {
     pds: String,
     labeler_endpoint: String,
     keypair_path: String,
+    unregister_labeler: bool,
 }
 
 #[tokio::main]
@@ -19,6 +20,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let config: Config = config::Config::builder()
         .add_source(config::File::with_name("config.toml"))
         .set_default("keypair_path", "signing.key")?
+        .set_default("unregister_labeler", false)?
         .build()?
         .try_deserialize()?;
 
@@ -73,31 +75,39 @@ async fn main() -> Result<(), anyhow::Error> {
     else {
         unreachable!();
     };
-    verification_methods.insert(
-        "atproto_label".to_string(),
-        ipld_core::ipld::Ipld::String(keypair.did())
-            .try_into()
-            .unwrap(),
-    );
+    if !config.unregister_labeler {
+        verification_methods.insert(
+            "atproto_label".to_string(),
+            ipld_core::ipld::Ipld::String(keypair.did())
+                .try_into()
+                .unwrap(),
+        );
+    } else {
+        verification_methods.remove("atproto_label");
+    }
 
     let Some(atrium_api::types::Unknown::Object(services)) = operation.services.as_mut() else {
         unreachable!();
     };
-    services.insert(
-        "atproto_labeler".to_string(),
-        ipld_core::ipld::Ipld::Map(std::collections::BTreeMap::from([
-            (
-                "type".to_string(),
-                ipld_core::ipld::Ipld::String("AtprotoLabeler".to_string()),
-            ),
-            (
-                "endpoint".to_string(),
-                ipld_core::ipld::Ipld::String(config.labeler_endpoint),
-            ),
-        ]))
-        .try_into()
-        .unwrap(),
-    );
+    if !config.unregister_labeler {
+        services.insert(
+            "atproto_labeler".to_string(),
+            ipld_core::ipld::Ipld::Map(std::collections::BTreeMap::from([
+                (
+                    "type".to_string(),
+                    ipld_core::ipld::Ipld::String("AtprotoLabeler".to_string()),
+                ),
+                (
+                    "endpoint".to_string(),
+                    ipld_core::ipld::Ipld::String(config.labeler_endpoint),
+                ),
+            ]))
+            .try_into()
+            .unwrap(),
+        );
+    } else {
+        services.remove("atproto_labeler");
+    }
 
     let plc_op = agent
         .api
