@@ -1031,6 +1031,8 @@ async fn service_jetstream(
                         "
                         SELECT val FROM labels
                         WHERE like_rkey = ? AND uri = ? AND NOT neg
+                        ORDER BY seq DESC
+                        LIMIT 1
                         ",
                     )?;
 
@@ -1048,8 +1050,8 @@ async fn service_jetstream(
                         exp: None,
                         cid: None,
                         neg: true,
-                        uri: uri,
-                        val: val,
+                        uri,
+                        val,
                     };
 
                     log::info!("removing label: {:?}", pending);
@@ -1130,7 +1132,7 @@ async fn main() -> Result<(), anyhow::Error> {
     )
     .unwrap();
 
-    db_pool.get().unwrap().execute_batch(SCHEMA).unwrap();
+    db_pool.get()?.execute_batch(SCHEMA)?;
 
     let keypair =
         atrium_crypto::keypair::Secp256k1Keypair::import(&std::fs::read(&config.keypair_path)?)?;
