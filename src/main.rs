@@ -129,7 +129,6 @@ async fn sync_labels(ics_url: &str, app_state: &AppState) -> Result<(), anyhow::
     let mut events_state = app_state.events_state.lock().await;
 
     const EXTRA_DATA_POST_RKEY: &str = "fbl_postRkey";
-    const EXTRA_DATA_LABEL_VAL: &str = "fbl_labelVal";
     const EXTRA_DATA_EVENT_INFO: &str = "fbl_eventInfo";
 
     let mut writes = vec![];
@@ -271,7 +270,7 @@ async fn sync_labels(ics_url: &str, app_state: &AppState) -> Result<(), anyhow::
         .unwrap();
 
         {
-            let mut record: atrium_api::app::bsky::feed::post::Record =
+            let record: atrium_api::app::bsky::feed::post::Record =
                 atrium_api::app::bsky::feed::post::RecordData {
                     created_at: atrium_api::types::string::Datetime::new(now.fixed_offset()),
                     embed: None,
@@ -310,13 +309,6 @@ async fn sync_labels(ics_url: &str, app_state: &AppState) -> Result<(), anyhow::
                     ),
                 }
                 .into();
-            let ipld_core::ipld::Ipld::Map(extra_data) = &mut record.extra_data else {
-                unreachable!()
-            };
-            extra_data.insert(
-                EXTRA_DATA_LABEL_VAL.to_string(),
-                ipld_core::ipld::Ipld::String(event.val.clone()),
-            );
 
             writes.push(
                 atrium_api::com::atproto::repo::apply_writes::InputWritesItem::Create(Box::new(
@@ -442,6 +434,10 @@ async fn sync_labels(ics_url: &str, app_state: &AppState) -> Result<(), anyhow::
                                         (
                                             "location".to_string(),
                                             ipld_core::ipld::Ipld::String(event.location.clone()),
+                                        ),
+                                        (
+                                            "url".to_string(),
+                                            ipld_core::ipld::Ipld::String(event.url.clone()),
                                         ),
                                     ])),
                                 );
