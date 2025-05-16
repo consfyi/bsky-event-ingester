@@ -64,11 +64,10 @@ impl Event {
                         .and_then(|(x, _)| x.parse().ok());
                 }
                 "URL" => {
-                    url = Some(html_escape::decode_html_entities(property.value()).to_string());
+                    url = Some(htmlize::unescape(property.value()).to_string());
                 }
                 "LOCATION" => {
-                    location =
-                        Some(html_escape::decode_html_entities(property.value()).to_string());
+                    location = Some(htmlize::unescape(property.value()).to_string());
                 }
                 "DTSTART" => {
                     dtstart = chrono::NaiveDate::parse_from_str(property.value(), "%Y%m%d").ok();
@@ -77,7 +76,7 @@ impl Event {
                     dtend = chrono::NaiveDate::parse_from_str(property.value(), "%Y%m%d").ok();
                 }
                 "SUMMARY" => {
-                    summary = Some(html_escape::decode_html_entities(property.value()).to_string());
+                    summary = Some(htmlize::unescape(property.value()).to_string());
                 }
                 _ => continue,
             }
