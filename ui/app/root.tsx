@@ -187,7 +187,7 @@ function Header() {
                 })();
               }}
             >
-              <Button.Group>
+              <Button.Group my={-2}>
                 <Button
                   loading={pending}
                   type="submit"
