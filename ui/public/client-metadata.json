@@ -2,6 +2,7 @@
   "client_id": "https://conlabels.furryli.st/client-metadata.json",
   "client_name": "conlabels.furryli.st",
   "client_uri": "https://conlabels.furryli.st",
+  "logo_uri": "https://conlabels.furryli.st/logo.png",
   "redirect_uris": ["https://conlabels.furryli.st"],
   "scope": "atproto transition:generic",
   "grant_types": ["authorization_code", "refresh_token"],

@@ -4,9 +4,15 @@ import {
   buildFetchHandler,
 } from "@atcute/client";
 import { LABELER_DID } from "./config";
-import type {} from "@atcute/bluesky";
+import { AppBskyFeedLike } from "@atcute/bluesky";
 import type {} from "@atcute/atproto";
-import type { ActorIdentifier, Did, ResourceUri } from "@atcute/lexicons";
+import type {
+  ActorIdentifier,
+  Cid,
+  Did,
+  Nsid,
+  ResourceUri,
+} from "@atcute/lexicons";
 import type {
   PostView,
   ThreadViewPost,
@@ -170,5 +176,46 @@ export class Client {
       }
       cursor = data.cursor;
     }
+  }
+
+  async unlike(uri: ResourceUri) {
+    const [repo, collection, rkey] = uri.replace(/^at:\/\//, "").split("/");
+
+    const { ok, data } = await this.rpc.post("com.atproto.repo.deleteRecord", {
+      input: {
+        collection: collection as Nsid,
+        repo: repo as Did,
+        rkey,
+      },
+    });
+    if (!ok) {
+      throw data.error;
+    }
+  }
+
+  async like(uri: ResourceUri, cid: Cid) {
+    if (this.did == null) {
+      return;
+    }
+
+    const { ok, data } = await this.rpc.post("com.atproto.repo.createRecord", {
+      input: {
+        collection: "app.bsky.feed.like",
+        repo: this.did,
+        record: {
+          $type: "app.bsky.feed.like",
+          subject: {
+            uri,
+            cid,
+          },
+          createdAt: new Date().toISOString(),
+        } satisfies AppBskyFeedLike.Main,
+      },
+    });
+    if (!ok) {
+      throw data.error;
+    }
+
+    return data.uri;
   }
 }

@@ -26,6 +26,7 @@ import {
   Loader,
   Avatar,
   Center,
+  Image,
 } from "@mantine/core";
 import {
   IconAt,
@@ -74,9 +75,12 @@ function Header() {
       <Container size="lg" p="sm">
         <Group justify="space-between">
           <Anchor<typeof Link> component={Link} to="/">
-            <Text fw={500} size="lg">
-              conlabels.furryli.st
-            </Text>
+            <Group gap={7}>
+              <Image src="/logo.png" h={26} w={26} radius="sm" />
+              <Text fw={500} size="lg" visibleFrom="xs">
+                conlabels.furryli.st
+              </Text>
+            </Group>
           </Anchor>
           <Menu
             position="bottom-end"

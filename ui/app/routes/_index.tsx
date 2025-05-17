@@ -89,7 +89,7 @@ export default function Index() {
                   <Table.Td>
                     <Group gap={7}>
                       {conPosts != null &&
-                      conPosts.get(con.rkey)!.viewer?.like != null ? (
+                      conPosts[con.rkey].viewer?.like != null ? (
                         <Badge color="red" size="sm">
                           Attending
                         </Badge>
@@ -107,10 +107,8 @@ export default function Index() {
                     </Group>
                     <Text size="sm">
                       <IconUsers size={12} />{" "}
-                      {conPosts != null
-                        ? conPosts.get(con.rkey)!.likeCount
-                        : null}{" "}
-                      • <IconCalendar size={12} />{" "}
+                      {conPosts != null ? conPosts[con.rkey].likeCount : null} •{" "}
+                      <IconCalendar size={12} />{" "}
                       {WEEKDAY_FORMAT.format(con.start)}{" "}
                       {formatDate(con.start, "yyyy-MM-dd")} –{" "}
                       {WEEKDAY_FORMAT.format(con.end)}{" "}

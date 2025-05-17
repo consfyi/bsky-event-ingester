@@ -1,11 +1,14 @@
 import {
   IconCalendar,
   IconExternalLink,
+  IconHeart,
+  IconHeartFilled,
   IconLink,
   IconMapPin,
 } from "@tabler/icons-react";
 import { useParams } from "@remix-run/react";
 import {
+  ActionIcon,
   Alert,
   Anchor,
   Avatar,
@@ -17,16 +20,25 @@ import {
   Text,
   Tooltip,
 } from "@mantine/core";
-import { Con, useCons, useLikes, useThread, useUserView } from "~/hooks";
+import {
+  Con,
+  useClient,
+  useCons,
+  useLikes,
+  useThread,
+  useUserView,
+} from "~/hooks";
 import { format as formatDate } from "date-fns";
 import { LABELER_DID } from "~/config";
-import { useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { sortBy } from "lodash-es";
-import { Like } from "@atcute/bluesky/types/app/feed/getLikes";
+import type { Like } from "@atcute/bluesky/types/app/feed/getLikes";
 import type {
   ProfileView,
   ProfileViewDetailed,
 } from "@atcute/bluesky/types/app/actor/defs";
+import type { ThreadViewPost } from "@atcute/bluesky/types/app/feed/defs";
+import type { Cid, ResourceUri } from "@atcute/lexicons";
 
 function Actor({ actor }: { actor: ProfileView | ProfileViewDetailed }) {
   return (
@@ -69,14 +81,90 @@ function Actor({ actor }: { actor: ProfileView | ProfileViewDetailed }) {
     </Anchor>
   );
 }
-function Header({ con }: { con: Con | null }) {
-  if (con == null) {
-    return null;
-  }
 
+function LikeButton({
+  uri,
+  cid,
+  initialLike,
+  invalidate,
+}: {
+  uri: ResourceUri;
+  cid: Cid;
+  initialLike: ResourceUri | null;
+  invalidate?: () => void;
+}) {
+  const client = useClient();
+
+  const [likeUri, setLikeUri] = useState(initialLike);
+  const [expectedOn, setExpectedOn] = useState(initialLike != null);
+  const [pending, setPending] = useState(false);
+
+  const handleClick = useCallback(() => {
+    setExpectedOn((prev) => !prev);
+  }, []);
+
+  useEffect(() => {
+    if (pending) return;
+
+    (async () => {
+      if (expectedOn && likeUri == null) {
+        setPending(true);
+        try {
+          const r = await client!.like(uri, cid);
+          setLikeUri(r!);
+        } finally {
+          setPending(false);
+        }
+      } else if (!expectedOn && likeUri != null) {
+        setPending(true);
+        try {
+          await client!.unlike(likeUri);
+          setLikeUri(null);
+        } finally {
+          setPending(false);
+        }
+      }
+
+      if (invalidate) {
+        invalidate();
+      }
+    })();
+  }, [expectedOn, likeUri, client, uri, cid, pending, invalidate]);
+
+  return (
+    <Tooltip label={expectedOn ? "Attending" : "Not attending"}>
+      <ActionIcon
+        color="red"
+        variant="transparent"
+        size="sm"
+        onClick={handleClick}
+      >
+        {expectedOn ? <IconHeartFilled size={16} /> : <IconHeart size={16} />}
+      </ActionIcon>
+    </Tooltip>
+  );
+}
+
+function Header({
+  con,
+  thread,
+  invalidate,
+}: {
+  con: Con;
+  thread: ThreadViewPost;
+  invalidate: () => void;
+}) {
   return (
     <Box mt="sm">
       <Group gap={7}>
+        {thread.post.viewer != null ? (
+          <LikeButton
+            uri={thread.post.uri}
+            cid={thread.post.cid}
+            initialLike={thread.post.viewer.like ?? null}
+            invalidate={invalidate}
+          />
+        ) : null}
         <Text size="lg" fw={500}>
           {con.name}
         </Text>
@@ -121,19 +209,13 @@ function Header({ con }: { con: Con | null }) {
   );
 }
 
-function Attendees({ con }: { con: Con | null }) {
-  const { data: thread } = useThread(
-    con != null ? `at://${LABELER_DID}/app.bsky.feed.post/${con.rkey}` : null
-  );
-
-  const {
-    data: likes,
-    isLoading: likesIsLoading,
-    error: likesError,
-  } = useLikes(
-    con != null ? `at://${LABELER_DID}/app.bsky.feed.post/${con.rkey}` : null
-  );
-
+function Attendees({
+  thread,
+  likes,
+}: {
+  thread: ThreadViewPost;
+  likes: Like[] | null;
+}) {
   const { data: userView } = useUserView();
 
   const [isSelfAttending, knownLikes, unknownLikes] = useMemo(() => {
@@ -169,48 +251,30 @@ function Attendees({ con }: { con: Con | null }) {
         Attendees{" "}
         {likes != null ? (
           <small>
-            {thread != null
-              ? `${thread.post.likeCount} ${
-                  thread.post.viewer != null && thread.post.viewer.like != null
-                    ? " including you"
-                    : ""
-                }`
+            {thread.post.likeCount}
+            {thread.post.viewer != null && thread.post.viewer.like != null
+              ? " including you"
               : ""}
           </small>
         ) : null}
       </Text>
-      {likesError != null ? (
-        <Alert color="red" title="Error">
-          <Text size="sm">Couldn’t load attendees data.</Text>
-          <pre>{likesError.toString()}</pre>
-        </Alert>
-      ) : likesIsLoading ? (
-        <Center p="lg">
-          <Loader />
-        </Center>
-      ) : likes == null ? (
-        <Alert color="red" title="Error">
-          <Text size="sm">Couldn’t load attendees data.</Text>
-        </Alert>
-      ) : (
-        <SimpleGrid cols={{ base: 1, sm: 2, lg: 5 }} my="xs">
-          {isSelfAttending ? (
-            <div>
-              <Actor actor={userView!.profile} />
-            </div>
-          ) : null}
-          {knownLikes!.map((like) => (
-            <div key={like.actor.did}>
-              <Actor actor={like.actor} />
-            </div>
-          ))}
-          {unknownLikes!.map((like) => (
-            <div key={like.actor.did} style={{ opacity: 0.25 }}>
-              <Actor actor={like.actor} />
-            </div>
-          ))}
-        </SimpleGrid>
-      )}
+      <SimpleGrid cols={{ base: 1, sm: 2, lg: 5 }} my="xs">
+        {isSelfAttending ? (
+          <div>
+            <Actor actor={userView!.profile} />
+          </div>
+        ) : null}
+        {knownLikes!.map((like) => (
+          <div key={like.actor.did}>
+            <Actor actor={like.actor} />
+          </div>
+        ))}
+        {unknownLikes!.map((like) => (
+          <div key={like.actor.did} style={{ opacity: 0.25 }}>
+            <Actor actor={like.actor} />
+          </div>
+        ))}
+      </SimpleGrid>
     </Box>
   );
 }
@@ -226,6 +290,28 @@ export default function Index() {
     document.title = con != null ? con.name : "";
   }, [con]);
 
+  const {
+    data: thread,
+    isLoading: threadIsLoading,
+    mutate: mutateThread,
+  } = useThread(
+    con != null ? `at://${LABELER_DID}/app.bsky.feed.post/${con.rkey}` : null
+  );
+
+  const {
+    data: likes,
+    error: likesError,
+    isLoading: likesIsLoading,
+    mutate: mutateLikes,
+  } = useLikes(
+    con != null ? `at://${LABELER_DID}/app.bsky.feed.post/${con.rkey}` : null
+  );
+
+  const invalidate = useCallback(() => {
+    mutateThread();
+    mutateLikes(undefined);
+  }, [mutateThread, mutateLikes]);
+
   if (error != null) {
     return (
       <Alert color="red" title="Error">
@@ -235,7 +321,7 @@ export default function Index() {
     );
   }
 
-  if (isLoading) {
+  if (isLoading || threadIsLoading) {
     return (
       <Center p="lg">
         <Loader />
@@ -251,7 +337,7 @@ export default function Index() {
     );
   }
 
-  if (con == null) {
+  if (con == null || thread == null) {
     throw new Response(null, {
       status: 404,
       statusText: "Not Found",
@@ -260,8 +346,23 @@ export default function Index() {
 
   return (
     <Box px="sm">
-      <Header con={con} />
-      <Attendees con={con} />
+      <Header con={con} thread={thread} invalidate={invalidate} />
+      {likesError != null ? (
+        <Alert color="red" title="Error">
+          <Text size="sm">Couldn’t load attendees data.</Text>
+          <pre>{likesError.toString()}</pre>
+        </Alert>
+      ) : likesIsLoading ? (
+        <Center p="lg">
+          <Loader />
+        </Center>
+      ) : likes == null ? (
+        <Alert color="red" title="Error">
+          <Text size="sm">Couldn’t load attendees data.</Text>
+        </Alert>
+      ) : (
+        <Attendees thread={thread} likes={likes} />
+      )}
     </Box>
   );
 }
