@@ -206,28 +206,38 @@ function Attendees({
           </small>
         ) : null}
       </Text>
-      {!selfFollowsIsLoading ? (
+      {!selfFollowsIsLoading && knownLikes != null && unknownLikes != null ? (
         <>
-          <SimpleGrid cols={{ base: 1, sm: 2, lg: 5 }} my="xs">
-            {isSelfAttending && self != null ? (
-              <div>
-                <Actor actor={self} known />
-              </div>
-            ) : null}
-            {knownLikes!.map((like) => (
-              <div key={like.actor.did}>
-                <Actor actor={like.actor} known />
-              </div>
-            ))}
-          </SimpleGrid>
-          <Divider label={"People you don't follow"} labelPosition="left" />
-          <SimpleGrid cols={{ base: 1, sm: 2, lg: 5 }} my="xs">
-            {unknownLikes!.map((like) => (
-              <div key={like.actor.did}>
-                <Actor actor={like.actor} />
-              </div>
-            ))}
-          </SimpleGrid>
+          {knownLikes.length > 0 ? (
+            <SimpleGrid cols={{ base: 1, sm: 2, lg: 5 }} mt="xs">
+              {isSelfAttending && self != null ? (
+                <div>
+                  <Actor actor={self} known />
+                </div>
+              ) : null}
+              {knownLikes.map((like) => (
+                <div key={like.actor.did}>
+                  <Actor actor={like.actor} known />
+                </div>
+              ))}
+            </SimpleGrid>
+          ) : null}
+          {unknownLikes.length > 0 ? (
+            <>
+              <Divider
+                label={"People you don't follow"}
+                labelPosition="left"
+                mt="xs"
+              />
+              <SimpleGrid cols={{ base: 1, sm: 2, lg: 5 }} mt="xs">
+                {unknownLikes.map((like) => (
+                  <div key={like.actor.did}>
+                    <Actor actor={like.actor} />
+                  </div>
+                ))}
+              </SimpleGrid>
+            </>
+          ) : null}
         </>
       ) : (
         <Center p="lg">
