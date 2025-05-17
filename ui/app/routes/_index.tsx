@@ -1,7 +1,6 @@
 import {
   Alert,
   Anchor,
-  Badge,
   Center,
   Group,
   Loader,
@@ -12,10 +11,12 @@ import type { MetaFunction } from "@remix-run/node";
 import { Link } from "@remix-run/react";
 import { groupBy } from "lodash-es";
 import { format as formatDate, addMonths, setDate } from "date-fns";
-import { Fragment, useMemo } from "react";
-import { useConPosts, useCons } from "~/hooks";
+import { Fragment, useMemo, useState } from "react";
+import { Con, useConPosts, useCons } from "~/hooks";
 import { IconCalendar, IconMapPin, IconUsers } from "@tabler/icons-react";
 import clientMetadata from "../../public/client-metadata.json";
+import { LikeButton } from "~/components/LikeButton";
+import type { PostView } from "@atcute/bluesky/types/app/feed/defs";
 
 function* monthRange(start: Date, end: Date): Generator<Date> {
   while (start < end) {
@@ -27,6 +28,60 @@ function* monthRange(start: Date, end: Date): Generator<Date> {
 export const meta: MetaFunction = () => {
   return [{ title: clientMetadata.client_name }];
 };
+
+function ConTableRow({ con, post }: { con: Con; post: PostView }) {
+  const [isSelfAttending, setIsSelfAttending] = useState(
+    post.viewer?.like != null
+  );
+
+  const likeCountWithoutSelf =
+    (post.likeCount || 0) - (post.viewer?.like != null ? 1 : 0);
+  return (
+    <Table.Tr key={con.identifier}>
+      <Table.Td>
+        <Group gap={7}>
+          {post.viewer != null ? (
+            <LikeButton
+              uri={post.uri}
+              cid={post.cid}
+              size="sm"
+              initialLike={post.viewer?.like ?? null}
+              setLikeState={setIsSelfAttending}
+            />
+          ) : null}
+
+          <Text size="sm">
+            <Anchor<typeof Link>
+              fw={500}
+              component={Link}
+              to={`/cons/${con.identifier}`}
+            >
+              {con.name}
+            </Anchor>
+          </Text>
+        </Group>
+        <Text size="sm">
+          <IconUsers size={12} />{" "}
+          {likeCountWithoutSelf + (isSelfAttending ? 1 : 0)} •{" "}
+          <IconCalendar size={12} /> {WEEKDAY_FORMAT.format(con.start)}{" "}
+          {formatDate(con.start, "yyyy-MM-dd")} –{" "}
+          {WEEKDAY_FORMAT.format(con.end)} {formatDate(con.end, "yyyy-MM-dd")} •{" "}
+          <IconMapPin size={12} />{" "}
+          <Anchor
+            href={`https://www.google.com/maps?q=${con.location}`}
+            target="_blank"
+            rel="noreferrer"
+            style={{
+              color: "unset",
+            }}
+          >
+            {con.location}
+          </Anchor>{" "}
+        </Text>
+      </Table.Td>
+    </Table.Tr>
+  );
+}
 
 export default function Index() {
   const { data: cons, error, isLoading } = useCons();
@@ -59,7 +114,7 @@ export default function Index() {
     );
   }
 
-  if (cons == null || consByMonth == null) {
+  if (cons == null || conPosts == null || consByMonth == null) {
     return (
       <Alert color="red" title="Error">
         <Text size="sm">Couldn’t load con data.</Text>
@@ -85,48 +140,11 @@ export default function Index() {
                 </Table.Th>
               </Table.Tr>
               {(consByMonth[groupKey] ?? []).map((con) => (
-                <Table.Tr key={con.identifier}>
-                  <Table.Td>
-                    <Group gap={7}>
-                      {conPosts != null &&
-                      conPosts[con.rkey].viewer?.like != null ? (
-                        <Badge color="red" size="sm">
-                          Attending
-                        </Badge>
-                      ) : null}
-
-                      <Text size="sm">
-                        <Anchor<typeof Link>
-                          fw={500}
-                          component={Link}
-                          to={`/cons/${con.identifier}`}
-                        >
-                          {con.name}
-                        </Anchor>
-                      </Text>
-                    </Group>
-                    <Text size="sm">
-                      <IconUsers size={12} />{" "}
-                      {conPosts != null ? conPosts[con.rkey].likeCount : null} •{" "}
-                      <IconCalendar size={12} />{" "}
-                      {WEEKDAY_FORMAT.format(con.start)}{" "}
-                      {formatDate(con.start, "yyyy-MM-dd")} –{" "}
-                      {WEEKDAY_FORMAT.format(con.end)}{" "}
-                      {formatDate(con.end, "yyyy-MM-dd")} •{" "}
-                      <IconMapPin size={12} />{" "}
-                      <Anchor
-                        href={`https://www.google.com/maps?q=${con.location}`}
-                        target="_blank"
-                        rel="noreferrer"
-                        style={{
-                          color: "unset",
-                        }}
-                      >
-                        {con.location}
-                      </Anchor>{" "}
-                    </Text>
-                  </Table.Td>
-                </Table.Tr>
+                <ConTableRow
+                  key={con.identifier}
+                  con={con}
+                  post={conPosts[con.rkey]}
+                />
               ))}
             </Fragment>
           );

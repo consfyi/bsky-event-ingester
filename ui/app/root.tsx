@@ -31,8 +31,8 @@ import {
 } from "@mantine/core";
 import {
   IconAt,
+  IconBrandBluesky,
   IconChevronDown,
-  IconLogin2,
   IconLogout2,
   IconUser,
 } from "@tabler/icons-react";
@@ -174,6 +174,7 @@ function Header() {
                   }}
                 >
                   <TextInput
+                    name="username"
                     disabled={pending}
                     leftSection={<IconAt size={16} />}
                     placeholder="handle.bsky.social"
@@ -191,11 +192,11 @@ function Header() {
                       pending ? (
                         <Loader size={18} color="dimmed" />
                       ) : (
-                        <IconLogin2 size={18} />
+                        <IconBrandBluesky size={18} />
                       )
                     }
                   >
-                    Log in
+                    Log in with Bluesky
                   </Button>
                 </form>
               ) : (
@@ -272,10 +273,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
         } else {
           const sessions = listStoredSessions();
           if (sessions.length > 0) {
+            const did = sessions[0];
             try {
-              session = await getSession(sessions[0], { allowStale: true });
+              session = await getSession(did, { allowStale: false });
             } catch (e) {
-              // Do nothing.
+              deleteStoredSession(did);
             }
           }
         }

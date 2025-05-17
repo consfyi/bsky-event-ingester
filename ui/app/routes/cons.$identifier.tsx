@@ -1,14 +1,11 @@
 import {
   IconCalendar,
   IconExternalLink,
-  IconHeart,
-  IconHeartFilled,
   IconLink,
   IconMapPin,
 } from "@tabler/icons-react";
 import { useParams } from "@remix-run/react";
 import {
-  ActionIcon,
   Alert,
   Anchor,
   Avatar,
@@ -22,7 +19,6 @@ import {
 } from "@mantine/core";
 import {
   Con,
-  useClient,
   useCons,
   useLikes,
   useSelf,
@@ -31,7 +27,7 @@ import {
 } from "~/hooks";
 import { format as formatDate } from "date-fns";
 import { LABELER_DID } from "~/config";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { sortBy } from "lodash-es";
 import type { Like } from "@atcute/bluesky/types/app/feed/getLikes";
 import type {
@@ -39,7 +35,7 @@ import type {
   ProfileViewDetailed,
 } from "@atcute/bluesky/types/app/actor/defs";
 import type { ThreadViewPost } from "@atcute/bluesky/types/app/feed/defs";
-import type { Cid, ResourceUri } from "@atcute/lexicons";
+import { LikeButton } from "~/components/LikeButton";
 
 function Actor({ actor }: { actor: ProfileView | ProfileViewDetailed }) {
   return (
@@ -83,68 +79,6 @@ function Actor({ actor }: { actor: ProfileView | ProfileViewDetailed }) {
   );
 }
 
-function LikeButton({
-  uri,
-  cid,
-  initialLike,
-  setLikeState,
-}: {
-  uri: ResourceUri;
-  cid: Cid;
-  initialLike: ResourceUri | null;
-  setLikeState?: (v: boolean) => void;
-}) {
-  const client = useClient();
-
-  const [likeUri, setLikeUri] = useState(initialLike);
-  const [expectedOn, setExpectedOn] = useState(initialLike != null);
-  const [pending, setPending] = useState(false);
-
-  const handleClick = useCallback(() => {
-    setExpectedOn(!expectedOn);
-    if (setLikeState != null) {
-      setLikeState(!expectedOn);
-    }
-  }, [setLikeState, expectedOn]);
-
-  useEffect(() => {
-    if (pending) return;
-
-    (async () => {
-      if (expectedOn && likeUri == null) {
-        setPending(true);
-        try {
-          const r = await client!.like(uri, cid);
-          setLikeUri(r!);
-        } finally {
-          setPending(false);
-        }
-      } else if (!expectedOn && likeUri != null) {
-        setPending(true);
-        try {
-          await client!.unlike(likeUri);
-          setLikeUri(null);
-        } finally {
-          setPending(false);
-        }
-      }
-    })();
-  }, [expectedOn, likeUri, client, uri, cid, pending]);
-
-  return (
-    <Tooltip label={expectedOn ? "Attending" : "Not attending"}>
-      <ActionIcon
-        color="red"
-        variant="transparent"
-        size="sm"
-        onClick={handleClick}
-      >
-        {expectedOn ? <IconHeartFilled size={16} /> : <IconHeart size={16} />}
-      </ActionIcon>
-    </Tooltip>
-  );
-}
-
 function Header({
   con,
   thread,
@@ -161,6 +95,7 @@ function Header({
           <LikeButton
             uri={thread.post.uri}
             cid={thread.post.cid}
+            size="sm"
             initialLike={thread.post.viewer?.like ?? null}
             setLikeState={setLikeState}
           />
