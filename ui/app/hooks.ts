@@ -7,18 +7,17 @@ import { parse as parseDate } from "date-fns";
 import type { ResourceUri } from "@atcute/lexicons";
 import type { PostView } from "@atcute/bluesky/types/app/feed/defs";
 import { ClientContext } from "./context";
-import type { ProfileViewDetailed } from "@atcute/bluesky/types/app/actor/defs";
 
 export function useClient() {
   return useContext(ClientContext);
 }
 
 export function useThread(uri: ResourceUri | null, opts?: SWRConfiguration) {
-  const client = useClient()!;
+  const client = useClient();
 
   return useSWR(
-    uri != null ? ["thread", uri] : null,
-    () => client.getPostThread(uri!),
+    client != null && uri != null ? ["thread", uri] : null,
+    () => client!.getPostThread(uri!),
     {
       revalidateOnFocus: false,
       revalidateOnReconnect: false,
@@ -28,13 +27,13 @@ export function useThread(uri: ResourceUri | null, opts?: SWRConfiguration) {
 }
 
 export function useConPosts(opts?: SWRConfiguration) {
-  const client = useClient()!;
+  const client = useClient();
 
   return useSWR(
-    ["conPosts"],
+    client != null ? ["conPosts"] : null,
     async () => {
       const posts: Record<string, PostView> = {};
-      for await (const postView of client.getAuthorPosts(LABELER_DID)) {
+      for await (const postView of client!.getAuthorPosts(LABELER_DID)) {
         // eslint-disable-next-line @typescript-eslint/no-unused-vars
         const [_did, _collection, rkey] = postView.uri
           .replace(/^at:\/\//, "")
@@ -62,12 +61,12 @@ export interface Con {
 }
 
 export function useCons(opts?: SWRConfiguration): SWRResponse<Con[] | null> {
-  const client = useClient()!;
+  const client = useClient();
 
   const { data, ...rest } = useSWR(
-    ["labelerView"],
+    client != null ? ["labelerView"] : null,
     async () => {
-      const data = await client.getLabelerView(LABELER_DID);
+      const data = await client!.getLabelerView(LABELER_DID);
       if (data == null) {
         return null;
       }
@@ -104,13 +103,13 @@ export function useCons(opts?: SWRConfiguration): SWRResponse<Con[] | null> {
 }
 
 export function useLikes(uri: ResourceUri | null, opts?: SWRConfiguration) {
-  const client = useClient()!;
+  const client = useClient();
 
   return useSWR(
-    uri != null ? ["likes", uri] : null,
+    client != null && uri != null ? ["likes", uri] : null,
     async () => {
       const likes = [];
-      for await (const like of client.getLikes(uri!)) {
+      for await (const like of client!.getLikes(uri!)) {
         likes.push(like);
       }
       return likes;
@@ -119,28 +118,31 @@ export function useLikes(uri: ResourceUri | null, opts?: SWRConfiguration) {
   );
 }
 
-export interface UserView {
-  profile: ProfileViewDetailed;
-  follows: Set<string>;
-}
-
-export function useUserView(opts?: SWRConfiguration) {
-  const client = useClient()!;
+export function useSelf(opts?: SWRConfiguration) {
+  const client = useClient();
 
   return useSWR(
-    client.did != null ? ["userView"] : null,
+    client != null && client.did != null ? ["self"] : null,
+    () => client!.getProfile(client!.did!),
+    {
+      revalidateOnFocus: false,
+      revalidateOnReconnect: false,
+      ...opts,
+    }
+  );
+}
+
+export function useSelfFollows(opts?: SWRConfiguration) {
+  const client = useClient();
+
+  return useSWR(
+    client != null && client.did != null ? ["selfFollows"] : null,
     async () => {
-      const [profile, follows] = await Promise.all([
-        client.getProfile(client.did!),
-        (async () => {
-          const follows = new Set<string>();
-          for await (const follow of client.getFollows(client.did!)) {
-            follows.add(follow.did);
-          }
-          return follows;
-        })(),
-      ]);
-      return { profile, follows } as UserView;
+      const follows = new Set<string>();
+      for await (const follow of client!.getFollows(client!.did!)) {
+        follows.add(follow.did);
+      }
+      return follows;
     },
     {
       revalidateOnFocus: false,

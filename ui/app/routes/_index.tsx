@@ -30,7 +30,7 @@ export const meta: MetaFunction = () => {
 
 export default function Index() {
   const { data: cons, error, isLoading } = useCons();
-  const { data: conPosts } = useConPosts();
+  const { data: conPosts, isLoading: conPostsIsLoading } = useConPosts();
 
   const consByMonth = useMemo(() => {
     if (cons == null) {
@@ -51,7 +51,7 @@ export default function Index() {
     );
   }
 
-  if (isLoading) {
+  if (isLoading || conPostsIsLoading) {
     return (
       <Center p="lg">
         <Loader />

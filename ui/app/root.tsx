@@ -27,6 +27,7 @@ import {
   Avatar,
   Center,
   Image,
+  LoadingOverlay,
 } from "@mantine/core";
 import {
   IconAt,
@@ -46,7 +47,7 @@ import {
   getSession,
   Session,
 } from "@atcute/oauth-browser-client";
-import { useClient, useUserView } from "./hooks";
+import { useClient, useSelf, useSelfFollows } from "./hooks";
 import { ClientContext } from "./context";
 import { Client } from "./bluesky";
 
@@ -71,7 +72,8 @@ function Header() {
   const [pending, setIsPending] = useState(false);
 
   const client = useClient();
-  const { data: userView, isLoading: userViewIsLoading } = useUserView();
+  const { data: self, isLoading: selfIsLoading } = useSelf();
+  const { isLoading: selfFollowsIsLoading } = useSelfFollows();
 
   return (
     <Box
@@ -107,14 +109,20 @@ function Header() {
             <Menu.Target>
               <UnstyledButton>
                 <Group gap={7}>
-                  {userView != null ? (
+                  {self != null ? (
                     <>
-                      <Avatar src={userView.profile.avatar} size="sm" />
+                      <Box pos="relative">
+                        <LoadingOverlay
+                          visible={selfFollowsIsLoading}
+                          loaderProps={{ size: "sm" }}
+                        />
+                        <Avatar src={self.avatar} size="sm" />
+                      </Box>
                       <Text fw={500} size="sm" lh={1} mr={3} visibleFrom="xs">
-                        {userView.profile.handle}
+                        {self.handle}
                       </Text>
                     </>
-                  ) : userViewIsLoading ? (
+                  ) : selfIsLoading ? (
                     <>
                       <Text fw={500} size="sm" lh={1} c="dimmed">
                         <Loader size={18} color="dimmed" />
@@ -142,7 +150,7 @@ function Header() {
               </UnstyledButton>
             </Menu.Target>
             <Menu.Dropdown>
-              {userView == null && !userViewIsLoading ? (
+              {self == null && !selfIsLoading ? (
                 <form
                   onSubmit={(evt) => {
                     evt.preventDefault();
@@ -232,6 +240,8 @@ function Header() {
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const [client, setClient] = useState<Client | null>(null);
+  const { isLoading: selfIsLoading } = useSelf();
+
   const ready = useRef(false);
 
   useEffect(() => {
@@ -285,7 +295,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
       </head>
       <body>
         <MantineProvider theme={theme}>
-          {client != null ? (
+          {client != null || selfIsLoading ? (
             <ClientContext.Provider value={client}>
               <Header />
               <Container size="lg" px={0}>

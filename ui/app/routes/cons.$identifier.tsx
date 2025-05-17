@@ -25,8 +25,9 @@ import {
   useClient,
   useCons,
   useLikes,
+  useSelf,
+  useSelfFollows,
   useThread,
-  useUserView,
 } from "~/hooks";
 import { format as formatDate } from "date-fns";
 import { LABELER_DID } from "~/config";
@@ -86,12 +87,12 @@ function LikeButton({
   uri,
   cid,
   initialLike,
-  invalidate,
+  setLikeState,
 }: {
   uri: ResourceUri;
   cid: Cid;
   initialLike: ResourceUri | null;
-  invalidate?: () => void;
+  setLikeState?: (v: boolean) => void;
 }) {
   const client = useClient();
 
@@ -100,8 +101,11 @@ function LikeButton({
   const [pending, setPending] = useState(false);
 
   const handleClick = useCallback(() => {
-    setExpectedOn((prev) => !prev);
-  }, []);
+    setExpectedOn(!expectedOn);
+    if (setLikeState != null) {
+      setLikeState(!expectedOn);
+    }
+  }, [setLikeState, expectedOn]);
 
   useEffect(() => {
     if (pending) return;
@@ -124,12 +128,8 @@ function LikeButton({
           setPending(false);
         }
       }
-
-      if (invalidate) {
-        invalidate();
-      }
     })();
-  }, [expectedOn, likeUri, client, uri, cid, pending, invalidate]);
+  }, [expectedOn, likeUri, client, uri, cid, pending]);
 
   return (
     <Tooltip label={expectedOn ? "Attending" : "Not attending"}>
@@ -148,11 +148,11 @@ function LikeButton({
 function Header({
   con,
   thread,
-  invalidate,
+  setLikeState,
 }: {
   con: Con;
   thread: ThreadViewPost;
-  invalidate: () => void;
+  setLikeState: (v: boolean) => void;
 }) {
   return (
     <Box mt="sm">
@@ -161,8 +161,8 @@ function Header({
           <LikeButton
             uri={thread.post.uri}
             cid={thread.post.cid}
-            initialLike={thread.post.viewer.like ?? null}
-            invalidate={invalidate}
+            initialLike={thread.post.viewer?.like ?? null}
+            setLikeState={setLikeState}
           />
         ) : null}
         <Text size="lg" fw={500}>
@@ -210,30 +210,31 @@ function Header({
 }
 
 function Attendees({
+  isSelfAttending,
   thread,
   likes,
 }: {
+  isSelfAttending: boolean;
   thread: ThreadViewPost;
   likes: Like[] | null;
 }) {
-  const { data: userView } = useUserView();
+  const { data: self } = useSelf();
+  const { data: selfFollows } = useSelfFollows();
 
-  const [isSelfAttending, knownLikes, unknownLikes] = useMemo(() => {
+  const [knownLikes, unknownLikes] = useMemo(() => {
     if (likes == null) {
-      return [false, null, null];
+      return [null, null];
     }
 
-    let isSelfAttending = false;
     let knownLikes: Like[] = [];
     let unknownLikes: Like[] = [];
 
     for (const like of likes) {
-      if (userView != null && like.actor.did == userView.profile.did) {
-        isSelfAttending = true;
+      if (self != null && like.actor.did == self.did) {
         continue;
       }
       const out =
-        userView == null || userView.follows.has(like.actor.did)
+        selfFollows == null || selfFollows.has(like.actor.did)
           ? knownLikes
           : unknownLikes;
       out.push(like);
@@ -242,8 +243,10 @@ function Attendees({
     knownLikes = sortBy(knownLikes, (like) => like.actor.handle);
     unknownLikes = sortBy(unknownLikes, (like) => like.actor.handle);
 
-    return [isSelfAttending, knownLikes, unknownLikes];
-  }, [userView, likes]);
+    return [knownLikes, unknownLikes];
+  }, [self, selfFollows, likes]);
+  const likeCountWithoutSelf =
+    (thread.post.likeCount || 0) - (thread.post.viewer?.like != null ? 1 : 0);
 
   return (
     <Box mt="sm">
@@ -251,17 +254,15 @@ function Attendees({
         Attendees{" "}
         {likes != null ? (
           <small>
-            {thread.post.likeCount}
-            {thread.post.viewer != null && thread.post.viewer.like != null
-              ? " including you"
-              : ""}
+            {likeCountWithoutSelf + (isSelfAttending ? 1 : 0)}
+            {isSelfAttending ? " including you" : ""}
           </small>
         ) : null}
       </Text>
       <SimpleGrid cols={{ base: 1, sm: 2, lg: 5 }} my="xs">
-        {isSelfAttending ? (
+        {isSelfAttending && self != null ? (
           <div>
-            <Actor actor={userView!.profile} />
+            <Actor actor={self} />
           </div>
         ) : null}
         {knownLikes!.map((like) => (
@@ -283,6 +284,8 @@ export default function Index() {
   const { data: cons, error, isLoading } = useCons();
   const { identifier } = useParams();
 
+  const [isSelfAttending, setIsSelfAttending] = useState(false);
+
   const con =
     cons != null ? cons.find((con) => con.identifier == identifier) : null;
 
@@ -290,27 +293,23 @@ export default function Index() {
     document.title = con != null ? con.name : "";
   }, [con]);
 
-  const {
-    data: thread,
-    isLoading: threadIsLoading,
-    mutate: mutateThread,
-  } = useThread(
+  const { data: thread, isLoading: threadIsLoading } = useThread(
     con != null ? `at://${LABELER_DID}/app.bsky.feed.post/${con.rkey}` : null
   );
+
+  useEffect(() => {
+    if (thread != null && thread.post.viewer != null) {
+      setIsSelfAttending(thread.post.viewer.like != null);
+    }
+  }, [thread, setIsSelfAttending]);
 
   const {
     data: likes,
     error: likesError,
     isLoading: likesIsLoading,
-    mutate: mutateLikes,
   } = useLikes(
     con != null ? `at://${LABELER_DID}/app.bsky.feed.post/${con.rkey}` : null
   );
-
-  const invalidate = useCallback(() => {
-    mutateThread();
-    mutateLikes(undefined);
-  }, [mutateThread, mutateLikes]);
 
   if (error != null) {
     return (
@@ -346,7 +345,7 @@ export default function Index() {
 
   return (
     <Box px="sm">
-      <Header con={con} thread={thread} invalidate={invalidate} />
+      <Header con={con} thread={thread} setLikeState={setIsSelfAttending} />
       {likesError != null ? (
         <Alert color="red" title="Error">
           <Text size="sm">Couldn’t load attendees data.</Text>
@@ -361,7 +360,11 @@ export default function Index() {
           <Text size="sm">Couldn’t load attendees data.</Text>
         </Alert>
       ) : (
-        <Attendees thread={thread} likes={likes} />
+        <Attendees
+          thread={thread}
+          likes={likes}
+          isSelfAttending={isSelfAttending}
+        />
       )}
     </Box>
   );
