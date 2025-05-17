@@ -90,8 +90,8 @@ function Header() {
           <Anchor<typeof Link> component={Link} to="/">
             <Group gap={7}>
               <Image src="/logo.png" h={26} w={26} />
-              <Text fw={500} size="lg" visibleFrom="xs">
-                conlabels.furryli.st
+              <Text fw={500} size="lg" lh={1} visibleFrom="xs">
+                {clientMetadata.client_name}
               </Text>
             </Group>
           </Anchor>

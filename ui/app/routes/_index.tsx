@@ -9,6 +9,7 @@ import {
   Table,
   Text,
   ThemeIcon,
+  Tooltip,
 } from "@mantine/core";
 import type { MetaFunction } from "@remix-run/node";
 import { Link } from "@remix-run/react";
@@ -22,10 +23,11 @@ import {
 } from "date-fns";
 import { Fragment, useMemo, useState } from "react";
 import { Con, useConPosts, useCons } from "~/hooks";
-import { IconCalendar, IconMapPin, IconUsers } from "@tabler/icons-react";
+import { IconCalendarMonth, IconMapPin, IconUsers } from "@tabler/icons-react";
 import clientMetadata from "../../public/client-metadata.json";
 import { LikeButton } from "~/components/LikeButton";
 import type { PostView } from "@atcute/bluesky/types/app/feed/defs";
+import { differenceInDays } from "date-fns/fp";
 
 function* monthRange(start: Date, end: Date): Generator<Date> {
   while (start < end) {
@@ -45,10 +47,19 @@ function ConTableRow({ con, post }: { con: Con; post: PostView }) {
 
   const likeCountWithoutSelf =
     (post.likeCount || 0) - (post.viewer?.like != null ? 1 : 0);
+  const duration = differenceInDays(con.start, con.end);
+
   return (
     <Table.Tr key={con.identifier}>
-      <Table.Td>
-        <Group gap="xs">
+      <Table.Td
+        style={{
+          maxWidth: 0,
+          textOverflow: "ellipsis",
+          overflow: "hidden",
+          whiteSpace: "nowrap",
+        }}
+      >
+        <Group gap="xs" wrap="nowrap">
           <Anchor<typeof Link> component={Link} to={`/cons/${con.identifier}`}>
             <ThemeIcon
               size="xl"
@@ -75,7 +86,7 @@ function ConTableRow({ con, post }: { con: Con; post: PostView }) {
               </Stack>
             </ThemeIcon>
           </Anchor>
-          <Box>
+          <Box style={{ minWidth: 0 }}>
             <Group gap={7}>
               {post.viewer != null ? (
                 <LikeButton
@@ -87,7 +98,7 @@ function ConTableRow({ con, post }: { con: Con; post: PostView }) {
                 />
               ) : null}
 
-              <Text size="sm">
+              <Text size="sm" truncate>
                 <Anchor<typeof Link>
                   fw={500}
                   component={Link}
@@ -97,13 +108,24 @@ function ConTableRow({ con, post }: { con: Con; post: PostView }) {
                 </Anchor>
               </Text>
             </Group>
-            <Text size="sm">
+            <Text size="sm" truncate>
               <IconUsers size={12} />{" "}
               {likeCountWithoutSelf + (isSelfAttending ? 1 : 0)} •{" "}
-              <IconCalendar size={12} /> {WEEKDAY_FORMAT.format(con.start)}{" "}
-              {formatDate(con.start, "yyyy-MM-dd")} –{" "}
-              {WEEKDAY_FORMAT.format(con.end)}{" "}
-              {formatDate(con.end, "yyyy-MM-dd")} • <IconMapPin size={12} />{" "}
+              <Tooltip
+                label={`${WEEKDAY_FORMAT.format(con.start)} ${formatDate(
+                  con.start,
+                  "yyyy-MM-dd"
+                )} – ${WEEKDAY_FORMAT.format(con.end)} ${formatDate(
+                  con.end,
+                  "yyyy-MM-dd"
+                )}`}
+              >
+                <span>
+                  <IconCalendarMonth size={12} /> {duration}{" "}
+                  {duration != 1 ? "days" : "day"}
+                </span>
+              </Tooltip>{" "}
+              • <IconMapPin size={12} />{" "}
               <Anchor
                 href={`https://www.google.com/maps?q=${con.location}`}
                 target="_blank"
