@@ -11,9 +11,18 @@ Create a config file named `config.toml` with at least these lines.
 ```toml
 bsky_username = "your.bsky.username"
 bsky_password = "your-app-password"
+postgres_url = "postgres:///fbl"
 ```
 
-### 2. Generate keypair
+### 2. Initialize database
+
+Use the provided schema to create the database.
+
+```sh
+psql -f schema.sql fbl
+```
+
+### 3. Generate keypair
 
 A keypair is required for signing labels.
 
@@ -23,7 +32,7 @@ cargo run --bin generate_keypair
 
 This will generate a signing keypair with the filename `signing.key`.
 
-### 3. Update PLC
+### 4. Update PLC
 
 Add the following temporary lines to your `config.toml`:
 
@@ -42,3 +51,20 @@ cargo run --bin update_plc
 ## Running
 
 Run `furcons-bsky-labeler`. This will start the labeler server, as well as start ingestion of events and sync the labeler record with the ICS file from furrycons.com.
+
+## Design
+
+furcons-bsky-labeler consists of two parts: the labeler itself and the UI.
+
+### Labeler
+
+The labeler does three things:
+- Retrieves calendar data from furrycons.com and materializes the labeler service record.
+- Reads events from Jetstream (likes on posts) and labels users.
+- Provides a `com.atproto.label.subscribeLabels` endpoint for AppViews to subscribe to.
+
+We only store the log of labels in the database, as they must be able to be replayed. Everything else is stored in Bluesky.
+
+### UI
+
+The UI is an SPA that doesn't need a dedicated backend – it just reads all its data from Bluesky.

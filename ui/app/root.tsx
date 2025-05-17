@@ -26,7 +26,6 @@ import {
   Loader,
   Avatar,
   Center,
-  Divider,
 } from "@mantine/core";
 import {
   IconAt,
