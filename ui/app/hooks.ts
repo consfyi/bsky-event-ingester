@@ -1,6 +1,6 @@
 import { sortBy } from "lodash-es";
 import { useContext } from "react";
-import useSWR, { SWRConfiguration } from "swr";
+import useSWR, { SWRConfiguration, SWRResponse } from "swr";
 import { LABELER_DID } from "~/config";
 
 import { parse as parseDate } from "date-fns";
@@ -13,11 +13,27 @@ export function useClient() {
   return useContext(ClientContext);
 }
 
+export function useThread(uri: ResourceUri | null, opts?: SWRConfiguration) {
+  const client = useClient()!;
+
+  const { data, error, isLoading } = useSWR(
+    uri != null ? ["thread", uri] : null,
+    () => client.getPostThread(uri!),
+    {
+      revalidateOnFocus: false,
+      revalidateOnReconnect: false,
+      ...opts,
+    }
+  );
+
+  return { data, error, isLoading };
+}
+
 export function useConPosts(opts?: SWRConfiguration) {
   const client = useClient()!;
 
   const { data, error, isLoading } = useSWR(
-    "conPosts",
+    ["conPosts"],
     async () => {
       const posts = new Map<string, PostView>();
       for await (const postView of client.getAuthorPosts(LABELER_DID)) {
@@ -39,11 +55,21 @@ export function useConPosts(opts?: SWRConfiguration) {
   return { data, error, isLoading };
 }
 
-export function useCons(opts?: SWRConfiguration) {
+export interface Con {
+  identifier: string;
+  name: string;
+  start: Date;
+  end: Date;
+  location: string;
+  rkey: string;
+  url: string;
+}
+
+export function useCons(opts?: SWRConfiguration): SWRResponse<Con[] | null> {
   const client = useClient()!;
 
   return useSWR(
-    "labelerView",
+    ["labelerView"],
     async () => {
       const data = await client.getLabelerView(LABELER_DID);
       if (data == null) {
@@ -83,7 +109,7 @@ export function useLikes(uri: ResourceUri | null, opts?: SWRConfiguration) {
   const client = useClient()!;
 
   return useSWR(
-    uri != null ? `likes:${uri}` : null,
+    uri != null ? ["likes", uri] : null,
     async () => {
       const likes = [];
       for await (const like of client.getLikes(uri!)) {
@@ -99,7 +125,7 @@ export function useLabels(did: Did | null, opts?: SWRConfiguration) {
   const client = useClient()!;
 
   return useSWR(
-    did != null ? `labels:${did}` : null,
+    did != null ? ["labels", did] : null,
     async () => {
       const labels = new Set();
       for await (const label of client.getLabels(did!)) {
@@ -120,7 +146,7 @@ export function useUserView(opts?: SWRConfiguration) {
   const client = useClient()!;
 
   return useSWR(
-    client.did != null ? "userView" : null,
+    client.did != null ? ["userView"] : null,
     async () => {
       const [profile, follows] = await Promise.all([
         client.getProfile(client.did!),

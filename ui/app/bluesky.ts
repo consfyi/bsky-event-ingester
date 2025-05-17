@@ -7,7 +7,10 @@ import { LABELER_DID } from "./config";
 import type {} from "@atcute/bluesky";
 import type {} from "@atcute/atproto";
 import type { ActorIdentifier, Did, ResourceUri } from "@atcute/lexicons";
-import type { PostView } from "@atcute/bluesky/types/app/feed/defs";
+import type {
+  PostView,
+  ThreadViewPost,
+} from "@atcute/bluesky/types/app/feed/defs";
 import { OAuthUserAgent, Session } from "@atcute/oauth-browser-client";
 import type {
   ProfileView,
@@ -76,6 +79,19 @@ export class Client {
       throw data.error;
     }
     return data;
+  }
+
+  async getPostThread(uri: ResourceUri): Promise<ThreadViewPost> {
+    const { ok, data } = await this.rpc.get("app.bsky.feed.getPostThread", {
+      params: { uri, depth: 0, parentHeight: 0 },
+    });
+    if (!ok) {
+      throw data.error;
+    }
+    if (data.thread.$type != "app.bsky.feed.defs#threadViewPost") {
+      throw data;
+    }
+    return data.thread;
   }
 
   async getLabelerView(did: Did): Promise<LabelerViewDetailed> {

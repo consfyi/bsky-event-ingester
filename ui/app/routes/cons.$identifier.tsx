@@ -17,7 +17,7 @@ import {
   Text,
   Tooltip,
 } from "@mantine/core";
-import { useCons, useLikes, useUserView } from "~/hooks";
+import { Con, useCons, useLikes, useThread, useUserView } from "~/hooks";
 import { format as formatDate } from "date-fns";
 import { LABELER_DID } from "~/config";
 import { useEffect, useMemo } from "react";
@@ -69,17 +69,62 @@ function Actor({ actor }: { actor: ProfileView | ProfileViewDetailed }) {
     </Anchor>
   );
 }
+function Header({ con }: { con: Con | null }) {
+  if (con == null) {
+    return null;
+  }
 
-export default function Index() {
-  const { data: cons, error, isLoading } = useCons();
-  const { identifier } = useParams();
+  return (
+    <Box mt="sm">
+      <Group gap={7}>
+        <Text size="lg" fw={500}>
+          {con.name}
+        </Text>
+        <Anchor
+          href={`https://bsky.app/profile/${LABELER_DID}/post/${con.rkey}`}
+          target="_blank"
+          rel="noreferrer"
+          size="xs"
+        >
+          <IconExternalLink size={12} /> View Bluesky Post
+        </Anchor>
+      </Group>
+      <Box mt={4}>
+        <Text size="sm" mb={5}>
+          <IconCalendar size={12} /> {WEEKDAY_FORMAT.format(con.start)}{" "}
+          {formatDate(con.start, "yyyy-MM-dd")} –{" "}
+          {WEEKDAY_FORMAT.format(con.end)} {formatDate(con.end, "yyyy-MM-dd")}
+        </Text>
 
-  const con =
-    cons != null ? cons.find((con) => con.identifier == identifier) : null;
+        <Text size="sm" mb={5}>
+          <IconMapPin size={12} />{" "}
+          <Anchor
+            href={`https://www.google.com/maps?q=${con.location}`}
+            target="_blank"
+            rel="noreferrer"
+            style={{
+              color: "unset",
+            }}
+          >
+            {con.location}
+          </Anchor>
+        </Text>
 
-  useEffect(() => {
-    document.title = con != null ? con.name : "";
-  }, [con]);
+        <Text size="sm" mb={5}>
+          <IconLink size={12} />{" "}
+          <Anchor href={con.url} target="_blank" rel="noreferrer">
+            {con.url.replace(/https?:\/\//, "")}
+          </Anchor>
+        </Text>
+      </Box>
+    </Box>
+  );
+}
+
+function Attendees({ con }: { con: Con | null }) {
+  const { data: thread } = useThread(
+    con != null ? `at://${LABELER_DID}/app.bsky.feed.post/${con.rkey}` : null
+  );
 
   const {
     data: likes,
@@ -118,6 +163,69 @@ export default function Index() {
     return [isSelfAttending, knownLikes, unknownLikes];
   }, [userView, likes]);
 
+  return (
+    <Box mt="sm">
+      <Text size="md" fw={500}>
+        Attendees{" "}
+        {likes != null ? (
+          <small>
+            {thread != null
+              ? `${thread.post.likeCount} ${
+                  thread.post.viewer != null && thread.post.viewer.like != null
+                    ? " including you"
+                    : ""
+                }`
+              : ""}
+          </small>
+        ) : null}
+      </Text>
+      {likesError != null ? (
+        <Alert color="red" title="Error">
+          <Text size="sm">Couldn’t load attendees data.</Text>
+          <pre>{likesError.toString()}</pre>
+        </Alert>
+      ) : likesIsLoading ? (
+        <Center p="lg">
+          <Loader />
+        </Center>
+      ) : likes == null ? (
+        <Alert color="red" title="Error">
+          <Text size="sm">Couldn’t load attendees data.</Text>
+        </Alert>
+      ) : (
+        <SimpleGrid cols={{ base: 1, sm: 2, lg: 5 }} my="xs">
+          {isSelfAttending ? (
+            <div>
+              <Actor actor={userView!.profile} />
+            </div>
+          ) : null}
+          {knownLikes!.map((like) => (
+            <div key={like.actor.did}>
+              <Actor actor={like.actor} />
+            </div>
+          ))}
+          {unknownLikes!.map((like) => (
+            <div key={like.actor.did} style={{ opacity: 0.25 }}>
+              <Actor actor={like.actor} />
+            </div>
+          ))}
+        </SimpleGrid>
+      )}
+    </Box>
+  );
+}
+
+export default function Index() {
+  const { data: cons, error, isLoading } = useCons();
+  const { identifier } = useParams();
+
+  const con =
+    cons != null ? cons.find((con) => con.identifier == identifier) : null;
+
+  useEffect(() => {
+    document.title = con != null ? con.name : "";
+  }, [con]);
+
   if (error != null) {
     return (
       <Alert color="red" title="Error">
@@ -152,92 +260,8 @@ export default function Index() {
 
   return (
     <Box px="sm">
-      <Box mt="sm">
-        <Group gap={7}>
-          <Text size="lg" fw={500}>
-            {con.name}
-          </Text>
-          <Anchor
-            href={`https://bsky.app/profile/${LABELER_DID}/post/${con.rkey}`}
-            target="_blank"
-            rel="noreferrer"
-            size="xs"
-          >
-            <IconExternalLink size={12} /> View Bluesky Post
-          </Anchor>
-        </Group>
-        <Box mt={4}>
-          <Text size="sm" mb={5}>
-            <IconCalendar size={12} /> {WEEKDAY_FORMAT.format(con.start)}{" "}
-            {formatDate(con.start, "yyyy-MM-dd")} –{" "}
-            {WEEKDAY_FORMAT.format(con.end)} {formatDate(con.end, "yyyy-MM-dd")}
-          </Text>
-
-          <Text size="sm" mb={5}>
-            <IconMapPin size={12} />{" "}
-            <Anchor
-              href={`https://www.google.com/maps?q=${con.location}`}
-              target="_blank"
-              rel="noreferrer"
-              style={{
-                color: "unset",
-              }}
-            >
-              {con.location}
-            </Anchor>
-          </Text>
-
-          <Text size="sm" mb={5}>
-            <IconLink size={12} />{" "}
-            <Anchor href={con.url} target="_blank" rel="noreferrer">
-              {con.url.replace(/https?:\/\//, "")}
-            </Anchor>
-          </Text>
-        </Box>
-      </Box>
-      <Box mt="sm">
-        <Text size="md" fw={500}>
-          Attendees{" "}
-          {likes != null ? (
-            <small>
-              {likes.length}
-              {isSelfAttending ? " including you" : ""}
-            </small>
-          ) : null}
-        </Text>
-        {likesError != null ? (
-          <Alert color="red" title="Error">
-            <Text size="sm">Couldn’t load attendees data.</Text>
-            <pre>{likesError.toString()}</pre>
-          </Alert>
-        ) : likesIsLoading ? (
-          <Center p="lg">
-            <Loader />
-          </Center>
-        ) : likes == null ? (
-          <Alert color="red" title="Error">
-            <Text size="sm">Couldn’t load attendees data.</Text>
-          </Alert>
-        ) : (
-          <SimpleGrid cols={{ base: 1, sm: 2, lg: 5 }} my="xs">
-            {isSelfAttending ? (
-              <div>
-                <Actor actor={userView!.profile} />
-              </div>
-            ) : null}
-            {knownLikes!.map((like) => (
-              <div key={like.actor.did}>
-                <Actor actor={like.actor} />
-              </div>
-            ))}
-            {unknownLikes!.map((like) => (
-              <div key={like.actor.did} style={{ opacity: 0.25 }}>
-                <Actor actor={like.actor} />
-              </div>
-            ))}
-          </SimpleGrid>
-        )}
-      </Box>
+      <Header con={con} />
+      <Attendees con={con} />
     </Box>
   );
 }
