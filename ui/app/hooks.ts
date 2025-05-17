@@ -5,9 +5,9 @@ import { LABELER_DID } from "~/config";
 
 import { parse as parseDate } from "date-fns";
 import type { Did, ResourceUri } from "@atcute/lexicons";
-import { PostView } from "@atcute/bluesky/types/app/feed/defs";
-import { Profile } from "./bluesky";
+import type { PostView } from "@atcute/bluesky/types/app/feed/defs";
 import { ClientContext } from "./context";
+import type { ProfileViewDetailed } from "@atcute/bluesky/types/app/actor/defs";
 
 export function useClient() {
   return useContext(ClientContext);
@@ -51,16 +51,21 @@ export function useCons(opts?: SWRConfiguration) {
       }
 
       const cons = data.policies!.labelValueDefinitions!.map((def) => {
+        const fullDef = def as typeof def & {
+          fbl_eventInfo: { date: string; location: string; url: string };
+          fbl_postRkey: string;
+        };
+
         const [strings] = def.locales;
-        const [start, end] = def.fbl_eventInfo.date.split("/");
+        const [start, end] = fullDef.fbl_eventInfo.date.split("/");
         return {
           identifier: def.identifier,
           name: strings.name,
           start: parseDate(start, "yyyy-MM-dd", new Date()),
           end: parseDate(end, "yyyy-MM-dd", new Date()),
-          location: def.fbl_eventInfo.location,
-          rkey: def.fbl_postRkey,
-          url: def.fbl_eventInfo.url,
+          location: fullDef.fbl_eventInfo.location,
+          rkey: fullDef.fbl_postRkey,
+          url: fullDef.fbl_eventInfo.url,
         };
       });
 
@@ -107,7 +112,7 @@ export function useLabels(did: Did | null, opts?: SWRConfiguration) {
 }
 
 export interface UserView {
-  profile: Profile;
+  profile: ProfileViewDetailed;
   follows: Set<string>;
 }
 

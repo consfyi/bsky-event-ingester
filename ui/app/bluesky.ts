@@ -6,48 +6,15 @@ import {
 import { LABELER_DID } from "./config";
 import type {} from "@atcute/bluesky";
 import type {} from "@atcute/atproto";
-import type {
-  ActorIdentifier,
-  Did,
-  Handle,
-  ResourceUri,
-} from "@atcute/lexicons";
-import { PostView } from "@atcute/bluesky/types/app/feed/defs";
+import type { ActorIdentifier, Did, ResourceUri } from "@atcute/lexicons";
+import type { PostView } from "@atcute/bluesky/types/app/feed/defs";
 import { OAuthUserAgent, Session } from "@atcute/oauth-browser-client";
-
-export interface Profile {
-  did: Did;
-  handle: Handle;
-  displayName?: string | undefined;
-  avatar?: string | undefined;
-  description?: string | undefined;
-}
-
-export interface LabelValueDefinitionStrings {
-  description: string;
-  lang: string;
-  name: string;
-}
-
-export interface LabelValueDefinition {
-  fbl_eventInfo: { date: string; location: string; url: string };
-  fbl_postRkey: string;
-  identifier: string;
-  locales: LabelValueDefinitionStrings[];
-}
-
-export interface LabelerPolicies {
-  labelValueDefinitions?: LabelValueDefinition[];
-}
-
-export interface LabelerView {
-  creator: Profile;
-  policies?: LabelerPolicies;
-}
-
-export interface Like {
-  actor: Profile;
-}
+import type {
+  ProfileView,
+  ProfileViewDetailed,
+} from "@atcute/bluesky/types/app/actor/defs";
+import type { Like } from "@atcute/bluesky/types/app/feed/getLikes";
+import type { LabelerViewDetailed } from "@atcute/bluesky/types/app/labeler/defs";
 
 export class Client {
   private oauthUserAgent: OAuthUserAgent | null;
@@ -101,7 +68,7 @@ export class Client {
     }
   }
 
-  async getProfile(actor: ActorIdentifier): Promise<Profile> {
+  async getProfile(actor: ActorIdentifier): Promise<ProfileViewDetailed> {
     const { ok, data } = await this.rpc.get("app.bsky.actor.getProfile", {
       params: { actor },
     });
@@ -111,7 +78,7 @@ export class Client {
     return data;
   }
 
-  async getLabelerView(did: Did): Promise<LabelerView> {
+  async getLabelerView(did: Did): Promise<LabelerViewDetailed> {
     const { ok, data } = await this.rpc.get("app.bsky.labeler.getServices", {
       params: { dids: [did], detailed: true },
     });
@@ -122,10 +89,10 @@ export class Client {
     const {
       views: [view],
     } = data;
-    return view as LabelerView;
+    return view as LabelerViewDetailed;
   }
 
-  async *getFollows(actor: ActorIdentifier): AsyncGenerator<Profile> {
+  async *getFollows(actor: ActorIdentifier): AsyncGenerator<ProfileView> {
     const LIMIT = 100;
     let cursor = "";
     while (true) {

@@ -19,12 +19,16 @@ import {
 } from "@mantine/core";
 import { useCons, useLikes, useUserView } from "~/hooks";
 import { format as formatDate } from "date-fns";
-import { Like, Profile } from "~/bluesky";
 import { LABELER_DID } from "~/config";
 import { useEffect, useMemo } from "react";
 import { sortBy } from "lodash-es";
+import { Like } from "@atcute/bluesky/types/app/feed/getLikes";
+import type {
+  ProfileView,
+  ProfileViewDetailed,
+} from "@atcute/bluesky/types/app/actor/defs";
 
-function Actor({ actor }: { actor: Profile }) {
+function Actor({ actor }: { actor: ProfileView | ProfileViewDetailed }) {
   return (
     <Anchor
       href={`https://bsky.app/profile/${actor.handle}`}
