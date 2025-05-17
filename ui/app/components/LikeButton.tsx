@@ -39,7 +39,7 @@ export function LikeButton({
       if (expectedOn && likeUri == null) {
         setPending(true);
         try {
-          const r = await client!.like(uri, cid);
+          const r = await client.like(uri, cid);
           setLikeUri(r!);
         } finally {
           setPending(false);
@@ -47,7 +47,7 @@ export function LikeButton({
       } else if (!expectedOn && likeUri != null) {
         setPending(true);
         try {
-          await client!.unlike(likeUri);
+          await client.unlike(likeUri);
           setLikeUri(null);
         } finally {
           setPending(false);

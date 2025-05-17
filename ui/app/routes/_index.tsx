@@ -4,6 +4,7 @@ import {
   Box,
   Center,
   Group,
+  List,
   Loader,
   Stack,
   Table,
@@ -22,8 +23,14 @@ import {
   getDay,
 } from "date-fns";
 import { Fragment, useMemo, useState } from "react";
-import { Con, useConPosts, useCons } from "~/hooks";
-import { IconCalendarMonth, IconMapPin, IconUsers } from "@tabler/icons-react";
+import { Con, useClient, useConPosts, useCons } from "~/hooks";
+import {
+  IconBrandBluesky,
+  IconCalendarMonth,
+  IconMapPin,
+  IconPaw,
+  IconUsers,
+} from "@tabler/icons-react";
 import clientMetadata from "../../public/client-metadata.json";
 import { LikeButton } from "~/components/LikeButton";
 import type { PostView } from "@atcute/bluesky/types/app/feed/defs";
@@ -144,7 +151,8 @@ function ConTableRow({ con, post }: { con: Con; post: PostView }) {
   );
 }
 
-export default function Index() {
+// eslint-disable-next-line no-empty-pattern, @typescript-eslint/ban-types
+function ConsTable({}: {}) {
   const { data: cons, error, isLoading } = useCons();
   const { data: conPosts, isLoading: conPostsIsLoading } = useConPosts();
 
@@ -187,31 +195,83 @@ export default function Index() {
   const lastDate = addMonths(setDate(cons[cons.length - 1].start, 1), 1);
 
   return (
-    <Table>
-      <Table.Tbody>
-        {Array.from(monthRange(firstDate, lastDate)).map((date) => {
-          const groupKey = formatDate(date, "yyyy-MM");
-          return (
-            <Fragment key={groupKey}>
-              <Table.Tr bg="var(--mantine-color-default-hover)">
-                <Table.Th>
-                  <Text fw={500} size="md">
-                    {MONTH_FORMAT.format(date)} {formatDate(date, "yyyy")}
-                  </Text>
-                </Table.Th>
-              </Table.Tr>
-              {(consByMonth[groupKey] ?? []).map((con) => (
-                <ConTableRow
-                  key={con.identifier}
-                  con={con}
-                  post={conPosts[con.rkey]}
-                />
-              ))}
-            </Fragment>
-          );
-        })}
-      </Table.Tbody>
-    </Table>
+    <>
+      <Table>
+        <Table.Tbody>
+          {Array.from(monthRange(firstDate, lastDate)).map((date) => {
+            const groupKey = formatDate(date, "yyyy-MM");
+            return (
+              <Fragment key={groupKey}>
+                <Table.Tr bg="var(--mantine-color-default-hover)">
+                  <Table.Th>
+                    <Text fw={500} size="md">
+                      {MONTH_FORMAT.format(date)} {formatDate(date, "yyyy")}
+                    </Text>
+                  </Table.Th>
+                </Table.Tr>
+                {(consByMonth[groupKey] ?? []).map((con) => (
+                  <ConTableRow
+                    key={con.identifier}
+                    con={con}
+                    post={conPosts[con.rkey]}
+                  />
+                ))}
+              </Fragment>
+            );
+          })}
+        </Table.Tbody>
+      </Table>
+    </>
+  );
+}
+
+export default function Index() {
+  const client = useClient();
+
+  return (
+    <>
+      {client.did == null ? (
+        <Alert my={{ lg: "xs" }} icon={<IconPaw />} title="Welcome!">
+          <Text size="sm" mb="xs">
+            This the website for the{" "}
+            <Anchor
+              href="https://bsky.app/profile/conlabels.furryli.st"
+              target="_blank"
+              rel="noreferrer"
+            >
+              <IconBrandBluesky size={12} /> @conlabels.furryli.st
+            </Anchor>{" "}
+            service. For the full experience, please log in. You’ll be able to:
+          </Text>
+          {/* Using the List component here is wacky, so we don't use it */}
+          <ul
+            style={{
+              marginTop: 0,
+              marginBottom: "var(--mantine-spacing-xs)",
+              paddingLeft: "var(--mantine-spacing-xl)",
+            }}
+          >
+            <li>
+              Tell people which cons you’re going to (you can also do this by
+              liking the con post on Bluesky).
+            </li>
+            <li>See who you follow is going to a con.</li>
+          </ul>
+          <Text size="sm">
+            A huge thank you to{" "}
+            <Anchor
+              href="https://furrycons.com"
+              target="_blank"
+              rel="noreferrer"
+            >
+              furrycons.com
+            </Anchor>{" "}
+            who provides all the data on conventions!
+          </Text>
+        </Alert>
+      ) : null}
+      <ConsTable />
+    </>
   );
 }
 

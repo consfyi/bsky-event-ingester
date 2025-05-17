@@ -118,7 +118,7 @@ function Header() {
                         <Avatar src={self.avatar} size="sm" />
                       </Box>
                       <Text fw={500} size="sm" lh={1} mr={3} visibleFrom="xs">
-                        {self.handle}
+                        @{self.handle}
                       </Text>
                     </>
                   ) : selfIsLoading ? (
@@ -217,10 +217,10 @@ function Header() {
 
                     (async () => {
                       try {
-                        await client!.signOut();
+                        await client.signOut();
                       } catch (e) {
-                        if (client!.did != null) {
-                          deleteStoredSession(client!.did);
+                        if (client.did != null) {
+                          deleteStoredSession(client.did);
                         }
                       }
                       window.location.replace(window.location.toString());

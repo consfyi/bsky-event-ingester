@@ -9,7 +9,7 @@ import type { PostView } from "@atcute/bluesky/types/app/feed/defs";
 import { ClientContext } from "./context";
 
 export function useClient() {
-  return useContext(ClientContext);
+  return useContext(ClientContext)!;
 }
 
 export function useThread(uri: ResourceUri | null, opts?: SWRConfiguration) {
@@ -17,7 +17,7 @@ export function useThread(uri: ResourceUri | null, opts?: SWRConfiguration) {
 
   return useSWR(
     client != null && uri != null ? ["thread", uri] : null,
-    () => client!.getPostThread(uri!),
+    () => client.getPostThread(uri!),
     {
       revalidateOnFocus: false,
       revalidateOnReconnect: false,
@@ -33,7 +33,7 @@ export function useConPosts(opts?: SWRConfiguration) {
     client != null ? ["conPosts"] : null,
     async () => {
       const posts: Record<string, PostView> = {};
-      for await (const postView of client!.getAuthorPosts(LABELER_DID)) {
+      for await (const postView of client.getAuthorPosts(LABELER_DID)) {
         // eslint-disable-next-line @typescript-eslint/no-unused-vars
         const [_did, _collection, rkey] = postView.uri
           .replace(/^at:\/\//, "")
@@ -66,7 +66,7 @@ export function useCons(opts?: SWRConfiguration): SWRResponse<Con[] | null> {
   const { data, ...rest } = useSWR(
     client != null ? ["labelerView"] : null,
     async () => {
-      const data = await client!.getLabelerView(LABELER_DID);
+      const data = await client.getLabelerView(LABELER_DID);
       if (data == null) {
         return null;
       }
@@ -109,7 +109,7 @@ export function useLikes(uri: ResourceUri | null, opts?: SWRConfiguration) {
     client != null && uri != null ? ["likes", uri] : null,
     async () => {
       const likes = [];
-      for await (const like of client!.getLikes(uri!)) {
+      for await (const like of client.getLikes(uri!)) {
         likes.push(like);
       }
       return likes;
@@ -123,7 +123,7 @@ export function useSelf(opts?: SWRConfiguration) {
 
   return useSWR(
     client != null && client.did != null ? ["self"] : null,
-    () => client!.getProfile(client!.did!),
+    () => client.getProfile(client.did!),
     {
       revalidateOnFocus: false,
       revalidateOnReconnect: false,
@@ -139,7 +139,7 @@ export function useSelfFollows(opts?: SWRConfiguration) {
     client != null && client.did != null ? ["selfFollows"] : null,
     async () => {
       const follows = [];
-      for await (const follow of client!.getFollows(client!.did!)) {
+      for await (const follow of client.getFollows(client.did!)) {
         follows.push(follow);
       }
       return follows;
