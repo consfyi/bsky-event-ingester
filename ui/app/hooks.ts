@@ -1,5 +1,5 @@
 import { sortBy } from "lodash-es";
-import { useContext } from "react";
+import { useContext, useMemo } from "react";
 import useSWR, { SWRConfiguration, SWRResponse } from "swr";
 import { LABELER_DID } from "~/config";
 
@@ -135,12 +135,12 @@ export function useSelf(opts?: SWRConfiguration) {
 export function useSelfFollows(opts?: SWRConfiguration) {
   const client = useClient();
 
-  return useSWR(
+  const { data, ...rest } = useSWR(
     client != null && client.did != null ? ["selfFollows"] : null,
     async () => {
-      const follows = new Set<string>();
+      const follows = [];
       for await (const follow of client!.getFollows(client!.did!)) {
-        follows.add(follow.did);
+        follows.push(follow);
       }
       return follows;
     },
@@ -151,4 +151,17 @@ export function useSelfFollows(opts?: SWRConfiguration) {
       ...opts,
     }
   );
+
+  const follows = useMemo(() => {
+    if (data == null) {
+      return null;
+    }
+    const follows = new Set<string>();
+    for (const follow of data) {
+      follows.add(follow.did);
+    }
+    return follows;
+  }, [data]);
+
+  return { data: follows, ...rest };
 }
