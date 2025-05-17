@@ -10,12 +10,14 @@ export function LikeButton({
   initialLike,
   setLikeState,
   size,
+  iconSize,
 }: {
   uri: ResourceUri;
   cid: Cid;
   initialLike: ResourceUri | null;
   setLikeState?: (v: boolean) => void;
   size?: ActionIconProps["size"];
+  iconSize?: number;
 }) {
   const client = useClient();
 
@@ -54,6 +56,8 @@ export function LikeButton({
     })();
   }, [expectedOn, likeUri, client, uri, cid, pending]);
 
+  iconSize = iconSize ?? 16;
+
   return (
     <Tooltip label={expectedOn ? "Attending" : "Not attending"}>
       <ActionIcon
@@ -62,7 +66,11 @@ export function LikeButton({
         size={size}
         onClick={handleClick}
       >
-        {expectedOn ? <IconHeartFilled size={16} /> : <IconHeart size={16} />}
+        {expectedOn ? (
+          <IconHeartFilled size={iconSize} />
+        ) : (
+          <IconHeart size={iconSize} />
+        )}
       </ActionIcon>
     </Tooltip>
   );

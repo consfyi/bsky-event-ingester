@@ -85,7 +85,7 @@ function Header() {
       }}
     >
       <Container size="lg" p="sm">
-        <Group justify="space-between">
+        <Group justify="space-between" wrap="nowrap">
           <Anchor<typeof Link> component={Link} to="/">
             <Group gap={7}>
               <Image src="/logo.png" h={26} w={26} />
@@ -107,7 +107,7 @@ function Header() {
           >
             <Menu.Target>
               <UnstyledButton>
-                <Group gap={7}>
+                <Group gap={7} wrap="nowrap">
                   {self != null ? (
                     <>
                       <Box pos="relative">

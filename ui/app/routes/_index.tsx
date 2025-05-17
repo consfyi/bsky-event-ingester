@@ -87,12 +87,12 @@ function ConTableRow({ con, post }: { con: Con; post: PostView }) {
             </ThemeIcon>
           </Anchor>
           <Box style={{ minWidth: 0 }}>
-            <Group gap={7}>
+            <Group gap={7} wrap="nowrap">
               {post.viewer != null ? (
                 <LikeButton
                   uri={post.uri}
                   cid={post.cid}
-                  size="sm"
+                  size="xs"
                   initialLike={post.viewer?.like ?? null}
                   setLikeState={setIsSelfAttending}
                 />

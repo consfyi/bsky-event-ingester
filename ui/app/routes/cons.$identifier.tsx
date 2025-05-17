@@ -1,10 +1,8 @@
 import {
-  IconAB,
   IconCalendar,
   IconExternalLink,
   IconLink,
   IconMapPin,
-  IconUserHeart,
 } from "@tabler/icons-react";
 import { useParams } from "@remix-run/react";
 import {
@@ -15,7 +13,6 @@ import {
   Center,
   Divider,
   Group,
-  Indicator,
   Loader,
   SimpleGrid,
   Text,
@@ -41,13 +38,7 @@ import type {
 import type { ThreadViewPost } from "@atcute/bluesky/types/app/feed/defs";
 import { LikeButton } from "~/components/LikeButton";
 
-function Actor({
-  actor,
-  known,
-}: {
-  actor: ProfileView | ProfileViewDetailed;
-  known?: boolean;
-}) {
+function Actor({ actor }: { actor: ProfileView | ProfileViewDetailed }) {
   return (
     <Anchor
       href={`https://bsky.app/profile/${actor.handle}`}
@@ -58,7 +49,7 @@ function Actor({
         textDecoration: "unset",
       }}
     >
-      <Group>
+      <Group wrap="nowrap" gap="sm">
         <Tooltip
           position="right"
           label={
@@ -100,12 +91,13 @@ function Header({
 }) {
   return (
     <Box mt="sm">
-      <Group gap={7}>
+      <Group gap={7} wrap="nowrap">
         {thread.post.viewer != null ? (
           <LikeButton
             uri={thread.post.uri}
             cid={thread.post.cid}
             size="sm"
+            iconSize={24}
             initialLike={thread.post.viewer?.like ?? null}
             setLikeState={setLikeState}
           />
@@ -212,12 +204,12 @@ function Attendees({
             <SimpleGrid cols={{ base: 1, sm: 2, lg: 5 }} mt="xs">
               {isSelfAttending && self != null ? (
                 <div>
-                  <Actor actor={self} known />
+                  <Actor actor={self} />
                 </div>
               ) : null}
               {knownLikes.map((like) => (
                 <div key={like.actor.did}>
-                  <Actor actor={like.actor} known />
+                  <Actor actor={like.actor} />
                 </div>
               ))}
             </SimpleGrid>
