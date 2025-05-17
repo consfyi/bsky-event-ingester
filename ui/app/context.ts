@@ -1,13 +1,4 @@
-import React from "react";
-import { Profile } from "./bluesky";
+import { createContext } from "react";
+import { Client } from "./bluesky";
 
-export interface UserView {
-  profile: Profile;
-  follows: Set<string>;
-}
-
-export const UserViewContext = React.createContext({
-  userView: null as UserView | null,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  setUserView: (userView: UserView | null) => {},
-});
+export const ClientContext = createContext(null as Client | null);

@@ -13,8 +13,9 @@ import { Link } from "@remix-run/react";
 import { groupBy } from "lodash-es";
 import { format as formatDate, addMonths, setDate } from "date-fns";
 import { Fragment, useMemo } from "react";
-import { useCons, useUserViewLabels } from "~/hooks";
-import { IconCalendar, IconMapPin } from "@tabler/icons-react";
+import { useConPosts, useCons } from "~/hooks";
+import { IconCalendar, IconMapPin, IconUsers } from "@tabler/icons-react";
+import clientMetadata from "../../public/client-metadata.json";
 
 function* monthRange(start: Date, end: Date): Generator<Date> {
   while (start < end) {
@@ -24,13 +25,12 @@ function* monthRange(start: Date, end: Date): Generator<Date> {
 }
 
 export const meta: MetaFunction = () => {
-  return [{ title: "conlabels.furryli.st" }];
+  return [{ title: clientMetadata.client_name }];
 };
 
 export default function Index() {
-  const { cons, error, isLoading } = useCons();
-
-  const { data: userViewLabels } = useUserViewLabels();
+  const { data: cons, error, isLoading } = useCons();
+  const { data: conPosts } = useConPosts();
 
   const consByMonth = useMemo(() => {
     if (cons == null) {
@@ -54,7 +54,7 @@ export default function Index() {
   if (isLoading) {
     return (
       <Center p="lg">
-        <Loader></Loader>
+        <Loader />
       </Center>
     );
   }
@@ -88,9 +88,9 @@ export default function Index() {
                 <Table.Tr key={con.identifier}>
                   <Table.Td>
                     <Group gap={7}>
-                      {userViewLabels != null &&
-                      userViewLabels.has(con.identifier) ? (
-                        <Badge size="sm" color="red">
+                      {conPosts != null &&
+                      conPosts.get(con.rkey)!.viewer?.like != null ? (
+                        <Badge color="red" size="sm">
                           Attending
                         </Badge>
                       ) : null}
@@ -106,7 +106,11 @@ export default function Index() {
                       </Text>
                     </Group>
                     <Text size="sm">
-                      <IconCalendar size={12} />{" "}
+                      <IconUsers size={12} />{" "}
+                      {conPosts != null
+                        ? conPosts.get(con.rkey)!.likeCount
+                        : null}{" "}
+                      • <IconCalendar size={12} />{" "}
                       {WEEKDAY_FORMAT.format(con.start)}{" "}
                       {formatDate(con.start, "yyyy-MM-dd")} –{" "}
                       {WEEKDAY_FORMAT.format(con.end)}{" "}
@@ -121,7 +125,7 @@ export default function Index() {
                         }}
                       >
                         {con.location}
-                      </Anchor>
+                      </Anchor>{" "}
                     </Text>
                   </Table.Td>
                 </Table.Tr>

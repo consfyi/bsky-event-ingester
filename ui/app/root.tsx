@@ -25,65 +25,42 @@ import {
   TextInput,
   Loader,
   Avatar,
+  Center,
+  Divider,
 } from "@mantine/core";
 import {
-  IconArrowBackUp,
   IconAt,
   IconChevronDown,
-  IconEye,
-  IconWorld,
+  IconLogin2,
+  IconLogout2,
+  IconUser,
 } from "@tabler/icons-react";
-import { useCallback, useContext, useEffect, useState } from "react";
-import { CLIENT } from "./bluesky";
-import { UserView, UserViewContext } from "./context";
+import { useEffect, useRef, useState } from "react";
+import {
+  configureOAuth,
+  resolveFromIdentity,
+  createAuthorizationUrl,
+  finalizeAuthorization,
+  deleteStoredSession,
+  listStoredSessions,
+  getSession,
+  Session,
+} from "@atcute/oauth-browser-client";
+import { useClient, useUserView } from "./hooks";
+import { ClientContext } from "./context";
+import { Client } from "./bluesky";
+
+import clientMetadata from "../public/client-metadata.json";
 
 const theme = createTheme({});
 
-async function fetchUserView(actor: string): Promise<UserView> {
-  const [profile, follows] = await Promise.all([
-    CLIENT.getProfile(actor),
-    (async () => {
-      const follows = new Set<string>();
-      for await (const follow of CLIENT.getFollows(actor)) {
-        follows.add(follow.did);
-      }
-      return follows;
-    })(),
-  ]);
-  return { profile, follows };
-}
-
-const VIEW_AS_LOCAL_STORAGE_KEY = "viewAs";
-
 function Header() {
-  const { userView, setUserView } = useContext(UserViewContext);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [viewAs, setViewAs] = useState("");
-  const [loggingIn, setLoggingIn] = useState(false);
+  const [handle, setHandle] = useState("");
+  const [pending, setIsPending] = useState(false);
 
-  useEffect(() => {
-    const v = window.localStorage.getItem(VIEW_AS_LOCAL_STORAGE_KEY);
-    if (v == null) {
-      return;
-    }
-
-    setLoggingIn(true);
-    setMenuOpen(false);
-
-    (async () => {
-      let userView = null;
-      try {
-        userView = await fetchUserView(v);
-      } catch (e) {
-        // Do nothing.
-      }
-      if (userView == null) {
-        window.localStorage.removeItem(VIEW_AS_LOCAL_STORAGE_KEY);
-      }
-      setUserView(userView);
-      setLoggingIn(false);
-    })();
-  }, [setUserView]);
+  const client = useClient();
+  const { data: userView, isLoading: userViewIsLoading } = useUserView();
 
   return (
     <Box
@@ -107,7 +84,7 @@ function Header() {
             withArrow
             opened={menuOpen}
             onChange={(value) => {
-              if (value && loggingIn) {
+              if (!value && pending) {
                 return;
               }
               setMenuOpen(value);
@@ -119,26 +96,30 @@ function Header() {
                   {userView != null ? (
                     <>
                       <Avatar src={userView.profile.avatar} size="sm" />
-                      <Text fw={500} size="sm" lh={1} mr={3}>
+                      <Text fw={500} size="sm" lh={1} mr={3} visibleFrom="xs">
                         {userView.profile.handle}
                       </Text>
                     </>
-                  ) : loggingIn ? (
+                  ) : userViewIsLoading ? (
                     <>
                       <Text fw={500} size="sm" lh={1} c="dimmed">
                         <Loader size={18} color="dimmed" />
-                      </Text>
-                      <Text fw={500} size="sm" lh={1} mr={3} c="dimmed">
-                        Please wait…
                       </Text>
                     </>
                   ) : (
                     <>
                       <Text fw={500} size="sm" lh={1} c="dimmed">
-                        <IconWorld />
+                        <IconUser />
                       </Text>
-                      <Text fw={500} size="sm" lh={1} mr={3} c="dimmed">
-                        Global view
+                      <Text
+                        fw={500}
+                        size="sm"
+                        lh={1}
+                        mr={3}
+                        c="dimmed"
+                        visibleFrom="xs"
+                      >
+                        Not logged in
                       </Text>
                     </>
                   )}
@@ -147,59 +128,84 @@ function Header() {
               </UnstyledButton>
             </Menu.Target>
             <Menu.Dropdown>
-              {userView == null ? (
+              {userView == null && !userViewIsLoading ? (
                 <form
                   onSubmit={(evt) => {
                     evt.preventDefault();
 
-                    setViewAs("");
-
-                    setLoggingIn(true);
-                    setMenuOpen(false);
+                    setIsPending(true);
+                    setMenuOpen(true);
 
                     (async () => {
-                      let userView = null;
-                      try {
-                        userView = await fetchUserView(viewAs);
-                      } catch (e) {
-                        // Do nothing.
-                      }
-                      setUserView(userView);
-                      setLoggingIn(false);
+                      const { identity, metadata } = await resolveFromIdentity(
+                        handle
+                      );
+
+                      const authUrl = await createAuthorizationUrl({
+                        metadata,
+                        identity,
+                        scope: "atproto transition:generic",
+                      });
+
+                      window.location.assign(authUrl);
                     })();
                   }}
                 >
                   <TextInput
-                    disabled={loggingIn}
+                    disabled={pending}
                     leftSection={<IconAt size={16} />}
                     placeholder="handle.bsky.social"
-                    value={viewAs}
+                    value={handle}
                     onChange={(e) => {
-                      setViewAs(e.target.value);
+                      setHandle(e.target.value);
                     }}
                   />
                   <Button
-                    disabled={loggingIn}
+                    disabled={pending}
                     type="submit"
                     fullWidth
                     mt={4}
-                    leftSection={<IconEye size={18} />}
+                    leftSection={
+                      pending ? (
+                        <Loader size={18} color="dimmed" />
+                      ) : (
+                        <IconLogin2 size={18} />
+                      )
+                    }
                   >
-                    View as
+                    Log in
                   </Button>
                 </form>
               ) : (
                 <Button
                   fullWidth
+                  disabled={pending}
                   color="red"
                   variant="subtle"
-                  leftSection={<IconArrowBackUp size={18} />}
+                  leftSection={
+                    pending ? (
+                      <Loader size={18} color="dimmed" />
+                    ) : (
+                      <IconLogout2 size={18} />
+                    )
+                  }
                   onClick={() => {
-                    setMenuOpen(false);
-                    setUserView(null);
+                    setIsPending(true);
+                    setMenuOpen(true);
+
+                    (async () => {
+                      try {
+                        await client!.signOut();
+                      } catch (e) {
+                        if (client!.did != null) {
+                          deleteStoredSession(client!.did);
+                        }
+                      }
+                      window.location.replace(window.location.toString());
+                    })();
                   }}
                 >
-                  Reset view
+                  Log out
                 </Button>
               )}
             </Menu.Dropdown>
@@ -211,7 +217,48 @@ function Header() {
 }
 
 export function Layout({ children }: { children: React.ReactNode }) {
-  const [userView, setUserView] = useState<UserView | null>(null);
+  const [client, setClient] = useState<Client | null>(null);
+  const ready = useRef(false);
+
+  useEffect(() => {
+    if (!ready.current) {
+      ready.current = true;
+      const params = new URLSearchParams(location.hash.slice(1));
+      window.history.replaceState(
+        null,
+        "",
+        location.pathname + location.search
+      );
+
+      configureOAuth({
+        metadata: {
+          client_id: clientMetadata.client_id,
+          redirect_uri: clientMetadata.redirect_uris[0],
+        },
+      });
+
+      (async () => {
+        let session: Session | null = null;
+        if (params.size > 0) {
+          try {
+            session = await finalizeAuthorization(params);
+          } catch (e) {
+            // Do nothing.
+          }
+        } else {
+          const sessions = listStoredSessions();
+          if (sessions.length > 0) {
+            try {
+              session = await getSession(sessions[0], { allowStale: true });
+            } catch (e) {
+              // Do nothing.
+            }
+          }
+        }
+        setClient(new Client(session));
+      })();
+    }
+  }, [setClient]);
 
   return (
     <html lang="en" {...mantineHtmlProps}>
@@ -223,29 +270,20 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <ColorSchemeScript defaultColorScheme="auto" />
       </head>
       <body>
-        <UserViewContext.Provider
-          value={{
-            userView,
-            setUserView: useCallback((value) => {
-              setUserView(value);
-              if (value != null) {
-                window.localStorage.setItem(
-                  VIEW_AS_LOCAL_STORAGE_KEY,
-                  value.profile.did
-                );
-              } else {
-                window.localStorage.removeItem(VIEW_AS_LOCAL_STORAGE_KEY);
-              }
-            }, []),
-          }}
-        >
-          <MantineProvider theme={theme}>
-            <Header />
-            <Container size="lg" px={0}>
-              {children}
-            </Container>
-          </MantineProvider>
-        </UserViewContext.Provider>
+        <MantineProvider theme={theme}>
+          {client != null ? (
+            <ClientContext.Provider value={client}>
+              <Header />
+              <Container size="lg" px={0}>
+                {children}
+              </Container>
+            </ClientContext.Provider>
+          ) : (
+            <Center p="lg">
+              <Loader />
+            </Center>
+          )}
+        </MantineProvider>
         <ScrollRestoration />
         <Scripts />
       </body>

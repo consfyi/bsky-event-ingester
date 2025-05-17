@@ -1,6 +1,7 @@
 import {
   IconCalendar,
   IconExternalLink,
+  IconLink,
   IconMapPin,
 } from "@tabler/icons-react";
 import { useParams } from "@remix-run/react";
@@ -8,7 +9,6 @@ import {
   Alert,
   Anchor,
   Avatar,
-  Badge,
   Box,
   Center,
   Group,
@@ -17,12 +17,11 @@ import {
   Text,
   Tooltip,
 } from "@mantine/core";
-import { useCons, useLikes, useUserViewLabels } from "~/hooks";
+import { useCons, useLikes, useUserView } from "~/hooks";
 import { format as formatDate } from "date-fns";
 import { Like, Profile } from "~/bluesky";
 import { LABELER_DID } from "~/config";
-import { useContext, useEffect, useMemo } from "react";
-import { UserViewContext } from "~/context";
+import { useEffect, useMemo } from "react";
 import { sortBy } from "lodash-es";
 
 function Actor({ actor }: { actor: Profile }) {
@@ -68,7 +67,7 @@ function Actor({ actor }: { actor: Profile }) {
 }
 
 export default function Index() {
-  const { cons, error, isLoading } = useCons();
+  const { data: cons, error, isLoading } = useCons();
   const { identifier } = useParams();
 
   const con =
@@ -86,10 +85,7 @@ export default function Index() {
     con != null ? `at://${LABELER_DID}/app.bsky.feed.post/${con.rkey}` : null
   );
 
-  const { userView } = useContext(UserViewContext);
-  const { data: userViewLabels } = useUserViewLabels();
-
-  const follows = userView?.follows;
+  const { data: userView } = useUserView();
 
   const [isSelfAttending, knownLikes, unknownLikes] = useMemo(() => {
     if (likes == null) {
@@ -106,7 +102,7 @@ export default function Index() {
         continue;
       }
       const out =
-        follows == null || follows.has(like.actor.did)
+        userView == null || userView.follows.has(like.actor.did)
           ? knownLikes
           : unknownLikes;
       out.push(like);
@@ -116,7 +112,7 @@ export default function Index() {
     unknownLikes = sortBy(unknownLikes, (like) => like.actor.handle);
 
     return [isSelfAttending, knownLikes, unknownLikes];
-  }, [userView, likes, follows]);
+  }, [userView, likes]);
 
   if (error != null) {
     return (
@@ -130,7 +126,7 @@ export default function Index() {
   if (isLoading) {
     return (
       <Center p="lg">
-        <Loader></Loader>
+        <Loader />
       </Center>
     );
   }
@@ -154,11 +150,6 @@ export default function Index() {
     <Box px="sm">
       <Box mt="sm">
         <Group gap={7}>
-          {userViewLabels != null && userViewLabels.has(con.identifier) ? (
-            <Badge size="md" color="red">
-              Attending
-            </Badge>
-          ) : null}
           <Text size="lg" fw={500}>
             {con.name}
           </Text>
@@ -178,7 +169,7 @@ export default function Index() {
             {WEEKDAY_FORMAT.format(con.end)} {formatDate(con.end, "yyyy-MM-dd")}
           </Text>
 
-          <Text size="sm">
+          <Text size="sm" mb={5}>
             <IconMapPin size={12} />{" "}
             <Anchor
               href={`https://www.google.com/maps?q=${con.location}`}
@@ -189,6 +180,13 @@ export default function Index() {
               }}
             >
               {con.location}
+            </Anchor>
+          </Text>
+
+          <Text size="sm" mb={5}>
+            <IconLink size={12} />{" "}
+            <Anchor href={con.url} target="_blank" rel="noreferrer">
+              {con.url.replace(/https?:\/\//, "")}
             </Anchor>
           </Text>
         </Box>
@@ -210,7 +208,7 @@ export default function Index() {
           </Alert>
         ) : likesIsLoading ? (
           <Center p="lg">
-            <Loader></Loader>
+            <Loader />
           </Center>
         ) : likes == null ? (
           <Alert color="red" title="Error">

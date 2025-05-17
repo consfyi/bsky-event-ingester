@@ -1,16 +1,34 @@
 import { sortBy } from "lodash-es";
-import { useContext, useMemo } from "react";
+import { useContext } from "react";
 import useSWR, { SWRConfiguration } from "swr";
-import { CLIENT } from "~/bluesky";
 import { LABELER_DID } from "~/config";
 
 import { parse as parseDate } from "date-fns";
-import { UserViewContext } from "./context";
+import type { Did, ResourceUri } from "@atcute/lexicons";
+import { PostView } from "@atcute/bluesky/types/app/feed/defs";
+import { Profile } from "./bluesky";
+import { ClientContext } from "./context";
 
-export function useCons(opts?: SWRConfiguration) {
+export function useClient() {
+  return useContext(ClientContext);
+}
+
+export function useConPosts(opts?: SWRConfiguration) {
+  const client = useClient()!;
+
   const { data, error, isLoading } = useSWR(
-    "labelerView",
-    () => CLIENT.getLabelerView(LABELER_DID),
+    "conPosts",
+    async () => {
+      const posts = new Map<string, PostView>();
+      for await (const postView of client.getAuthorPosts(LABELER_DID)) {
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        const [_did, _collection, rkey] = postView.uri
+          .replace(/^at:\/\//, "")
+          .split("/");
+        posts.set(rkey, postView);
+      }
+      return posts;
+    },
     {
       revalidateOnFocus: false,
       revalidateOnReconnect: false,
@@ -18,36 +36,52 @@ export function useCons(opts?: SWRConfiguration) {
     }
   );
 
-  const cons = useMemo(() => {
-    if (data == null) {
-      return null;
-    }
-
-    const cons = data.policies.labelValueDefinitions.map((def) => {
-      const [strings] = def.locales;
-      const [start, end] = def.fbl_eventInfo.date.split("/");
-      return {
-        identifier: def.identifier,
-        name: strings.name,
-        start: parseDate(start, "yyyy-MM-dd", new Date()),
-        end: parseDate(end, "yyyy-MM-dd", new Date()),
-        location: def.fbl_eventInfo.location,
-        rkey: def.fbl_postRkey,
-      };
-    });
-
-    return sortBy(cons, (con) => con.start);
-  }, [data]);
-
-  return { cons, error, isLoading };
+  return { data, error, isLoading };
 }
 
-export function useLikes(uri: string | null, opts?: SWRConfiguration) {
+export function useCons(opts?: SWRConfiguration) {
+  const client = useClient()!;
+
+  return useSWR(
+    "labelerView",
+    async () => {
+      const data = await client.getLabelerView(LABELER_DID);
+      if (data == null) {
+        return null;
+      }
+
+      const cons = data.policies!.labelValueDefinitions!.map((def) => {
+        const [strings] = def.locales;
+        const [start, end] = def.fbl_eventInfo.date.split("/");
+        return {
+          identifier: def.identifier,
+          name: strings.name,
+          start: parseDate(start, "yyyy-MM-dd", new Date()),
+          end: parseDate(end, "yyyy-MM-dd", new Date()),
+          location: def.fbl_eventInfo.location,
+          rkey: def.fbl_postRkey,
+          url: def.fbl_eventInfo.url,
+        };
+      });
+
+      return sortBy(cons, (con) => con.start);
+    },
+    {
+      revalidateOnFocus: false,
+      revalidateOnReconnect: false,
+      ...opts,
+    }
+  );
+}
+
+export function useLikes(uri: ResourceUri | null, opts?: SWRConfiguration) {
+  const client = useClient()!;
+
   return useSWR(
     uri != null ? `likes:${uri}` : null,
     async () => {
       const likes = [];
-      for await (const like of CLIENT.getLikes(uri!)) {
+      for await (const like of client.getLikes(uri!)) {
         likes.push(like);
       }
       return likes;
@@ -56,12 +90,14 @@ export function useLikes(uri: string | null, opts?: SWRConfiguration) {
   );
 }
 
-export function useLabels(did: string | null, opts?: SWRConfiguration) {
+export function useLabels(did: Did | null, opts?: SWRConfiguration) {
+  const client = useClient()!;
+
   return useSWR(
     did != null ? `labels:${did}` : null,
     async () => {
       const labels = new Set();
-      for await (const label of CLIENT.getLabels(did!)) {
+      for await (const label of client.getLabels(did!)) {
         labels.add(label);
       }
       return labels;
@@ -70,7 +106,34 @@ export function useLabels(did: string | null, opts?: SWRConfiguration) {
   );
 }
 
-export function useUserViewLabels(opts?: SWRConfiguration) {
-  const { userView } = useContext(UserViewContext);
-  return useLabels(userView != null ? userView.profile.did : null, opts);
+export interface UserView {
+  profile: Profile;
+  follows: Set<string>;
+}
+
+export function useUserView(opts?: SWRConfiguration) {
+  const client = useClient()!;
+
+  return useSWR(
+    client.did != null ? "userView" : null,
+    async () => {
+      const [profile, follows] = await Promise.all([
+        client.getProfile(client.did!),
+        (async () => {
+          const follows = new Set<string>();
+          for await (const follow of client.getFollows(client.did!)) {
+            follows.add(follow.did);
+          }
+          return follows;
+        })(),
+      ]);
+      return { profile, follows } as UserView;
+    },
+    {
+      revalidateOnFocus: false,
+      revalidateOnReconnect: false,
+      revalidateIfStale: false,
+      ...opts,
+    }
+  );
 }

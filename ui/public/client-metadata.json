@@ -1,0 +1,12 @@
+{
+  "client_id": "https://conlabels.furryli.st/client-metadata.json",
+  "client_name": "conlabels.furryli.st",
+  "client_uri": "https://conlabels.furryli.st",
+  "redirect_uris": ["https://conlabels.furryli.st"],
+  "scope": "atproto transition:generic",
+  "grant_types": ["authorization_code", "refresh_token"],
+  "response_types": ["code"],
+  "token_endpoint_auth_method": "none",
+  "application_type": "web",
+  "dpop_bound_access_tokens": true
+}

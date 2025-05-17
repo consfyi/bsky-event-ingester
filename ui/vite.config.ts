@@ -22,4 +22,5 @@ export default defineConfig({
     }),
     tsconfigPaths(),
   ],
+  server: { allowedHosts: true },
 });
