@@ -69,7 +69,7 @@ function ConTableRow({ con, post }: { con: Con; post: PostView }) {
                 <Text size="md" ta="center" fw={500}>
                   {WEEKDAY_FORMAT.format(con.start)}
                 </Text>
-                <Text size="xs" ta="center">
+                <Text size="xs" ta="center" fw={500}>
                   {getDate(con.start)}
                 </Text>
               </Stack>
