@@ -1,16 +1,25 @@
 import {
   Alert,
   Anchor,
+  Box,
   Center,
   Group,
   Loader,
+  Stack,
   Table,
   Text,
+  ThemeIcon,
 } from "@mantine/core";
 import type { MetaFunction } from "@remix-run/node";
 import { Link } from "@remix-run/react";
 import { groupBy } from "lodash-es";
-import { format as formatDate, addMonths, setDate } from "date-fns";
+import {
+  format as formatDate,
+  addMonths,
+  setDate,
+  getDate,
+  getDay,
+} from "date-fns";
 import { Fragment, useMemo, useState } from "react";
 import { Con, useConPosts, useCons } from "~/hooks";
 import { IconCalendar, IconMapPin, IconUsers } from "@tabler/icons-react";
@@ -39,45 +48,75 @@ function ConTableRow({ con, post }: { con: Con; post: PostView }) {
   return (
     <Table.Tr key={con.identifier}>
       <Table.Td>
-        <Group gap={7}>
-          {post.viewer != null ? (
-            <LikeButton
-              uri={post.uri}
-              cid={post.cid}
-              size="sm"
-              initialLike={post.viewer?.like ?? null}
-              setLikeState={setIsSelfAttending}
-            />
-          ) : null}
-
-          <Text size="sm">
-            <Anchor<typeof Link>
-              fw={500}
-              component={Link}
-              to={`/cons/${con.identifier}`}
+        <Group gap="xs">
+          <Anchor<typeof Link> component={Link} to={`/cons/${con.identifier}`}>
+            <ThemeIcon
+              size="xl"
+              variant="light"
+              color={
+                [
+                  "red",
+                  "orange",
+                  "yellow",
+                  "green",
+                  "blue",
+                  "indigo",
+                  "violet",
+                ][getDay(con.start)]
+              }
             >
-              {con.name}
-            </Anchor>
-          </Text>
+              <Stack gap={0}>
+                <Text size="md" ta="center" fw={500}>
+                  {WEEKDAY_FORMAT.format(con.start)}
+                </Text>
+                <Text size="xs" ta="center">
+                  {getDate(con.start)}
+                </Text>
+              </Stack>
+            </ThemeIcon>
+          </Anchor>
+          <Box>
+            <Group gap={7}>
+              {post.viewer != null ? (
+                <LikeButton
+                  uri={post.uri}
+                  cid={post.cid}
+                  size="sm"
+                  initialLike={post.viewer?.like ?? null}
+                  setLikeState={setIsSelfAttending}
+                />
+              ) : null}
+
+              <Text size="sm">
+                <Anchor<typeof Link>
+                  fw={500}
+                  component={Link}
+                  to={`/cons/${con.identifier}`}
+                >
+                  {con.name}
+                </Anchor>
+              </Text>
+            </Group>
+            <Text size="sm">
+              <IconUsers size={12} />{" "}
+              {likeCountWithoutSelf + (isSelfAttending ? 1 : 0)} •{" "}
+              <IconCalendar size={12} /> {WEEKDAY_FORMAT.format(con.start)}{" "}
+              {formatDate(con.start, "yyyy-MM-dd")} –{" "}
+              {WEEKDAY_FORMAT.format(con.end)}{" "}
+              {formatDate(con.end, "yyyy-MM-dd")} • <IconMapPin size={12} />{" "}
+              <Anchor
+                href={`https://www.google.com/maps?q=${con.location}`}
+                target="_blank"
+                rel="noreferrer"
+                style={{
+                  color: "unset",
+                }}
+              >
+                {con.location}
+              </Anchor>{" "}
+            </Text>
+          </Box>
         </Group>
-        <Text size="sm">
-          <IconUsers size={12} />{" "}
-          {likeCountWithoutSelf + (isSelfAttending ? 1 : 0)} •{" "}
-          <IconCalendar size={12} /> {WEEKDAY_FORMAT.format(con.start)}{" "}
-          {formatDate(con.start, "yyyy-MM-dd")} –{" "}
-          {WEEKDAY_FORMAT.format(con.end)} {formatDate(con.end, "yyyy-MM-dd")} •{" "}
-          <IconMapPin size={12} />{" "}
-          <Anchor
-            href={`https://www.google.com/maps?q=${con.location}`}
-            target="_blank"
-            rel="noreferrer"
-            style={{
-              color: "unset",
-            }}
-          >
-            {con.location}
-          </Anchor>{" "}
-        </Text>
       </Table.Td>
     </Table.Tr>
   );
