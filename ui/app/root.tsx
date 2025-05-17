@@ -51,8 +51,19 @@ import { ClientContext } from "./context";
 import { Client } from "./bluesky";
 
 import clientMetadata from "../public/client-metadata.json";
+import { LinksFunction } from "@remix-run/node";
 
 const theme = createTheme({});
+
+export const links: LinksFunction = () => {
+  return [
+    {
+      rel: "icon",
+      href: "/logo.png",
+      type: "image/png",
+    },
+  ];
+};
 
 function Header() {
   const [menuOpen, setMenuOpen] = useState(false);
@@ -76,7 +87,7 @@ function Header() {
         <Group justify="space-between">
           <Anchor<typeof Link> component={Link} to="/">
             <Group gap={7}>
-              <Image src="/logo.png" h={26} w={26} radius="sm" />
+              <Image src="/logo.png" h={26} w={26} />
               <Text fw={500} size="lg" visibleFrom="xs">
                 conlabels.furryli.st
               </Text>
