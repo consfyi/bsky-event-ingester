@@ -295,7 +295,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <ColorSchemeScript defaultColorScheme="auto" />
       </head>
       <body>
-        <MantineProvider theme={theme}>
+        <MantineProvider theme={theme} defaultColorScheme="auto">
           {client != null || selfIsLoading ? (
             <ClientContext.Provider value={client}>
               <Header />

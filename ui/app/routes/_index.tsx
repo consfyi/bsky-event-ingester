@@ -193,7 +193,7 @@ export default function Index() {
           const groupKey = formatDate(date, "yyyy-MM");
           return (
             <Fragment key={groupKey}>
-              <Table.Tr bg="var(--mantine-color-gray-0)">
+              <Table.Tr bg="var(--mantine-color-default-hover)">
                 <Table.Th>
                   <Text fw={500} size="md">
                     {MONTH_FORMAT.format(date)} {formatDate(date, "yyyy")}

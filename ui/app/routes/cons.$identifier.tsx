@@ -1,8 +1,10 @@
 import {
+  IconAB,
   IconCalendar,
   IconExternalLink,
   IconLink,
   IconMapPin,
+  IconUserHeart,
 } from "@tabler/icons-react";
 import { useParams } from "@remix-run/react";
 import {
@@ -11,7 +13,9 @@ import {
   Avatar,
   Box,
   Center,
+  Divider,
   Group,
+  Indicator,
   Loader,
   SimpleGrid,
   Text,
@@ -203,23 +207,28 @@ function Attendees({
         ) : null}
       </Text>
       {!selfFollowsIsLoading ? (
-        <SimpleGrid cols={{ base: 1, sm: 2, lg: 5 }} my="xs">
-          {isSelfAttending && self != null ? (
-            <div>
-              <Actor actor={self} />
-            </div>
-          ) : null}
-          {knownLikes!.map((like) => (
-            <div key={like.actor.did}>
-              <Actor actor={like.actor} />
-            </div>
-          ))}
-          {unknownLikes!.map((like) => (
-            <div key={like.actor.did}>
-              <Actor actor={like.actor} known />
-            </div>
-          ))}
-        </SimpleGrid>
+        <>
+          <SimpleGrid cols={{ base: 1, sm: 2, lg: 5 }} my="xs">
+            {isSelfAttending && self != null ? (
+              <div>
+                <Actor actor={self} known />
+              </div>
+            ) : null}
+            {knownLikes!.map((like) => (
+              <div key={like.actor.did}>
+                <Actor actor={like.actor} known />
+              </div>
+            ))}
+          </SimpleGrid>
+          <Divider label={"People you don't follow"} labelPosition="left" />
+          <SimpleGrid cols={{ base: 1, sm: 2, lg: 5 }} my="xs">
+            {unknownLikes!.map((like) => (
+              <div key={like.actor.did}>
+                <Actor actor={like.actor} />
+              </div>
+            ))}
+          </SimpleGrid>
+        </>
       ) : (
         <Center p="lg">
           <Loader />
