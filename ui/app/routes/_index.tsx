@@ -4,7 +4,6 @@ import {
   Box,
   Center,
   Group,
-  List,
   Loader,
   Stack,
   Table,

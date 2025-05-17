@@ -45,6 +45,7 @@ import {
   listStoredSessions,
   getSession,
   Session,
+  resolveFromService,
 } from "@atcute/oauth-browser-client";
 import { useClient, useSelf, useSelfFollows } from "./hooks";
 import { ClientContext } from "./context";
@@ -94,111 +95,36 @@ function Header() {
               </Text>
             </Group>
           </Anchor>
-          <Menu
-            position="bottom-end"
-            withArrow
-            opened={menuOpen}
-            onChange={(value) => {
-              if (!value && pending) {
-                return;
-              }
-              setMenuOpen(value);
-            }}
-          >
-            <Menu.Target>
-              <UnstyledButton>
-                <Group gap={7} wrap="nowrap">
-                  {self != null ? (
-                    <>
-                      <Box pos="relative">
-                        <LoadingOverlay
-                          visible={selfFollowsIsLoading}
-                          loaderProps={{ size: "sm" }}
-                        />
-                        <Avatar src={self.avatar} size="sm" />
-                      </Box>
-                      <Text fw={500} size="sm" lh={1} mr={3} visibleFrom="xs">
-                        @{self.handle}
-                      </Text>
-                    </>
-                  ) : selfIsLoading ? (
-                    <>
-                      <Text fw={500} size="sm" lh={1} c="dimmed">
-                        <Loader size={18} color="dimmed" />
-                      </Text>
-                    </>
-                  ) : (
-                    <>
-                      <Text fw={500} size="sm" lh={1} c="dimmed">
-                        <IconUser />
-                      </Text>
-                      <Text
-                        fw={500}
-                        size="sm"
-                        lh={1}
-                        mr={3}
-                        c="dimmed"
-                        visibleFrom="xs"
-                      >
-                        Not logged in
-                      </Text>
-                    </>
-                  )}
-                  <IconChevronDown size={12} stroke={1.5} />
-                </Group>
-              </UnstyledButton>
-            </Menu.Target>
-            <Menu.Dropdown>
-              {self == null && !selfIsLoading ? (
-                <form
-                  onSubmit={(evt) => {
-                    evt.preventDefault();
-
-                    setIsPending(true);
-                    setMenuOpen(true);
-
-                    (async () => {
-                      const { identity, metadata } = await resolveFromIdentity(
-                        handle
-                      );
-
-                      const authUrl = await createAuthorizationUrl({
-                        metadata,
-                        identity,
-                        scope: "atproto transition:generic",
-                      });
-
-                      window.location.assign(authUrl);
-                    })();
-                  }}
-                >
-                  <TextInput
-                    name="username"
-                    disabled={pending}
-                    leftSection={<IconAt size={16} />}
-                    placeholder="handle.bsky.social"
-                    value={handle}
-                    onChange={(e) => {
-                      setHandle(e.target.value);
-                    }}
-                  />
-                  <Button
-                    disabled={pending}
-                    type="submit"
-                    fullWidth
-                    mt={4}
-                    leftSection={
-                      pending ? (
-                        <Loader size={18} color="dimmed" />
-                      ) : (
-                        <IconBrandBluesky size={18} />
-                      )
-                    }
-                  >
-                    Log in with Bluesky
-                  </Button>
-                </form>
-              ) : (
+          {self != null ? (
+            <Menu
+              position="bottom-end"
+              withArrow
+              opened={menuOpen}
+              onChange={(value) => {
+                if (!value && pending) {
+                  return;
+                }
+                setMenuOpen(value);
+              }}
+            >
+              <Menu.Target>
+                <UnstyledButton>
+                  <Group gap={7} wrap="nowrap">
+                    <Box pos="relative">
+                      <LoadingOverlay
+                        visible={selfFollowsIsLoading}
+                        loaderProps={{ size: "sm" }}
+                      />
+                      <Avatar src={self.avatar} size="sm" />
+                    </Box>
+                    <Text fw={500} size="sm" lh={1} mr={3} visibleFrom="xs">
+                      @{self.handle}
+                    </Text>
+                    <IconChevronDown size={12} stroke={1.5} />
+                  </Group>
+                </UnstyledButton>
+              </Menu.Target>
+              <Menu.Dropdown>
                 <Button
                   fullWidth
                   disabled={pending}
@@ -229,9 +155,80 @@ function Header() {
                 >
                   Log out
                 </Button>
-              )}
-            </Menu.Dropdown>
-          </Menu>
+              </Menu.Dropdown>
+            </Menu>
+          ) : (
+            <form
+              onSubmit={(evt) => {
+                evt.preventDefault();
+
+                setIsPending(true);
+
+                (async () => {
+                  let identity = undefined;
+                  let metadata;
+
+                  if (handle != "") {
+                    const resp = await resolveFromIdentity(handle);
+                    identity = resp.identity;
+                    metadata = resp.metadata;
+                  } else {
+                    const resp = await resolveFromService(
+                      "https://bsky.social"
+                    );
+                    metadata = resp.metadata;
+                  }
+                  const authUrl = await createAuthorizationUrl({
+                    identity,
+                    metadata,
+                    scope: "atproto transition:generic",
+                  });
+                  window.location.assign(authUrl);
+                })();
+              }}
+            >
+              <Button.Group>
+                <Button
+                  loading={pending}
+                  type="submit"
+                  size="xs"
+                  leftSection={<IconBrandBluesky size={18} />}
+                >
+                  Log in
+                </Button>
+                <Menu
+                  position="bottom-end"
+                  withArrow
+                  withinPortal={false}
+                  opened={menuOpen}
+                  onChange={(value) => {
+                    if (!value && pending) {
+                      return;
+                    }
+                    setMenuOpen(value);
+                  }}
+                >
+                  <Menu.Target>
+                    <Button size="xs" px={4}>
+                      <IconChevronDown size={14} />
+                    </Button>
+                  </Menu.Target>
+                  <Menu.Dropdown>
+                    <TextInput
+                      name="username"
+                      disabled={pending}
+                      leftSection={<IconAt size={16} />}
+                      placeholder="handle.bsky.social"
+                      value={handle}
+                      onChange={(e) => {
+                        setHandle(e.target.value);
+                      }}
+                    />
+                  </Menu.Dropdown>
+                </Menu>
+              </Button.Group>
+            </form>
+          )}
         </Group>
       </Container>
     </Box>
