@@ -33,7 +33,6 @@ import {
   IconBrandBluesky,
   IconChevronDown,
   IconLogout2,
-  IconUser,
 } from "@tabler/icons-react";
 import { useEffect, useRef, useState } from "react";
 import {
@@ -95,140 +94,136 @@ function Header() {
               </Text>
             </Group>
           </Anchor>
-          {self != null ? (
-            <Menu
-              position="bottom-end"
-              withArrow
-              opened={menuOpen}
-              onChange={(value) => {
-                if (!value && pending) {
-                  return;
-                }
-                setMenuOpen(value);
-              }}
-            >
-              <Menu.Target>
-                <UnstyledButton>
-                  <Group gap={7} wrap="nowrap">
-                    <Box pos="relative">
-                      <LoadingOverlay
-                        visible={selfFollowsIsLoading}
-                        loaderProps={{ size: "sm" }}
-                      />
-                      <Avatar src={self.avatar} size="sm" />
-                    </Box>
-                    <Text fw={500} size="sm" lh={1} mr={3} visibleFrom="xs">
-                      @{self.handle}
-                    </Text>
-                    <IconChevronDown size={12} stroke={1.5} />
-                  </Group>
-                </UnstyledButton>
-              </Menu.Target>
-              <Menu.Dropdown>
-                <Button
-                  fullWidth
-                  disabled={pending}
-                  color="red"
-                  variant="subtle"
-                  leftSection={
-                    pending ? (
-                      <Loader size={18} color="dimmed" />
-                    ) : (
-                      <IconLogout2 size={18} />
-                    )
+          {!selfIsLoading ? (
+            self != null ? (
+              <Menu
+                position="bottom-end"
+                withArrow
+                opened={menuOpen}
+                onChange={(value) => {
+                  if (!value && pending) {
+                    return;
                   }
-                  onClick={() => {
-                    setIsPending(true);
-                    setMenuOpen(true);
+                  setMenuOpen(value);
+                }}
+              >
+                <Menu.Target>
+                  <UnstyledButton>
+                    <Group gap={7} wrap="nowrap">
+                      <Box pos="relative">
+                        <LoadingOverlay
+                          visible={selfFollowsIsLoading}
+                          loaderProps={{ size: "sm" }}
+                        />
+                        <Avatar src={self.avatar} size="sm" />
+                      </Box>
+                      <Text fw={500} size="sm" lh={1} mr={3} visibleFrom="xs">
+                        @{self.handle}
+                      </Text>
+                      <IconChevronDown size={12} stroke={1.5} />
+                    </Group>
+                  </UnstyledButton>
+                </Menu.Target>
+                <Menu.Dropdown>
+                  <Button
+                    fullWidth
+                    loading={pending}
+                    color="red"
+                    variant="subtle"
+                    leftSection={<IconLogout2 size={18} />}
+                    onClick={() => {
+                      setIsPending(true);
+                      setMenuOpen(true);
 
-                    (async () => {
-                      try {
-                        await client.signOut();
-                      } catch (e) {
-                        if (client.did != null) {
-                          deleteStoredSession(client.did);
+                      (async () => {
+                        try {
+                          await client.signOut();
+                        } catch (e) {
+                          if (client.did != null) {
+                            deleteStoredSession(client.did);
+                          }
                         }
-                      }
-                      window.location.replace(window.location.toString());
-                    })();
-                  }}
-                >
-                  Log out
-                </Button>
-              </Menu.Dropdown>
-            </Menu>
-          ) : (
-            <form
-              onSubmit={(evt) => {
-                evt.preventDefault();
+                        window.location.replace(window.location.toString());
+                      })();
+                    }}
+                  >
+                    Log out
+                  </Button>
+                </Menu.Dropdown>
+              </Menu>
+            ) : (
+              <form
+                onSubmit={(evt) => {
+                  evt.preventDefault();
 
-                setIsPending(true);
+                  setIsPending(true);
 
-                (async () => {
-                  let identity = undefined;
-                  let metadata;
+                  (async () => {
+                    let identity = undefined;
+                    let metadata;
 
-                  if (handle != "") {
-                    const resp = await resolveFromIdentity(handle);
-                    identity = resp.identity;
-                    metadata = resp.metadata;
-                  } else {
-                    const resp = await resolveFromService(
-                      "https://bsky.social"
-                    );
-                    metadata = resp.metadata;
-                  }
-                  const authUrl = await createAuthorizationUrl({
-                    identity,
-                    metadata,
-                    scope: "atproto transition:generic",
-                  });
-                  window.location.assign(authUrl);
-                })();
-              }}
-            >
-              <Button.Group my={-2}>
-                <Button
-                  loading={pending}
-                  type="submit"
-                  size="xs"
-                  leftSection={<IconBrandBluesky size={18} />}
-                >
-                  Log in
-                </Button>
-                <Menu
-                  position="bottom-end"
-                  withArrow
-                  withinPortal={false}
-                  opened={menuOpen}
-                  onChange={(value) => {
-                    if (!value && pending) {
-                      return;
+                    if (handle != "") {
+                      const resp = await resolveFromIdentity(handle);
+                      identity = resp.identity;
+                      metadata = resp.metadata;
+                    } else {
+                      const resp = await resolveFromService(
+                        "https://bsky.social"
+                      );
+                      metadata = resp.metadata;
                     }
-                    setMenuOpen(value);
-                  }}
-                >
-                  <Menu.Target>
-                    <Button size="xs" px={4}>
-                      <IconChevronDown size={14} />
-                    </Button>
-                  </Menu.Target>
-                  <Menu.Dropdown>
-                    <TextInput
-                      name="username"
-                      disabled={pending}
-                      leftSection={<IconAt size={16} />}
-                      placeholder="handle.bsky.social"
-                      value={handle}
-                      onChange={(e) => {
-                        setHandle(e.target.value);
-                      }}
-                    />
-                  </Menu.Dropdown>
-                </Menu>
-              </Button.Group>
-            </form>
-          )}
+                    const authUrl = await createAuthorizationUrl({
+                      identity,
+                      metadata,
+                      scope: "atproto transition:generic",
+                    });
+                    window.location.assign(authUrl);
+                  })();
+                }}
+              >
+                <Button.Group my={-2}>
+                  <Button
+                    loading={pending}
+                    type="submit"
+                    size="xs"
+                    leftSection={<IconBrandBluesky size={18} />}
+                  >
+                    Log in
+                  </Button>
+                  <Menu
+                    position="bottom-end"
+                    withArrow
+                    withinPortal={false}
+                    opened={menuOpen}
+                    onChange={(value) => {
+                      if (!value && pending) {
+                        return;
+                      }
+                      setMenuOpen(value);
+                    }}
+                  >
+                    <Menu.Target>
+                      <Button size="xs" px={4}>
+                        <IconChevronDown size={14} />
+                      </Button>
+                    </Menu.Target>
+                    <Menu.Dropdown>
+                      <TextInput
+                        name="username"
+                        disabled={pending}
+                        leftSection={<IconAt size={16} />}
+                        placeholder="handle.bsky.social"
+                        value={handle}
+                        onChange={(e) => {
+                          setHandle(e.target.value);
+                        }}
+                      />
+                    </Menu.Dropdown>
+                  </Menu>
+                </Button.Group>
+              </form>
+            )
+          ) : null}
         </Group>
       </Container>
     </Box>
@@ -237,7 +232,6 @@ function Header() {
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const [client, setClient] = useState<Client | null>(null);
-  const { isLoading: selfIsLoading } = useSelf();
 
   const ready = useRef(false);
 
@@ -293,7 +287,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
       </head>
       <body>
         <MantineProvider theme={theme} defaultColorScheme="auto">
-          {client != null || selfIsLoading ? (
+          {client != null ? (
             <ClientContext.Provider value={client}>
               <Header />
               <Container size="lg" px={0}>
