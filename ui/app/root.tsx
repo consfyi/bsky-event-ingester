@@ -13,7 +13,6 @@ import {
   createTheme,
   MantineProvider,
   ColorSchemeScript,
-  mantineHtmlProps,
   Container,
   Box,
   Text,
@@ -287,7 +286,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
   }, [setClient]);
 
   return (
-    <html lang="en" {...mantineHtmlProps}>
+    <html lang="en">
       <head>
         <meta charSet="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />

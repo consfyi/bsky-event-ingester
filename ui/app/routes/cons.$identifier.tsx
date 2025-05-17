@@ -37,7 +37,13 @@ import type {
 import type { ThreadViewPost } from "@atcute/bluesky/types/app/feed/defs";
 import { LikeButton } from "~/components/LikeButton";
 
-function Actor({ actor }: { actor: ProfileView | ProfileViewDetailed }) {
+function Actor({
+  actor,
+  known,
+}: {
+  actor: ProfileView | ProfileViewDetailed;
+  known?: boolean;
+}) {
   return (
     <Anchor
       href={`https://bsky.app/profile/${actor.handle}`}
@@ -67,7 +73,7 @@ function Actor({ actor }: { actor: ProfileView | ProfileViewDetailed }) {
         </Tooltip>
         <div style={{ flex: 1, minWidth: 0 }}>
           <Text size="sm" fw={500} truncate>
-            {actor.displayName ? actor.displayName : actor.handle}
+            {actor.displayName ? actor.displayName : actor.handle}{" "}
           </Text>
 
           <Text size="xs" truncate>
@@ -154,7 +160,8 @@ function Attendees({
   likes: Like[] | null;
 }) {
   const { data: self } = useSelf();
-  const { data: selfFollows } = useSelfFollows();
+  const { data: selfFollows, isLoading: selfFollowsIsLoading } =
+    useSelfFollows();
 
   const [knownLikes, unknownLikes] = useMemo(() => {
     if (likes == null) {
@@ -180,6 +187,7 @@ function Attendees({
 
     return [knownLikes, unknownLikes];
   }, [self, selfFollows, likes]);
+
   const likeCountWithoutSelf =
     (thread.post.likeCount || 0) - (thread.post.viewer?.like != null ? 1 : 0);
 
@@ -194,23 +202,29 @@ function Attendees({
           </small>
         ) : null}
       </Text>
-      <SimpleGrid cols={{ base: 1, sm: 2, lg: 5 }} my="xs">
-        {isSelfAttending && self != null ? (
-          <div>
-            <Actor actor={self} />
-          </div>
-        ) : null}
-        {knownLikes!.map((like) => (
-          <div key={like.actor.did}>
-            <Actor actor={like.actor} />
-          </div>
-        ))}
-        {unknownLikes!.map((like) => (
-          <div key={like.actor.did} style={{ opacity: 0.25 }}>
-            <Actor actor={like.actor} />
-          </div>
-        ))}
-      </SimpleGrid>
+      {!selfFollowsIsLoading ? (
+        <SimpleGrid cols={{ base: 1, sm: 2, lg: 5 }} my="xs">
+          {isSelfAttending && self != null ? (
+            <div>
+              <Actor actor={self} />
+            </div>
+          ) : null}
+          {knownLikes!.map((like) => (
+            <div key={like.actor.did}>
+              <Actor actor={like.actor} />
+            </div>
+          ))}
+          {unknownLikes!.map((like) => (
+            <div key={like.actor.did}>
+              <Actor actor={like.actor} known />
+            </div>
+          ))}
+        </SimpleGrid>
+      ) : (
+        <Center p="lg">
+          <Loader />
+        </Center>
+      )}
     </Box>
   );
 }
