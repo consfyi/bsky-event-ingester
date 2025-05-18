@@ -30,7 +30,7 @@ import LikeButton from "~/components/LikeButton";
 import LoadErrorAlert from "~/components/LoadErrorAlert";
 import { Con, useClient, useConPosts, useCons } from "~/hooks";
 import clientMetadata from "../../public/client-metadata.json";
-import { useLocalAttendingContext } from "~/components/LocalAttendingContextProvider";
+import { useLocalAttending } from "~/components/LocalAttendingContextProvider";
 
 function* monthRange(start: Date, end: Date): Generator<Date> {
   while (start < end) {
@@ -44,7 +44,7 @@ export const meta: MetaFunction = () => {
 };
 
 function ConTableRow({ con, post }: { con: Con; post: PostView }) {
-  const { getIsAttending, setIsAttending } = useLocalAttendingContext();
+  const { isAttending } = useLocalAttending(con.identifier);
 
   const likeCountWithoutSelf =
     (post.likeCount || 0) - (post.viewer?.like != null ? 1 : 0);
@@ -62,8 +62,6 @@ function ConTableRow({ con, post }: { con: Con; post: PostView }) {
       }),
     [i18n]
   );
-
-  const isSelfAttending = getIsAttending(con.identifier);
 
   return (
     <Table.Tr key={con.identifier}>
@@ -105,11 +103,7 @@ function ConTableRow({ con, post }: { con: Con; post: PostView }) {
           <Box style={{ minWidth: 0 }}>
             <Group gap={7} wrap="nowrap">
               {post.viewer != null ? (
-                <LikeButton
-                  size="xs"
-                  isLiked={isSelfAttending}
-                  setIsLiked={(v) => setIsAttending(con.identifier, v)}
-                />
+                <LikeButton size="xs" conId={con.identifier} />
               ) : null}
 
               <Text size="sm" truncate>
@@ -124,7 +118,7 @@ function ConTableRow({ con, post }: { con: Con; post: PostView }) {
             </Group>
             <Text size="sm" truncate>
               <IconUsers size={12} />{" "}
-              {likeCountWithoutSelf + (isSelfAttending ? 1 : 0)} •{" "}
+              {likeCountWithoutSelf + (isAttending ? 1 : 0)} •{" "}
               <Tooltip
                 position="bottom"
                 label={dateTimeFormat.formatRange(con.start, con.end)}

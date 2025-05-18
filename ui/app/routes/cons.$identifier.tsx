@@ -28,7 +28,7 @@ import { sortBy } from "lodash-es";
 import { useEffect, useMemo } from "react";
 import LikeButton from "~/components/LikeButton";
 import LoadErrorAlert from "~/components/LoadErrorAlert";
-import { useLocalAttendingContext } from "~/components/LocalAttendingContextProvider";
+import { useLocalAttending } from "~/components/LocalAttendingContextProvider";
 import { LABELER_DID } from "~/config";
 import {
   Con,
@@ -81,17 +81,7 @@ function Actor({ actor }: { actor: ProfileView | ProfileViewDetailed }) {
   );
 }
 
-function Header({
-  con,
-  thread,
-  setIsSelfAttending,
-  isSelfAttending,
-}: {
-  con: Con;
-  thread: ThreadViewPost;
-  setIsSelfAttending: (v: boolean) => void;
-  isSelfAttending: boolean;
-}) {
+function Header({ con, thread }: { con: Con; thread: ThreadViewPost }) {
   const { i18n } = useLingui();
 
   const dateTimeFormat = useMemo(
@@ -109,12 +99,7 @@ function Header({
     <Box mt="sm">
       <Group gap={7} wrap="nowrap">
         {thread.post.viewer != null ? (
-          <LikeButton
-            size="sm"
-            iconSize={24}
-            setIsLiked={setIsSelfAttending}
-            isLiked={isSelfAttending}
-          />
+          <LikeButton size="sm" iconSize={24} conId={con.identifier} />
         ) : null}
         <Text size="lg" fw={500}>
           {con.name}
@@ -261,10 +246,12 @@ export default function Index() {
   const { data: cons, error, isLoading } = useCons();
   const { identifier } = useParams();
 
-  const { getIsAttending, setIsAttending } = useLocalAttendingContext();
-
   const con =
     cons != null ? cons.find((con) => con.identifier == identifier) : null;
+
+  const { isAttending } = useLocalAttending(
+    con != null ? con.identifier : null
+  );
 
   useEffect(() => {
     document.title = con != null ? con.name : "";
@@ -305,16 +292,9 @@ export default function Index() {
     });
   }
 
-  const isSelfAttending = getIsAttending(con.identifier);
-
   return (
     <Box px="sm">
-      <Header
-        con={con}
-        thread={thread}
-        isSelfAttending={isSelfAttending}
-        setIsSelfAttending={(v) => setIsAttending(con.identifier, v)}
-      />
+      <Header con={con} thread={thread} />
       {likesError != null ? (
         <LoadErrorAlert error={error} />
       ) : likesIsLoading ? (
@@ -327,7 +307,7 @@ export default function Index() {
         <Attendees
           thread={thread}
           likes={likes}
-          isSelfAttending={isSelfAttending}
+          isSelfAttending={isAttending}
         />
       )}
     </Box>

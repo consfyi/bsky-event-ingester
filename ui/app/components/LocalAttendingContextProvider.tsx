@@ -139,6 +139,20 @@ export default function LocalAttendingContextProvider({
   );
 }
 
-export function useLocalAttendingContext() {
-  return useContext(LocalAttendingContext);
+export function useLocalAttending(id: string | null) {
+  const { getIsAttending, setIsAttending } = useContext(LocalAttendingContext);
+  const scopedSetIsAttending = useCallback(
+    (v: boolean) => {
+      if (id == null) {
+        return;
+      }
+      setIsAttending(id, v);
+    },
+    [id, setIsAttending]
+  );
+
+  return {
+    isAttending: id != null ? getIsAttending(id) : false,
+    setIsAttending: scopedSetIsAttending,
+  };
 }
