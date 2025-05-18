@@ -43,9 +43,10 @@ function* monthRange(start: Date, end: Date): Generator<Date> {
   }
 }
 
-export const meta: MetaFunction = () => {
-  return [{ title: clientMetadata.client_name }];
-};
+export const meta: MetaFunction = ({ matches }) => [
+  ...matches.flatMap((match) => match.meta ?? []),
+  { title: clientMetadata.client_name },
+];
 
 function ConTableRow({ con, post }: { con: Con; post: PostView }) {
   const { isAttending } = useLocalAttending(con.identifier);

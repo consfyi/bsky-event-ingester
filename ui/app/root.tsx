@@ -66,14 +66,13 @@ export const links: LinksFunction = () => {
   ];
 };
 
-export const meta: MetaFunction = () => {
-  return [
-    {
-      name: "description",
-      content: "Which furry conventions are you going to?",
-    },
-  ];
-};
+export const meta: MetaFunction = ({ matches }) => [
+  ...matches.flatMap((match) => match.meta ?? []),
+  {
+    name: "description",
+    content: "Which furry conventions are you going to?",
+  },
+];
 
 function Header() {
   const [menuOpen, setMenuOpen] = useState(false);
