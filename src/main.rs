@@ -130,7 +130,7 @@ async fn sync_labels(
         .components
         .iter()
         .flat_map(|component| Some(Event::from_icalendar_event(component.as_event()?)?))
-        .filter(|e| e.dtend + chrono::Days::new(1) >= today)
+        .filter(|e| e.dtend >= today)
         // .filter(|_| false)
         .collect::<Vec<_>>();
 
@@ -260,6 +260,14 @@ async fn sync_labels(
                     created_at: atrium_api::types::string::Datetime::new(now.fixed_offset()),
                     embed: None,
                     entities: None,
+                    labels: None,
+                    langs: Some(vec![atrium_api::types::string::Language::new(
+                        "en".to_string(),
+                    )
+                    .unwrap()]),
+                    reply: None,
+                    tags: None,
+                    text: format!("{}", event.summary),
                     facets: Some(vec![atrium_api::app::bsky::richtext::facet::MainData {
                         features: vec![atrium_api::types::Union::Refs(
                             atrium_api::app::bsky::richtext::facet::MainFeaturesItem::Link(
@@ -282,20 +290,6 @@ async fn sync_labels(
                         .into(),
                     }
                     .into()]),
-                    labels: None,
-                    langs: Some(vec![atrium_api::types::string::Language::new(
-                        "en".to_string(),
-                    )
-                    .unwrap()]),
-                    reply: None,
-                    tags: None,
-                    text: format!(
-                        "{summary}\n\n📅 {dtstart} – {dtend}\n📍 {location}",
-                        summary = event.summary,
-                        location = event.location,
-                        dtstart = event.dtstart,
-                        dtend = event.dtend
-                    ),
                 }
                 .into();
 
@@ -372,6 +366,9 @@ async fn sync_labels(
                         events
                             .iter()
                             .map(|event| {
+                                // The "DTEND" property for a "VEVENT" calendar component specifies the non-inclusive end of the event.
+                                let end_date = event.dtend - chrono::Days::new(1);
+
                                 let mut def: atrium_api::com::atproto::label::defs::LabelValueDefinition = atrium_api::com::atproto::label::defs::LabelValueDefinitionData {
                                     adult_only: Some(false),
                                     blurs: "none".to_string(),
@@ -384,10 +381,10 @@ async fn sync_labels(
                                         .unwrap(),
                                         name: event.summary.clone(),
                                         description: format!(
-                                            "📅 {dtstart} – {dtend}\n📍 {location}",
+                                            "📅 {start_date} – {end_date}\n📍 {location}",
                                             location = event.location,
-                                            dtstart = event.dtstart,
-                                            dtend = event.dtend
+                                            start_date = event.dtstart,
+                                            end_date = end_date
                                         ),
                                     }
                                     .into()],
@@ -416,7 +413,7 @@ async fn sync_labels(
                                             ipld_core::ipld::Ipld::String(format!(
                                                 "{}/{}",
                                                 event.dtstart.format("%Y-%m-%d"),
-                                                event.dtend.format("%Y-%m-%d")
+                                                end_date.format("%Y-%m-%d")
                                             )),
                                         ),
                                         (
