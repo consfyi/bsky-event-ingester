@@ -638,7 +638,7 @@ async fn service_jetstream(
     app_state: &AppState,
     jetstream_endpoint: &str,
 ) -> Result<(), anyhow::Error> {
-    let cursor = {
+    let mut cursor = {
         let mut db_conn = app_state.db_pool.acquire().await?;
         sqlx::query!(r#"SELECT cursor FROM jetstream_cursor"#)
             .fetch_optional(&mut *db_conn)
@@ -646,6 +646,17 @@ async fn service_jetstream(
             .map(|d| d.cursor)
     };
 
+    loop {
+        cursor = service_jetstream_once(app_state, jetstream_endpoint, cursor).await?;
+        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+    }
+}
+
+async fn service_jetstream_once(
+    app_state: &AppState,
+    jetstream_endpoint: &str,
+    mut cursor: Option<i64>,
+) -> Result<Option<i64>, anyhow::Error> {
     let jetstream = jetstream_oxide::JetstreamConnector::new(jetstream_oxide::JetstreamConfig {
         endpoint: jetstream_endpoint.to_string(),
         compression: jetstream_oxide::JetstreamCompression::Zstd,
@@ -665,7 +676,7 @@ async fn service_jetstream(
             continue;
         };
 
-        let cursor = match &commit {
+        let next_cursor = match &commit {
             jetstream_oxide::events::commit::CommitEvent::Create { info, .. }
             | jetstream_oxide::events::commit::CommitEvent::Update { info, .. }
             | jetstream_oxide::events::commit::CommitEvent::Delete { info, .. } => info.time_us,
@@ -796,20 +807,22 @@ async fn service_jetstream(
         }
         .await?;
 
-        metrics::gauge!("jetstream_cursor").set(cursor as f64);
+        metrics::gauge!("jetstream_cursor").set(next_cursor as f64);
 
         sqlx::query!(
             r#"
             INSERT INTO jetstream_cursor (cursor) VALUES ($1)
             ON CONFLICT ((true)) DO UPDATE SET cursor = excluded.cursor
             "#,
-            cursor as i64,
+            next_cursor as i64,
         )
         .execute(&mut *db_conn)
         .await?;
+
+        cursor = Some(next_cursor);
     }
 
-    Err(anyhow::anyhow!("unexpected end of jetstream"))
+    Ok(cursor)
 }
 
 #[tokio::main]
