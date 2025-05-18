@@ -809,7 +809,7 @@ async fn service_jetstream(
         .await?;
     }
 
-    Ok(())
+    Err(anyhow::anyhow!("unexpected end of jetstream"))
 }
 
 #[tokio::main]
