@@ -11,11 +11,12 @@ struct Config {
 async fn main() -> Result<(), anyhow::Error> {
     env_logger::init();
 
-    let [label, rkey] = &std::env::args().skip(1).collect::<Vec<_>>()[..] else {
+    let [rkey] = &std::env::args().skip(1).collect::<Vec<_>>()[..] else {
         return Err(anyhow::anyhow!("not enough arguments"));
     };
+    let rkey = atrium_api::types::string::RecordKey::new(rkey.to_string()).unwrap();
 
-    let label = serde_json::from_str(&label)?;
+    let label = serde_json::from_reader(std::io::stdin())?;
 
     let config: Config = config::Config::builder()
         .add_source(config::File::with_name("config.toml"))
