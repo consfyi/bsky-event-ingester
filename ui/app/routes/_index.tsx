@@ -174,7 +174,7 @@ function ConsTable({}: {}) {
     return (
       <Alert color="red" title="Error">
         <Text size="sm">
-          <Trans>Couldn’t load con data.</Trans>
+          <Trans>An error occurred while attempting to load this data.</Trans>
         </Text>
         <pre>{error.toString()}</pre>
       </Alert>
@@ -193,7 +193,7 @@ function ConsTable({}: {}) {
     return (
       <Alert color="red" title="Error">
         <Text size="sm">
-          <Trans>Couldn’t load con data.</Trans>
+          <Trans>An error occurred while attempting to load this data.</Trans>
         </Text>
       </Alert>
     );

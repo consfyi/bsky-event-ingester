@@ -30,6 +30,15 @@ msgstr "{likeCountWithoutSelf}"
 msgid "<0>This the website for the <1><2/> @conlabels.furryli.st</1> service. For the full experience, please log in. You’ll be able to:</0><3><4>Tell people which cons you’re going to (you can also do this by liking the con post on Bluesky).</4><5>See who you follow is going to a con.</5></3><6>A huge thank you to <7>furrycons.com</7> who provides all the data on conventions!</6>"
 msgstr "<0>This the website for the <1><2/> @conlabels.furryli.st</1> service. For the full experience, please log in. You’ll be able to:</0><3><4>Tell people which cons you’re going to (you can also do this by liking the con post on Bluesky).</4><5>See who you follow is going to a con.</5></3><6>A huge thank you to <7>furrycons.com</7> who provides all the data on conventions!</6>"
 
+#: app/routes/cons.$identifier.tsx:295
+#: app/routes/cons.$identifier.tsx:314
+#: app/routes/cons.$identifier.tsx:333
+#: app/routes/cons.$identifier.tsx:344
+#: app/routes/_index.tsx:177
+#: app/routes/_index.tsx:196
+msgid "An error occurred while attempting to load this data."
+msgstr "An error occurred while attempting to load this data."
+
 #: app/routes/cons.$identifier.tsx:205
 msgid "Attendees"
 msgstr "Attendees"
@@ -37,18 +46,6 @@ msgstr "Attendees"
 #: app/components/LikeButton.tsx:65
 msgid "Attending"
 msgstr "Attending"
-
-#: app/routes/cons.$identifier.tsx:333
-#: app/routes/cons.$identifier.tsx:344
-msgid "Couldn’t load attendees data."
-msgstr "Couldn’t load attendees data."
-
-#: app/routes/cons.$identifier.tsx:295
-#: app/routes/cons.$identifier.tsx:314
-#: app/routes/_index.tsx:177
-#: app/routes/_index.tsx:196
-msgid "Couldn’t load con data."
-msgstr "Couldn’t load con data."
 
 #: app/root.tsx:193
 msgid "Log in"

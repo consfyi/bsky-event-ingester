@@ -292,7 +292,7 @@ export default function Index() {
     return (
       <Alert color="red" title="Error">
         <Text size="sm">
-          <Trans>Couldn’t load con data.</Trans>
+          <Trans>An error occurred while attempting to load this data.</Trans>
         </Text>
         <pre>{error.toString()}</pre>
       </Alert>
@@ -311,7 +311,7 @@ export default function Index() {
     return (
       <Alert color="red" title="Error">
         <Text size="sm">
-          <Trans>Couldn’t load con data.</Trans>
+          <Trans>An error occurred while attempting to load this data.</Trans>
         </Text>
       </Alert>
     );
@@ -330,7 +330,7 @@ export default function Index() {
       {likesError != null ? (
         <Alert color="red" title="Error">
           <Text size="sm">
-            <Trans>Couldn’t load attendees data.</Trans>
+            <Trans>An error occurred while attempting to load this data.</Trans>
           </Text>
           <pre>{likesError.toString()}</pre>
         </Alert>
@@ -341,7 +341,7 @@ export default function Index() {
       ) : likes == null ? (
         <Alert color="red" title="Error">
           <Text size="sm">
-            <Trans>Couldn’t load attendees data.</Trans>
+            <Trans>An error occurred while attempting to load this data.</Trans>
           </Text>
         </Alert>
       ) : (
