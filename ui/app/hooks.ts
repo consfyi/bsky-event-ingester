@@ -1,11 +1,10 @@
+import type { PostView } from "@atcute/bluesky/types/app/feed/defs";
+import type { ResourceUri } from "@atcute/lexicons";
+import { parse as parseDate } from "date-fns";
 import { sortBy } from "lodash-es";
 import { useContext, useMemo } from "react";
 import useSWR, { SWRConfiguration, SWRResponse } from "swr";
 import { LABELER_DID } from "~/config";
-
-import { parse as parseDate } from "date-fns";
-import type { ResourceUri } from "@atcute/lexicons";
-import type { PostView } from "@atcute/bluesky/types/app/feed/defs";
 import { ClientContext } from "./context";
 
 export function useClient() {

@@ -1,11 +1,20 @@
+import type {} from "@atcute/atproto";
+import { AppBskyFeedLike } from "@atcute/bluesky";
+import type {
+  ProfileView,
+  ProfileViewDetailed,
+} from "@atcute/bluesky/types/app/actor/defs";
+import type {
+  PostView,
+  ThreadViewPost,
+} from "@atcute/bluesky/types/app/feed/defs";
+import type { Like } from "@atcute/bluesky/types/app/feed/getLikes";
+import type { LabelerViewDetailed } from "@atcute/bluesky/types/app/labeler/defs";
 import {
-  simpleFetchHandler,
   Client as AtcuteClient,
   buildFetchHandler,
+  simpleFetchHandler,
 } from "@atcute/client";
-import { LABELER_DID } from "./config";
-import { AppBskyFeedLike } from "@atcute/bluesky";
-import type {} from "@atcute/atproto";
 import type {
   ActorIdentifier,
   Cid,
@@ -13,17 +22,8 @@ import type {
   Nsid,
   ResourceUri,
 } from "@atcute/lexicons";
-import type {
-  PostView,
-  ThreadViewPost,
-} from "@atcute/bluesky/types/app/feed/defs";
 import { OAuthUserAgent, Session } from "@atcute/oauth-browser-client";
-import type {
-  ProfileView,
-  ProfileViewDetailed,
-} from "@atcute/bluesky/types/app/actor/defs";
-import type { Like } from "@atcute/bluesky/types/app/feed/getLikes";
-import type { LabelerViewDetailed } from "@atcute/bluesky/types/app/labeler/defs";
+import { LABELER_DID } from "./config";
 
 export class Client {
   private oauthUserAgent: OAuthUserAgent | null;

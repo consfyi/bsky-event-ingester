@@ -1,8 +1,8 @@
-import type { ResourceUri, Cid } from "@atcute/lexicons";
+import type { Cid, ResourceUri } from "@atcute/lexicons";
 import { Trans } from "@lingui/react/macro";
-import { Tooltip, ActionIcon, ActionIconProps } from "@mantine/core";
-import { IconHeartFilled, IconHeart } from "@tabler/icons-react";
-import { useState, useCallback, useEffect } from "react";
+import { ActionIcon, ActionIconProps, Tooltip } from "@mantine/core";
+import { IconHeart, IconHeartFilled } from "@tabler/icons-react";
+import { useCallback, useEffect, useState } from "react";
 import { useClient } from "~/hooks";
 
 export default function LikeButton({

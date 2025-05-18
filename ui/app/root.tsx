@@ -1,33 +1,44 @@
 import {
-  Links,
+  configureOAuth,
+  createAuthorizationUrl,
+  deleteStoredSession,
+  finalizeAuthorization,
+  getSession,
+  listStoredSessions,
+  resolveFromIdentity,
+  resolveFromService,
+  Session,
+} from "@atcute/oauth-browser-client";
+import { Trans } from "@lingui/react/macro";
+import {
+  Anchor,
+  Avatar,
+  Box,
+  Button,
+  Center,
+  ColorSchemeScript,
+  Container,
+  createTheme,
+  Group,
+  Image,
+  Loader,
+  LoadingOverlay,
+  MantineProvider,
+  Menu,
+  Text,
+  TextInput,
+  UnstyledButton,
+} from "@mantine/core";
+import "@mantine/core/styles.css";
+import { LinksFunction } from "@remix-run/node";
+import {
   Link,
+  Links,
   Meta,
   Outlet,
   Scripts,
   ScrollRestoration,
 } from "@remix-run/react";
-
-import "@mantine/core/styles.css";
-
-import {
-  createTheme,
-  MantineProvider,
-  ColorSchemeScript,
-  Container,
-  Box,
-  Text,
-  Group,
-  Anchor,
-  Menu,
-  UnstyledButton,
-  Button,
-  TextInput,
-  Loader,
-  Avatar,
-  Center,
-  Image,
-  LoadingOverlay,
-} from "@mantine/core";
 import {
   IconAt,
   IconBrandBluesky,
@@ -35,25 +46,11 @@ import {
   IconLogout2,
 } from "@tabler/icons-react";
 import { useEffect, useRef, useState } from "react";
-import {
-  configureOAuth,
-  resolveFromIdentity,
-  createAuthorizationUrl,
-  finalizeAuthorization,
-  deleteStoredSession,
-  listStoredSessions,
-  getSession,
-  Session,
-  resolveFromService,
-} from "@atcute/oauth-browser-client";
-import { useClient, useSelf, useSelfFollows } from "./hooks";
-import { ClientContext } from "./context";
-import { Client } from "./bluesky";
-
 import clientMetadata from "../public/client-metadata.json";
-import { LinksFunction } from "@remix-run/node";
+import { Client } from "./bluesky";
 import { LinguiProvider } from "./components/LinguiProvider";
-import { Trans } from "@lingui/react/macro";
+import { ClientContext } from "./context";
+import { useClient, useSelf, useSelfFollows } from "./hooks";
 
 const theme = createTheme({});
 

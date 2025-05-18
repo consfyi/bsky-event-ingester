@@ -1,7 +1,7 @@
+import { negotiateLanguages } from "@fluent/langneg";
 import { i18n } from "@lingui/core";
 import { I18nProvider } from "@lingui/react";
 import { useEffect, useState } from "react";
-import { negotiateLanguages } from "@fluent/langneg";
 
 const AVAILABLE_LOCALES = Object.keys(
   import.meta.glob("../locales/*/messages.po")

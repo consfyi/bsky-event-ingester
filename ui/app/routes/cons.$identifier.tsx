@@ -1,10 +1,10 @@
-import {
-  IconCalendar,
-  IconExternalLink,
-  IconLink,
-  IconMapPin,
-} from "@tabler/icons-react";
-import { useParams } from "@remix-run/react";
+import type {
+  ProfileView,
+  ProfileViewDetailed,
+} from "@atcute/bluesky/types/app/actor/defs";
+import type { ThreadViewPost } from "@atcute/bluesky/types/app/feed/defs";
+import type { Like } from "@atcute/bluesky/types/app/feed/getLikes";
+import { Trans, useLingui } from "@lingui/react/macro";
 import {
   Anchor,
   Avatar,
@@ -17,6 +17,18 @@ import {
   Text,
   Tooltip,
 } from "@mantine/core";
+import { useParams } from "@remix-run/react";
+import {
+  IconCalendar,
+  IconExternalLink,
+  IconLink,
+  IconMapPin,
+} from "@tabler/icons-react";
+import { sortBy } from "lodash-es";
+import { useEffect, useMemo, useState } from "react";
+import LikeButton from "~/components/LikeButton";
+import LoadErrorAlert from "~/components/LoadErrorAlert";
+import { LABELER_DID } from "~/config";
 import {
   Con,
   useCons,
@@ -25,18 +37,6 @@ import {
   useSelfFollows,
   useThread,
 } from "~/hooks";
-import { LABELER_DID } from "~/config";
-import { useEffect, useMemo, useState } from "react";
-import { sortBy } from "lodash-es";
-import type { Like } from "@atcute/bluesky/types/app/feed/getLikes";
-import type {
-  ProfileView,
-  ProfileViewDetailed,
-} from "@atcute/bluesky/types/app/actor/defs";
-import type { ThreadViewPost } from "@atcute/bluesky/types/app/feed/defs";
-import LikeButton from "~/components/LikeButton";
-import { Trans, useLingui } from "@lingui/react/macro";
-import LoadErrorAlert from "~/components/LoadErrorAlert";
 
 function Actor({ actor }: { actor: ProfileView | ProfileViewDetailed }) {
   return (
