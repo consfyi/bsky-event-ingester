@@ -81,7 +81,7 @@ function Header() {
         borderBottom: "1px solid var(--mantine-color-default-border)",
         position: "sticky",
         top: "0px",
-        zIndex: 200,
+        zIndex: "var(--mantine-z-index-app)",
       }}
     >
       <Container size="lg" p="sm">

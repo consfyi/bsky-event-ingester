@@ -177,43 +177,57 @@ function ConsTable({}: {}) {
   }
 
   return (
-    <>
-      <Table>
-        <Table.Tbody>
-          {cons.length > 0
-            ? Array.from(
-                monthRange(
-                  setDate(cons[0].start, 1),
-                  addMonths(setDate(cons[cons.length - 1].start, 1), 1)
-                )
-              ).map((date) => {
-                const groupKey = formatDate(date, "yyyy-MM");
-                return (
-                  <Fragment key={groupKey}>
-                    <Table.Tr bg="var(--mantine-color-default-hover)">
-                      <Table.Th>
+    <Table>
+      <Table.Tbody>
+        {cons.length > 0
+          ? Array.from(
+              monthRange(
+                setDate(cons[0].start, 1),
+                addMonths(setDate(cons[cons.length - 1].start, 1), 1)
+              )
+            ).map((date) => {
+              const groupKey = formatDate(date, "yyyy-MM");
+              return (
+                <Fragment key={groupKey}>
+                  <Table.Tr
+                    bg="var(--mantine-color-default-hover)"
+                    pos="sticky"
+                    top={51}
+                    style={{
+                      zIndex: 3,
+                      borderBottom: "none",
+                    }}
+                  >
+                    <Table.Th p={0}>
+                      <Box
+                        p="var(--table-vertical-spacing) var(--table-horizontal-spacing, var(--mantine-spacing-xs))"
+                        style={{
+                          borderBottom:
+                            "calc(0.0625rem * var(--mantine-scale)) solid var(--table-border-color)",
+                        }}
+                      >
                         <Text fw={500} size="md">
                           {i18n.date(date, {
                             month: "long",
                             year: "numeric",
                           })}
                         </Text>
-                      </Table.Th>
-                    </Table.Tr>
-                    {(consByMonth[groupKey] ?? []).map((con) => (
-                      <ConTableRow
-                        key={con.identifier}
-                        con={con}
-                        post={conPosts[con.rkey]}
-                      />
-                    ))}
-                  </Fragment>
-                );
-              })
-            : null}
-        </Table.Tbody>
-      </Table>
-    </>
+                      </Box>
+                    </Table.Th>
+                  </Table.Tr>
+                  {(consByMonth[groupKey] ?? []).map((con) => (
+                    <ConTableRow
+                      key={con.identifier}
+                      con={con}
+                      post={conPosts[con.rkey]}
+                    />
+                  ))}
+                </Fragment>
+              );
+            })
+          : null}
+      </Table.Tbody>
+    </Table>
   );
 }
 
