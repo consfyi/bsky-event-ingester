@@ -1,5 +1,5 @@
 import type { PostView } from "@atcute/bluesky/types/app/feed/defs";
-import { Plural, Trans, useLingui } from "@lingui/react/macro";
+import { Trans, useLingui } from "@lingui/react/macro";
 import {
   Alert,
   Anchor,
@@ -11,19 +11,23 @@ import {
   Table,
   Text,
   ThemeIcon,
-  Tooltip,
 } from "@mantine/core";
 import type { MetaFunction } from "@remix-run/node";
 import { Link } from "@remix-run/react";
 import {
   IconBrandBluesky,
-  IconCalendarMonth,
+  IconCalendarWeek,
   IconMapPin,
   IconPaw,
   IconUsers,
 } from "@tabler/icons-react";
-import { addMonths, format as formatDate, getDay, setDate } from "date-fns";
-import { differenceInDays } from "date-fns/fp";
+import {
+  addMonths,
+  format as formatDate,
+  getDay,
+  getYear,
+  setDate,
+} from "date-fns";
 import { groupBy } from "lodash-es";
 import { Fragment, useMemo } from "react";
 import LikeButton from "~/components/LikeButton";
@@ -48,20 +52,8 @@ function ConTableRow({ con, post }: { con: Con; post: PostView }) {
 
   const likeCountWithoutSelf =
     (post.likeCount || 0) - (post.viewer?.like != null ? 1 : 0);
-  const duration = differenceInDays(con.start, con.end);
 
   const { i18n } = useLingui();
-
-  const dateTimeFormat = useMemo(
-    () =>
-      new Intl.DateTimeFormat(i18n.locale, {
-        weekday: "short",
-        day: "numeric",
-        month: "short",
-        year: "numeric",
-      }),
-    [i18n]
-  );
 
   return (
     <Table.Tr key={con.identifier}>
@@ -119,15 +111,19 @@ function ConTableRow({ con, post }: { con: Con; post: PostView }) {
             <Text size="sm" truncate>
               <IconUsers size={12} />{" "}
               {likeCountWithoutSelf + (isAttending ? 1 : 0)} •{" "}
-              <Tooltip
-                position="bottom"
-                label={dateTimeFormat.formatRange(con.start, con.end)}
-              >
-                <span>
-                  <IconCalendarMonth size={12} />{" "}
-                  <Plural value={duration} one="1 day" other="# days" />
-                </span>
-              </Tooltip>{" "}
+              <IconCalendarWeek size={12} />{" "}
+              <Trans>
+                ends{" "}
+                {i18n.date(con.end, {
+                  weekday: "short",
+                  day: "numeric",
+                  month: "short",
+                  year:
+                    getYear(con.start) != getYear(con.end)
+                      ? "numeric"
+                      : undefined,
+                })}
+              </Trans>{" "}
               • <IconMapPin size={12} />{" "}
               <Anchor
                 href={`https://www.google.com/maps?q=${con.location}`}

@@ -12,56 +12,57 @@ msgstr ""
 "Plural-Forms: \n"
 
 #. placeholder {0}: likeCountWithoutSelf + 1
-#: app/routes/cons.$identifier.tsx:209
+#: app/routes/cons.$identifier.tsx:199
 msgctxt "attendee count, including you"
 msgid "{0} including you"
 msgstr "{0} including you"
 
-#: app/routes/_index.tsx:135
-msgid "{duration, plural, one {1 day} other {# days}}"
-msgstr "{duration, plural, one {1 day} other {# days}}"
-
-#: app/routes/cons.$identifier.tsx:213
+#: app/routes/cons.$identifier.tsx:203
 msgctxt "attendee count"
 msgid "{likeCountWithoutSelf}"
 msgstr "{likeCountWithoutSelf}"
 
-#: app/routes/_index.tsx:235
+#: app/routes/_index.tsx:231
 msgid "<0>This the website for the <1><2/> @conlabels.furryli.st</1> service. For the full experience, please log in. You’ll be able to:</0><3><4>Tell people which cons you’re going to (you can also do this by liking the con post on Bluesky).</4><5>See who you follow is going to a con.</5></3><6>A huge thank you to <7>furrycons.com</7> who provides all the data on conventions!</6>"
 msgstr "<0>This the website for the <1><2/> @conlabels.furryli.st</1> service. For the full experience, please log in. You’ll be able to:</0><3><4>Tell people which cons you’re going to (you can also do this by liking the con post on Bluesky).</4><5>See who you follow is going to a con.</5></3><6>A huge thank you to <7>furrycons.com</7> who provides all the data on conventions!</6>"
 
-#: app/components/LoadErrorAlert.tsx:9
+#: app/components/LoadErrorAlert.tsx:14
 msgid "An error occurred while attempting to load this data."
 msgstr "An error occurred while attempting to load this data."
 
-#: app/routes/cons.$identifier.tsx:205
+#: app/routes/cons.$identifier.tsx:195
 msgid "Attendees"
 msgstr "Attendees"
 
-#: app/components/LikeButton.tsx:65
+#: app/components/LikeButton.tsx:22
 msgid "Attending"
 msgstr "Attending"
 
-#: app/components/LoadErrorAlert.tsx:7
+#. placeholder {0}: i18n.date(con.end, { weekday: "short", day: "numeric", month: "short", year: getYear(con.start) != getYear(con.end) ? "numeric" : undefined, })
+#: app/routes/_index.tsx:115
+msgid "ends {0}"
+msgstr "ends {0}"
+
+#: app/components/LoadErrorAlert.tsx:10
 msgid "Error"
 msgstr "Error"
 
-#: app/root.tsx:193
+#: app/root.tsx:191
 msgid "Log in"
 msgstr "Log in"
 
-#: app/components/LikeButton.tsx:65
+#: app/components/LikeButton.tsx:22
 msgid "Not attending"
 msgstr "Not attending"
 
-#: app/routes/cons.$identifier.tsx:237
+#: app/routes/cons.$identifier.tsx:222
 msgid "People you don’t follow"
 msgstr "People you don’t follow"
 
-#: app/routes/cons.$identifier.tsx:127
+#: app/routes/cons.$identifier.tsx:113
 msgid "View Bluesky Post"
 msgstr "View Bluesky Post"
 
-#: app/routes/_index.tsx:233
+#: app/routes/_index.tsx:229
 msgid "Welcome!"
 msgstr "Welcome!"
