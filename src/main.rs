@@ -809,6 +809,10 @@ async fn service_jetstream_once(
 
         metrics::gauge!("jetstream_cursor").set(next_cursor as f64);
 
+        let mut tx = db_conn.begin().await?;
+        sqlx::query!(r#"SET LOCAL synchronous_commit TO OFF"#)
+            .execute(&mut *tx)
+            .await?;
         sqlx::query!(
             r#"
             INSERT INTO jetstream_cursor (cursor) VALUES ($1)
@@ -816,8 +820,9 @@ async fn service_jetstream_once(
             "#,
             next_cursor as i64,
         )
-        .execute(&mut *db_conn)
+        .execute(&mut *tx)
         .await?;
+        tx.commit().await?;
 
         cursor = Some(next_cursor);
     }
