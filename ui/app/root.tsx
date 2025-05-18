@@ -9,7 +9,7 @@ import {
   resolveFromService,
   Session,
 } from "@atcute/oauth-browser-client";
-import { Trans } from "@lingui/react/macro";
+import { Trans, useLingui } from "@lingui/react/macro";
 import {
   Anchor,
   Avatar,
@@ -35,6 +35,7 @@ import {
   Link,
   Links,
   Meta,
+  MetaFunction,
   Outlet,
   Scripts,
   ScrollRestoration,
@@ -65,11 +66,21 @@ export const links: LinksFunction = () => {
   ];
 };
 
+export const meta: MetaFunction = () => {
+  return [
+    {
+      name: "description",
+      content: "Which furry conventions are you going to?",
+    },
+  ];
+};
+
 function Header() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [handle, setHandle] = useState("");
   const [pending, setIsPending] = useState(false);
 
+  const { t } = useLingui();
   const client = useClient();
   const { data: self, isLoading: selfIsLoading } = useSelf();
   const { isLoading: selfFollowsIsLoading } = useSelfFollows();
@@ -86,9 +97,18 @@ function Header() {
     >
       <Container size="lg" p="sm">
         <Group justify="space-between" wrap="nowrap">
-          <Anchor<typeof Link> component={Link} to="/">
+          <Anchor<typeof Link>
+            component={Link}
+            to="/"
+            aria-label={clientMetadata.client_name}
+          >
             <Group gap={7}>
-              <Image src="/logo.png" h={26} w={26} />
+              <Image
+                src="/logo.png"
+                h={26}
+                w={26}
+                alt={clientMetadata.client_name}
+              />
               <Text fw={500} size="lg" lh={1} visibleFrom="xs">
                 {clientMetadata.client_name}
               </Text>
@@ -108,14 +128,18 @@ function Header() {
                 }}
               >
                 <Menu.Target>
-                  <UnstyledButton>
+                  <UnstyledButton aria-label={`@${self.handle}`}>
                     <Group gap={7} wrap="nowrap">
                       <Box pos="relative">
                         <LoadingOverlay
                           visible={selfFollowsIsLoading}
                           loaderProps={{ size: "sm" }}
                         />
-                        <Avatar src={self.avatar} size="sm" />
+                        <Avatar
+                          src={self.avatar}
+                          alt={`@${self.handle}`}
+                          size="sm"
+                        />
                       </Box>
                       <Text fw={500} size="sm" lh={1} mr={3} visibleFrom="xs">
                         @{self.handle}
@@ -203,7 +227,7 @@ function Header() {
                     }}
                   >
                     <Menu.Target>
-                      <Button size="xs" px={4}>
+                      <Button size="xs" px={4} title={t`More log in options`}>
                         <IconChevronDown size={14} />
                       </Button>
                     </Menu.Target>

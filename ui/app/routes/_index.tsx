@@ -53,7 +53,7 @@ function ConTableRow({ con, post }: { con: Con; post: PostView }) {
   const likeCountWithoutSelf =
     (post.likeCount || 0) - (post.viewer?.like != null ? 1 : 0);
 
-  const { i18n } = useLingui();
+  const { i18n, t } = useLingui();
 
   return (
     <Table.Tr key={con.identifier}>
@@ -109,9 +109,9 @@ function ConTableRow({ con, post }: { con: Con; post: PostView }) {
               </Text>
             </Group>
             <Text size="sm" truncate>
-              <IconUsers size={12} />{" "}
+              <IconUsers title={t`Attendees`} size={12} />{" "}
               {likeCountWithoutSelf + (isAttending ? 1 : 0)} •{" "}
-              <IconCalendarWeek size={12} />{" "}
+              <IconCalendarWeek title={t`End date`} size={12} />{" "}
               <Trans>
                 ends{" "}
                 {i18n.date(con.end, {
@@ -124,7 +124,7 @@ function ConTableRow({ con, post }: { con: Con; post: PostView }) {
                       : undefined,
                 })}
               </Trans>{" "}
-              • <IconMapPin size={12} />{" "}
+              • <IconMapPin title={t`Location`} size={12} />{" "}
               <Anchor
                 href={`https://www.google.com/maps?q=${con.location}`}
                 target="_blank"

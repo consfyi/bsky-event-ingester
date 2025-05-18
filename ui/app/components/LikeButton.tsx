@@ -1,4 +1,4 @@
-import { Trans } from "@lingui/react/macro";
+import { Trans, useLingui } from "@lingui/react/macro";
 import { ActionIcon, ActionIconProps, Tooltip } from "@mantine/core";
 import { IconHeart, IconHeartFilled } from "@tabler/icons-react";
 import { useLocalAttending } from "./LocalAttendingContextProvider";
@@ -15,6 +15,7 @@ export default function LikeButton({
   iconSize = iconSize ?? 16;
 
   const { isAttending, setIsAttending } = useLocalAttending(conId);
+  const { t } = useLingui();
 
   return (
     <Tooltip
@@ -24,6 +25,8 @@ export default function LikeButton({
     >
       <ActionIcon
         color={isAttending ? "red" : "dimmed"}
+        aria-pressed={isAttending}
+        aria-label={t`Toggle attending`}
         variant="transparent"
         size={size}
         onClick={() => setIsAttending(!isAttending)}

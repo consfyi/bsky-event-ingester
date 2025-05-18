@@ -65,7 +65,7 @@ function Actor({ actor }: { actor: ProfileView | ProfileViewDetailed }) {
             </div>
           }
         >
-          <Avatar src={actor.avatar} />
+          <Avatar src={actor.avatar} alt={`@${actor.handle}`} />
         </Tooltip>
         <div style={{ flex: 1, minWidth: 0 }}>
           <Text size="sm" fw={500} truncate>
@@ -82,7 +82,7 @@ function Actor({ actor }: { actor: ProfileView | ProfileViewDetailed }) {
 }
 
 function Header({ con, thread }: { con: Con; thread: ThreadViewPost }) {
-  const { i18n } = useLingui();
+  const { i18n, t } = useLingui();
 
   const dateTimeFormat = useMemo(
     () =>
@@ -110,17 +110,18 @@ function Header({ con, thread }: { con: Con; thread: ThreadViewPost }) {
           rel="noreferrer"
           size="xs"
         >
-          <IconExternalLink size={12} /> <Trans>View Bluesky Post</Trans>
+          <IconExternalLink title={t`View Bluesky Post`} size={12} />{" "}
+          <Trans>View Bluesky Post</Trans>
         </Anchor>
       </Group>
       <Box mt={4}>
         <Text size="sm" mb={5}>
-          <IconCalendar size={12} />{" "}
+          <IconCalendar title={t`Date`} size={12} />{" "}
           {dateTimeFormat.formatRange(con.start, con.end)}
         </Text>
 
         <Text size="sm" mb={5}>
-          <IconMapPin size={12} />{" "}
+          <IconMapPin title={t`Location`} size={12} />{" "}
           <Anchor
             href={`https://www.google.com/maps?q=${con.location}`}
             target="_blank"
@@ -134,7 +135,7 @@ function Header({ con, thread }: { con: Con; thread: ThreadViewPost }) {
         </Text>
 
         <Text size="sm" mb={5}>
-          <IconLink size={12} />{" "}
+          <IconLink title={t`Link`} size={12} />{" "}
           <Anchor href={con.url} target="_blank" rel="noreferrer">
             {con.url.replace(/https?:\/\//, "")}
           </Anchor>
