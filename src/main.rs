@@ -1,5 +1,4 @@
-mod base26;
-mod labels;
+use furcons_bsky_labeler::*;
 
 use atrium_api::types::{Collection as _, TryFromUnknown as _, TryIntoUnknown as _};
 use futures::{SinkExt as _, StreamExt as _};
