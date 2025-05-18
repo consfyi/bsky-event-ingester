@@ -891,57 +891,77 @@ async fn main() -> Result<(), anyhow::Error> {
 
     let db_pool = sqlx::PgPool::connect(&config.postgres_url).await?;
 
+    // Listen to changes on the label channel.
+    let mut pg_listener = sqlx::postgres::PgListener::connect_with(
+        &sqlx::pool::PoolOptions::<sqlx::Postgres>::new()
+            .max_connections(1)
+            .max_lifetime(None)
+            .idle_timeout(None)
+            .connect_with((*db_pool.connect_options()).clone())
+            .await?,
+    )
+    .await?;
+    pg_listener.ignore_pool_close_event(true);
+    pg_listener.listen("labels").await?;
+
+    log::info!("syncing initial labels");
+
     let listener = tokio::net::TcpListener::bind(&config.bind).await?;
 
+    let metrics_handle =
+        metrics_exporter_prometheus::PrometheusBuilder::new().install_recorder()?;
+
+    let app = axum::Router::new()
+        .nest(
+            "/xrpc",
+            axum::Router::new().route(
+                &format!(
+                    "/{}",
+                    atrium_api::com::atproto::label::subscribe_labels::NSID
+                ),
+                axum::routing::get(subscribe_labels),
+            ),
+        )
+        .route(
+            "/metrics",
+            axum::routing::get(|| async move { metrics_handle.render() }),
+        )
+        .route("/", axum::routing::get(|| async { ">:3" }))
+        .with_state(AppState {
+            db_pool: db_pool.clone(),
+            notify_recv,
+        });
+
+    sync_labels(
+        &config.ics_url,
+        &config.ui_endpoint,
+        &did,
+        &agent,
+        events_state.clone(),
+    )
+    .await?;
+
     tokio::try_join!(
-        {
-            log::info!("syncing initial labels");
-
-            sync_labels(
-                &config.ics_url,
-                &config.ui_endpoint,
-                &did,
-                &agent,
-                events_state.clone(),
-            )
-            .await?;
-
-            async {
-                // Sync labels.
-                loop {
-                    tokio::time::sleep(std::time::Duration::from_secs(
-                        config.label_sync_delay_secs,
-                    ))
+        async {
+            // Sync labels.
+            loop {
+                tokio::time::sleep(std::time::Duration::from_secs(config.label_sync_delay_secs))
                     .await;
-                    log::info!("syncing labels");
-                    sync_labels(
-                        &config.ics_url,
-                        &config.ui_endpoint,
-                        &did,
-                        &agent,
-                        events_state.clone(),
-                    )
-                    .await?;
-                }
-
-                #[allow(unreachable_code)]
-                Ok::<_, anyhow::Error>(())
+                log::info!("syncing labels");
+                sync_labels(
+                    &config.ics_url,
+                    &config.ui_endpoint,
+                    &did,
+                    &agent,
+                    events_state.clone(),
+                )
+                .await?;
             }
+
+            #[allow(unreachable_code)]
+            Ok::<_, anyhow::Error>(())
         },
         async {
-            // Listen to changes on the label channel.
-            let mut pg_listener = sqlx::postgres::PgListener::connect_with(
-                &sqlx::pool::PoolOptions::<sqlx::Postgres>::new()
-                    .max_connections(1)
-                    .max_lifetime(None)
-                    .idle_timeout(None)
-                    .connect_with((*db_pool.connect_options()).clone())
-                    .await?,
-            )
-            .await?;
-            pg_listener.ignore_pool_close_event(true);
-            pg_listener.listen("labels").await?;
-
             loop {
                 pg_listener.recv().await?;
                 notify_send.send(())?;
@@ -970,39 +990,13 @@ async fn main() -> Result<(), anyhow::Error> {
             #[allow(unreachable_code)]
             Ok::<_, anyhow::Error>(())
         },
-        {
-            let metrics_handle =
-                metrics_exporter_prometheus::PrometheusBuilder::new().install_recorder()?;
+        async {
+            // Serve labeler.
+            axum::serve(listener, app).await?;
+            unreachable!();
 
-            let app = axum::Router::new()
-                .nest(
-                    "/xrpc",
-                    axum::Router::new().route(
-                        &format!(
-                            "/{}",
-                            atrium_api::com::atproto::label::subscribe_labels::NSID
-                        ),
-                        axum::routing::get(subscribe_labels),
-                    ),
-                )
-                .route(
-                    "/metrics",
-                    axum::routing::get(move || async move { metrics_handle.render() }),
-                )
-                .route("/", axum::routing::get(|| async { ">:3" }))
-                .with_state(AppState {
-                    db_pool: db_pool.clone(),
-                    notify_recv,
-                });
-
-            async {
-                // Serve labeler.
-                axum::serve(listener, app).await?;
-                unreachable!();
-
-                #[allow(unreachable_code)]
-                Ok::<_, anyhow::Error>(())
-            }
+            #[allow(unreachable_code)]
+            Ok::<_, anyhow::Error>(())
         }
     )?;
 
