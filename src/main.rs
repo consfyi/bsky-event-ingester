@@ -523,41 +523,6 @@ impl Subscriber {
     }
 }
 
-async fn send_labels_since_seq(
-    mut seq: i64,
-    db_conn: &mut sqlx::PgConnection,
-    subscriber: &mut Subscriber,
-) -> Result<i64, anyhow::Error> {
-    let mut rows = sqlx::query!(
-        r#"
-        SELECT seq, payload
-        FROM labels
-        WHERE seq > $1
-        "#,
-        seq
-    )
-    .fetch(&mut *db_conn);
-
-    while let Some(row) = rows.next().await {
-        let row = row?;
-
-        subscriber
-            .send(
-                &atrium_api::com::atproto::label::subscribe_labels::LabelsData {
-                    seq: row.seq,
-                    labels: vec![serde_ipld_dagcbor::from_slice::<
-                        atrium_api::com::atproto::label::defs::Label,
-                    >(&row.payload)?],
-                }
-                .into(),
-            )
-            .await?;
-        seq = row.seq;
-    }
-
-    Ok(seq)
-}
-
 async fn subscribe_labels(
     axum::extract::State(app_state): axum::extract::State<AppState>,
     ws: axum::extract::ws::WebSocketUpgrade,
@@ -572,14 +537,14 @@ async fn subscribe_labels(
         let mut subscriber = Subscriber::new(sink);
 
         let mut notify_recv = app_state.notify_recv.clone();
+        notify_recv.mark_changed();
 
         match async {
             let mut seq = {
-                let mut db_conn = app_state.db_pool.acquire().await?;
-
-                let seq = if let Some(cursor) = params.cursor {
+                if let Some(cursor) = params.cursor {
                     cursor
                 } else {
+                    let mut db_conn = app_state.db_pool.acquire().await?;
                     sqlx::query!(
                         r#"
                         SELECT COALESCE((SELECT MAX(seq) FROM labels), 0) AS "seq!"
@@ -588,9 +553,7 @@ async fn subscribe_labels(
                     .fetch_one(&mut *db_conn)
                     .await?
                     .seq
-                };
-
-                send_labels_since_seq(seq, &mut db_conn, &mut subscriber).await?
+                }
             };
 
             loop {
@@ -601,9 +564,36 @@ async fn subscribe_labels(
                         };
                         let _ = msg?;
                     }
-                    _ = notify_recv.changed() => {
+                    msg = notify_recv.changed() => {
+                        let _ = msg?;
                         let mut db_conn = app_state.db_pool.acquire().await?;
-                        seq = send_labels_since_seq(seq, &mut db_conn, &mut subscriber).await?;
+
+                        let mut rows = sqlx::query!(
+                            r#"
+                            SELECT seq, payload
+                            FROM labels
+                            WHERE seq > $1
+                            "#,
+                            seq
+                        )
+                        .fetch(&mut *db_conn);
+
+                        while let Some(row) = rows.next().await {
+                            let row = row?;
+
+                            subscriber
+                                .send(
+                                    &atrium_api::com::atproto::label::subscribe_labels::LabelsData {
+                                        seq: row.seq,
+                                        labels: vec![serde_ipld_dagcbor::from_slice::<
+                                            atrium_api::com::atproto::label::defs::Label,
+                                        >(&row.payload)?],
+                                    }
+                                    .into(),
+                                )
+                                .await?;
+                            seq = row.seq;
+                        }
                     }
                 };
             }
