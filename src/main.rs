@@ -651,6 +651,7 @@ async fn service_jetstream(
         compression: jetstream_oxide::JetstreamCompression::Zstd,
         wanted_collections: vec![atrium_api::app::bsky::feed::Like::nsid()],
         cursor: cursor.map(|cursor| chrono::DateTime::from_timestamp_micros(cursor).unwrap()),
+        max_retries: 0,
         ..Default::default()
     })?;
 
