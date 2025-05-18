@@ -52,6 +52,17 @@ function ConTableRow({ con, post }: { con: Con; post: PostView }) {
 
   const { i18n } = useLingui();
 
+  const dateTimeFormat = useMemo(
+    () =>
+      new Intl.DateTimeFormat(i18n.locale, {
+        weekday: "short",
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+      }),
+    [i18n]
+  );
+
   return (
     <Table.Tr key={con.identifier}>
       <Table.Td
@@ -116,23 +127,7 @@ function ConTableRow({ con, post }: { con: Con; post: PostView }) {
               {likeCountWithoutSelf + (isSelfAttending ? 1 : 0)} •{" "}
               <Tooltip
                 position="bottom"
-                label={
-                  <Trans>
-                    {i18n.date(con.start, {
-                      weekday: "short",
-                      day: "numeric",
-                      month: "long",
-                      year: "numeric",
-                    })}{" "}
-                    –{" "}
-                    {i18n.date(con.end, {
-                      weekday: "short",
-                      day: "numeric",
-                      month: "long",
-                      year: "numeric",
-                    })}
-                  </Trans>
-                }
+                label={dateTimeFormat.formatRange(con.start, con.end)}
               >
                 <span>
                   <IconCalendarMonth size={12} />{" "}

@@ -91,6 +91,17 @@ function Header({
 }) {
   const { i18n } = useLingui();
 
+  const dateTimeFormat = useMemo(
+    () =>
+      new Intl.DateTimeFormat(i18n.locale, {
+        weekday: "short",
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+      }),
+    [i18n]
+  );
+
   return (
     <Box mt="sm">
       <Group gap={7} wrap="nowrap">
@@ -119,21 +130,7 @@ function Header({
       <Box mt={4}>
         <Text size="sm" mb={5}>
           <IconCalendar size={12} />{" "}
-          <Trans>
-            {i18n.date(con.start, {
-              weekday: "short",
-              day: "numeric",
-              month: "long",
-              year: "numeric",
-            })}{" "}
-            –{" "}
-            {i18n.date(con.end, {
-              weekday: "short",
-              day: "numeric",
-              month: "long",
-              year: "numeric",
-            })}
-          </Trans>
+          {dateTimeFormat.formatRange(con.start, con.end)}
         </Text>
 
         <Text size="sm" mb={5}>
