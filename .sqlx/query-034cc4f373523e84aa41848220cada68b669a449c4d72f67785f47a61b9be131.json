@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n                INSERT INTO labels (val, uri, neg, payload, like_rkey)\n                VALUES ($1, $2, $3, $4, $5)\n                RETURNING seq\n                ",
+  "query": "\n            INSERT INTO labels (val, uri, neg, payload, like_rkey)\n            VALUES ($1, $2, $3, $4, $5)\n            RETURNING seq\n            ",
   "describe": {
     "columns": [
       {
@@ -22,5 +22,5 @@
       false
     ]
   },
-  "hash": "fbe993cb6a0f7a55c34dd7befcdb204d9ac2e4c6a458fbaa98dca12d0b0cd002"
+  "hash": "034cc4f373523e84aa41848220cada68b669a449c4d72f67785f47a61b9be131"
 }

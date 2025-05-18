@@ -1,4 +1,5 @@
 mod base26;
+mod labels;
 
 use atrium_api::types::{Collection as _, TryFromUnknown as _, TryIntoUnknown as _};
 use futures::{SinkExt as _, StreamExt as _};
@@ -634,85 +635,6 @@ struct AppState {
     events_state: std::sync::Arc<tokio::sync::Mutex<EventsState>>,
 }
 
-#[derive(Debug)]
-struct PendingLabel {
-    cts: chrono::DateTime<chrono::Utc>,
-    exp: Option<chrono::DateTime<chrono::Utc>>,
-    cid: Option<cid::Cid>,
-    neg: bool,
-    uri: String,
-    val: String,
-}
-
-fn sign_label(
-    keypair: &atrium_crypto::keypair::Secp256k1Keypair,
-    mut label: atrium_api::com::atproto::label::defs::Label,
-) -> Result<atrium_api::com::atproto::label::defs::Label, anyhow::Error> {
-    label.sig = None;
-
-    let encoded_label = serde_ipld_dagcbor::to_vec(&label)?;
-    label.sig = Some(keypair.sign(&encoded_label)?);
-
-    Ok(label)
-}
-
-impl AppState {
-    async fn add_label(
-        &self,
-        db_conn: &mut sqlx::PgConnection,
-        label: PendingLabel,
-        like_rkey: &str,
-    ) -> Result<(), anyhow::Error> {
-        let signed_label = sign_label(
-            &self.keypair,
-            atrium_api::com::atproto::label::defs::LabelData {
-                cid: label
-                    .cid
-                    .map(|cid| atrium_api::types::string::Cid::new(cid)),
-                cts: atrium_api::types::string::Datetime::new(label.cts.fixed_offset()),
-                exp: label
-                    .exp
-                    .map(|exp| atrium_api::types::string::Datetime::new(exp.fixed_offset()))
-                    .clone(),
-                neg: if label.neg { Some(true) } else { None },
-                src: self.did.clone(),
-                uri: label.uri.clone(),
-                val: label.val.clone(),
-                ver: Some(1),
-                sig: None,
-            }
-            .into(),
-        )?;
-
-        let mut tx = db_conn.begin().await?;
-
-        let seq = {
-            sqlx::query!(
-                r#"
-                INSERT INTO labels (val, uri, neg, payload, like_rkey)
-                VALUES ($1, $2, $3, $4, $5)
-                RETURNING seq
-                "#,
-                label.val,
-                label.uri,
-                label.neg,
-                serde_ipld_dagcbor::to_vec(&signed_label)?,
-                like_rkey,
-            )
-            .fetch_one(&mut *tx)
-            .await?
-            .seq
-        };
-
-        sqlx::query!("NOTIFY labels").execute(&mut *tx).await?;
-        tx.commit().await?;
-
-        metrics::gauge!("label_seq").set(seq as f64);
-
-        Ok(())
-    }
-}
-
 async fn service_jetstream(
     app_state: &AppState,
     jetstream_endpoint: &str,
@@ -786,23 +708,37 @@ async fn service_jetstream(
 
                     let event = events_state.events.get(&id).unwrap();
 
-                    let pending = PendingLabel {
-                        cts: chrono::DateTime::from_timestamp_micros(info.time_us as i64).unwrap(),
-                        exp: Some(
-                            (event.dtend + chrono::Duration::days(1))
-                                .and_time(chrono::NaiveTime::MIN)
-                                .and_utc(),
-                        ),
-                        cid: None,
-                        neg: false,
-                        uri: info.did.to_string(),
-                        val: base26::encode(event.id),
-                    };
+                    let label: atrium_api::com::atproto::label::defs::Label =
+                        atrium_api::com::atproto::label::defs::LabelData {
+                            cts: atrium_api::types::string::Datetime::new(
+                                chrono::DateTime::from_timestamp_micros(info.time_us as i64)
+                                    .unwrap()
+                                    .fixed_offset(),
+                            ),
+                            exp: Some(atrium_api::types::string::Datetime::new(
+                                (event.dtend + chrono::Duration::days(1))
+                                    .and_time(chrono::NaiveTime::MIN)
+                                    .and_utc()
+                                    .fixed_offset(),
+                            )),
+                            src: app_state.did.clone(),
+                            cid: None,
+                            neg: None,
+                            uri: info.did.to_string(),
+                            val: base26::encode(event.id),
+                            sig: None,
+                            ver: Some(1),
+                        }
+                        .into();
 
-                    log::info!("applying label: {:?}", pending);
-                    app_state
-                        .add_label(&mut *db_conn, pending, &commit.info.rkey)
-                        .await?;
+                    log::info!("applying label: {:?}", label);
+
+                    let mut tx = db_conn.begin().await?;
+                    let seq =
+                        labels::emit(&app_state.keypair, &mut tx, label, &commit.info.rkey).await?;
+                    tx.commit().await?;
+
+                    metrics::gauge!("label_seq").set(seq as f64);
                 }
                 jetstream_oxide::events::commit::CommitEvent::Delete { info, commit } => {
                     let uri = info.did.to_string();
@@ -823,19 +759,32 @@ async fn service_jetstream(
                         return Ok(());
                     };
 
-                    let pending = PendingLabel {
-                        cts: chrono::DateTime::from_timestamp_micros(info.time_us as i64).unwrap(),
-                        exp: None,
-                        cid: None,
-                        neg: true,
-                        uri,
-                        val,
-                    };
+                    let label: atrium_api::com::atproto::label::defs::Label =
+                        atrium_api::com::atproto::label::defs::LabelData {
+                            cts: atrium_api::types::string::Datetime::new(
+                                chrono::DateTime::from_timestamp_micros(info.time_us as i64)
+                                    .unwrap()
+                                    .fixed_offset(),
+                            ),
+                            exp: None,
+                            src: app_state.did.clone(),
+                            cid: None,
+                            neg: Some(true),
+                            uri: info.did.to_string(),
+                            val,
+                            sig: None,
+                            ver: Some(1),
+                        }
+                        .into();
 
-                    log::info!("removing label: {:?}", pending);
-                    app_state
-                        .add_label(&mut *db_conn, pending, &commit.rkey)
-                        .await?;
+                    log::info!("removing label: {:?}", label);
+
+                    let mut tx = db_conn.begin().await?;
+                    let seq =
+                        labels::emit(&app_state.keypair, &mut tx, label, &commit.rkey).await?;
+                    tx.commit().await?;
+
+                    metrics::gauge!("label_seq").set(seq as f64);
                 }
                 _ => {}
             }
