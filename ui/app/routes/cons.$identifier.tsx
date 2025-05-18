@@ -204,7 +204,7 @@ function Attendees({
       <Text size="md" fw={500}>
         <Trans>Attendees</Trans>{" "}
         {likes != null ? (
-          <Text size="sm" span c="dimmed">
+          <Text size="sm" span>
             {isSelfAttending ? (
               <Trans context="attendee count, including you">
                 {likeCountWithoutSelf + 1} including you
