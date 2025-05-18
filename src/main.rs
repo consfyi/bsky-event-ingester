@@ -3,6 +3,7 @@ mod base26;
 use atrium_api::types::{Collection as _, TryFromUnknown as _, TryIntoUnknown as _};
 use futures::{SinkExt as _, StreamExt as _};
 use icalendar::Component as _;
+use sqlx::Acquire as _;
 
 struct AppError(anyhow::Error);
 
@@ -480,6 +481,83 @@ async fn sync_labels(
     Ok(())
 }
 
+struct Subscriber {
+    sink: futures::prelude::stream::SplitSink<
+        axum::extract::ws::WebSocket,
+        axum::extract::ws::Message,
+    >,
+}
+
+impl Subscriber {
+    fn new(
+        sink: futures::prelude::stream::SplitSink<
+            axum::extract::ws::WebSocket,
+            axum::extract::ws::Message,
+        >,
+    ) -> Self {
+        Self { sink }
+    }
+
+    async fn send(
+        &mut self,
+        labels: &atrium_api::com::atproto::label::subscribe_labels::Labels,
+    ) -> Result<(), anyhow::Error> {
+        let mut buf = vec![];
+
+        #[derive(serde::Serialize)]
+        struct Header {
+            t: String,
+            op: i64,
+        }
+        buf.extend(serde_ipld_dagcbor::to_vec(&Header {
+            t: "#labels".to_string(),
+            op: 1,
+        })?);
+        buf.extend(serde_ipld_dagcbor::to_vec(labels)?);
+
+        self.sink
+            .send(axum::extract::ws::Message::Binary(buf.into()))
+            .await?;
+
+        Ok(())
+    }
+}
+
+async fn send_labels_since_seq(
+    mut seq: i64,
+    db_conn: &mut sqlx::PgConnection,
+    subscriber: &mut Subscriber,
+) -> Result<i64, anyhow::Error> {
+    let mut rows = sqlx::query!(
+        r#"
+        SELECT seq, payload
+        FROM labels
+        WHERE seq > $1
+        "#,
+        seq
+    )
+    .fetch(&mut *db_conn);
+
+    while let Some(row) = rows.next().await {
+        let row = row?;
+
+        subscriber
+            .send(
+                &atrium_api::com::atproto::label::subscribe_labels::LabelsData {
+                    seq: row.seq,
+                    labels: vec![serde_ipld_dagcbor::from_slice::<
+                        atrium_api::com::atproto::label::defs::Label,
+                    >(&row.payload)?],
+                }
+                .into(),
+            )
+            .await?;
+        seq = row.seq;
+    }
+
+    Ok(seq)
+}
+
 async fn subscribe_labels(
     axum::extract::State(app_state): axum::extract::State<AppState>,
     ws: axum::extract::ws::WebSocketUpgrade,
@@ -488,114 +566,75 @@ async fn subscribe_labels(
     >,
 ) -> axum::response::Response {
     ws.on_upgrade(move |socket: axum::extract::ws::WebSocket| async move {
-        {
+        log::info!("got websocket subscriber, cursor = {:?}", params.cursor);
+
+        match async {
+            let pool = sqlx::pool::PoolOptions::<sqlx::Postgres>::new()
+                .max_connections(1)
+                .max_lifetime(None)
+                .idle_timeout(None)
+                .connect_with((*app_state.db_pool.connect_options()).clone())
+                .await?;
+
+            let mut listener = sqlx::postgres::PgListener::connect_with(&pool).await?;
+            listener.ignore_pool_close_event(true);
+            listener.listen("labels").await?;
+
             let (sink, mut stream) = socket.split();
+            let mut subscriber = Subscriber::new(sink);
 
-            let subscriber = std::sync::Arc::new(tokio::sync::Mutex::new(Subscriber::new(sink)));
-            let cloned_subscriber = subscriber.clone();
+            let mut seq = {
+                let mut db_conn = listener.acquire().await?;
 
-            // 1. Lock the subscriber first, so no other thread is allowed to write to it.
-            // 2. Insert the subscriber into the map of subscribers, so any new writes will be queued.
-            // 3. If there is a cursor, catch up the subscriber.
-            // 4. Unlock the subscriber.
-            let mut subscriber = subscriber.lock().await;
+                let seq = if let Some(cursor) = params.cursor {
+                    cursor
+                } else {
+                    sqlx::query!(
+                        r#"
+                        SELECT COALESCE((SELECT MAX(seq) FROM labels), 0) AS "seq!"
+                        "#
+                    )
+                    .fetch_one(&mut *db_conn)
+                    .await?
+                    .seq
+                };
 
-            let subscriber_id = {
-                let mut subscribers_state = app_state.subscribers_state.lock().await;
-                let subscriber_id = subscribers_state.next_subscriber_id;
-                subscribers_state.next_subscriber_id += 1;
-
-                subscribers_state
-                    .subscribers
-                    .insert(subscriber_id, cloned_subscriber);
-
-                log::info!(
-                    "added websocket subscriber {}, cursor = {:?}",
-                    subscriber_id,
-                    params.cursor,
-                );
-
-                metrics::gauge!("num_subscriptions")
-                    .set(subscribers_state.subscribers.len() as f64);
-
-                subscriber_id
+                send_labels_since_seq(seq, &mut db_conn, &mut subscriber).await?
             };
 
-            match async {
-                {
-                    if let Some(cursor) = params.cursor {
-                        let mut db_conn = app_state.db_pool.acquire().await?;
-
-                        let mut pending = vec![];
-
-                        let mut rows = sqlx::query!(
-                            "
-                            SELECT seq, payload
-                            FROM labels
-                            WHERE seq > $1
-                            ",
-                            cursor
-                        )
-                        .fetch(&mut *db_conn);
-
-                        while let Some(row) = rows.next().await {
-                            let row = row?;
-
-                            pending.push(
-                                atrium_api::com::atproto::label::subscribe_labels::LabelsData {
-                                    seq: row.seq,
-                                    labels: vec![serde_ipld_dagcbor::from_slice::<
-                                        atrium_api::com::atproto::label::defs::Label,
-                                    >(
-                                        &row.payload
-                                    )?],
-                                }
-                                .into(),
-                            );
-                        }
-
-                        for labels in pending {
-                            subscriber.send(&labels).await?;
-                        }
+            loop {
+                tokio::select! {
+                    msg = stream.next() => {
+                        let Some(msg) = msg else {
+                            break;
+                        };
+                        let _ = msg?;
                     }
-                }
-
-                drop(subscriber);
-
-                while let Some(msg) = stream.next().await {
-                    let _ = msg?;
-                }
-                Ok::<_, anyhow::Error>(())
-            }
-            .await
-            {
-                Ok(_) => {}
-                Err(err) => {
-                    log::error!("subscribeLabels error: {err}");
-                }
+                    notification = listener.recv() => {
+                        let _ = notification?;
+                        let mut db_conn = listener.acquire().await?;
+                        seq = send_labels_since_seq(seq, &mut db_conn, &mut subscriber).await?;
+                    }
+                };
             }
 
-            {
-                let mut subscribers_state = app_state.subscribers_state.lock().await;
-                subscribers_state.subscribers.remove(&subscriber_id);
-
-                log::info!("removed websocket subscriber {}", subscriber_id);
-
-                metrics::gauge!("num_subscriptions")
-                    .set(subscribers_state.subscribers.len() as f64);
+            Ok::<_, anyhow::Error>(())
+        }
+        .await
+        {
+            Ok(_) => {}
+            Err(err) => {
+                log::error!("subscribeLabels error: {err}");
             }
         }
+
+        log::info!("websocket subscriber disconnected");
     })
 }
 
 struct EventsState {
     rkeys_to_ids: std::collections::HashMap<atrium_api::types::string::RecordKey, u64>,
     events: std::collections::HashMap<u64, Event>,
-}
-
-struct SubscribersState {
-    next_subscriber_id: usize,
-    subscribers: std::collections::HashMap<usize, std::sync::Arc<tokio::sync::Mutex<Subscriber>>>,
 }
 
 #[derive(Clone)]
@@ -611,7 +650,6 @@ struct AppState {
     >,
     did: atrium_api::types::string::Did,
     db_pool: sqlx::PgPool,
-    subscribers_state: std::sync::Arc<tokio::sync::Mutex<SubscribersState>>,
     events_state: std::sync::Arc<tokio::sync::Mutex<EventsState>>,
 }
 
@@ -665,91 +703,30 @@ impl AppState {
             .into(),
         )?;
 
+        let mut tx = db_conn.begin().await?;
+
         let seq = {
             sqlx::query!(
-                "
+                r#"
                 INSERT INTO labels (val, uri, neg, payload, like_rkey)
                 VALUES ($1, $2, $3, $4, $5)
                 RETURNING seq
-                ",
+                "#,
                 label.val,
                 label.uri,
                 label.neg,
                 serde_ipld_dagcbor::to_vec(&signed_label)?,
                 like_rkey,
             )
-            .fetch_one(db_conn)
+            .fetch_one(&mut *tx)
             .await?
             .seq
         };
 
+        sqlx::query!("NOTIFY labels").execute(&mut *tx).await?;
+        tx.commit().await?;
+
         metrics::gauge!("label_seq").set(seq as f64);
-
-        let labels: atrium_api::com::atproto::label::subscribe_labels::Labels =
-            atrium_api::com::atproto::label::subscribe_labels::LabelsData {
-                labels: vec![signed_label],
-                seq,
-            }
-            .into();
-
-        let subscribers = self
-            .subscribers_state
-            .lock()
-            .await
-            .subscribers
-            .values()
-            .cloned()
-            .collect::<Vec<_>>();
-
-        futures::future::join_all(subscribers.into_iter().map(move |subscriber| {
-            let labels = labels.clone();
-            async move {
-                let _ = subscriber.lock().await.send(&labels).await;
-            }
-        }))
-        .await;
-
-        Ok(())
-    }
-}
-
-struct Subscriber {
-    sink: futures::prelude::stream::SplitSink<
-        axum::extract::ws::WebSocket,
-        axum::extract::ws::Message,
-    >,
-}
-
-impl Subscriber {
-    fn new(
-        sink: futures::prelude::stream::SplitSink<
-            axum::extract::ws::WebSocket,
-            axum::extract::ws::Message,
-        >,
-    ) -> Self {
-        Self { sink }
-    }
-
-    async fn send(
-        &mut self,
-        labels: &atrium_api::com::atproto::label::subscribe_labels::Labels,
-    ) -> Result<(), anyhow::Error> {
-        let mut buf = vec![];
-
-        #[derive(serde::Serialize)]
-        struct Header {
-            t: String,
-            op: i64,
-        }
-        buf.extend(serde_ipld_dagcbor::to_vec(&Header {
-            t: "#labels".to_string(),
-            op: 1,
-        })?);
-        buf.extend(serde_ipld_dagcbor::to_vec(labels)?);
-
-        self.sink
-            .send(axum::extract::ws::Message::Binary(buf.into()))
-            .await?;
 
         Ok(())
     }
@@ -761,7 +738,7 @@ async fn service_jetstream(
 ) -> Result<(), anyhow::Error> {
     let mut cursor = {
         let mut db_conn = app_state.db_pool.acquire().await?;
-        sqlx::query!("SELECT cursor FROM jetstream_cursor")
+        sqlx::query!(r#"SELECT cursor FROM jetstream_cursor"#)
             .fetch_optional(&mut *db_conn)
             .await?
             .map(|d| d.cursor)
@@ -850,12 +827,12 @@ async fn service_jetstream(
                     let uri = info.did.to_string();
 
                     let Some(val) = sqlx::query!(
-                        "
+                        r#"
                         SELECT val FROM labels
                         WHERE like_rkey = $1 AND uri = $2 AND NOT neg
                         ORDER BY seq DESC
                         LIMIT 1
-                        ",
+                        "#,
                         commit.rkey,
                         uri
                     )
@@ -896,10 +873,10 @@ async fn service_jetstream(
         metrics::gauge!("jetstream_cursor").set(next_cursor as f64);
 
         sqlx::query!(
-            "
+            r#"
             INSERT INTO jetstream_cursor (cursor) VALUES ($1)
             ON CONFLICT ((true)) DO UPDATE SET cursor = excluded.cursor
-            ",
+            "#,
             next_cursor as i64,
         )
         .execute(&mut *db_conn)
@@ -968,10 +945,6 @@ async fn main() -> Result<(), anyhow::Error> {
         agent: agent.clone(),
         did,
         db_pool,
-        subscribers_state: std::sync::Arc::new(tokio::sync::Mutex::new(SubscribersState {
-            next_subscriber_id: 0,
-            subscribers: std::collections::HashMap::new(),
-        })),
         events_state: std::sync::Arc::new(tokio::sync::Mutex::new(EventsState {
             rkeys_to_ids: std::collections::HashMap::new(),
             events: std::collections::HashMap::new(),
