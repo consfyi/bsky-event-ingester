@@ -176,8 +176,11 @@ function Attendees({
       return [null, null];
     }
 
-    let knownLikes: Like[] = [];
-    let unknownLikes: Like[] = [];
+    let knownLikes: (ProfileView | ProfileViewDetailed)[] = [];
+    if (isSelfAttending && self != null) {
+      knownLikes.push(self);
+    }
+    let unknownLikes: (ProfileView | ProfileViewDetailed)[] = [];
 
     for (const like of likes) {
       if (self != null && like.actor.did == self.did) {
@@ -187,14 +190,14 @@ function Attendees({
         selfFollows == null || selfFollows.has(like.actor.did)
           ? knownLikes
           : unknownLikes;
-      out.push(like);
+      out.push(like.actor);
     }
 
-    knownLikes = sortBy(knownLikes, (like) => like.actor.handle);
-    unknownLikes = sortBy(unknownLikes, (like) => like.actor.handle);
+    knownLikes = sortBy(knownLikes, (actor) => actor.handle);
+    unknownLikes = sortBy(unknownLikes, (actor) => actor.handle);
 
     return [knownLikes, unknownLikes];
-  }, [self, selfFollows, likes]);
+  }, [isSelfAttending, self, selfFollows, likes]);
 
   const likeCountWithoutSelf =
     (thread.post.likeCount || 0) - (thread.post.viewer?.like != null ? 1 : 0);
@@ -219,14 +222,9 @@ function Attendees({
         <>
           {knownLikes.length > 0 ? (
             <SimpleGrid cols={{ base: 1, sm: 2, lg: 5 }} mt="xs">
-              {isSelfAttending && self != null ? (
-                <div>
-                  <Actor actor={self} />
-                </div>
-              ) : null}
-              {knownLikes.map((like) => (
-                <div key={like.actor.did}>
-                  <Actor actor={like.actor} />
+              {knownLikes.map((actor) => (
+                <div key={actor.did}>
+                  <Actor actor={actor} />
                 </div>
               ))}
             </SimpleGrid>
@@ -239,9 +237,9 @@ function Attendees({
                 mt="xs"
               />
               <SimpleGrid cols={{ base: 1, sm: 2, lg: 5 }} mt="xs">
-                {unknownLikes.map((like) => (
-                  <div key={like.actor.did}>
-                    <Actor actor={like.actor} />
+                {unknownLikes.map((actor) => (
+                  <div key={actor.did}>
+                    <Actor actor={actor} />
                   </div>
                 ))}
               </SimpleGrid>
