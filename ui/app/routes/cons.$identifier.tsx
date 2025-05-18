@@ -25,10 +25,11 @@ import {
   IconMapPin,
 } from "@tabler/icons-react";
 import { sortBy } from "lodash-es";
-import { useEffect, useMemo, useState } from "react";
+import { useContext, useEffect, useMemo } from "react";
 import LikeButton from "~/components/LikeButton";
 import LoadErrorAlert from "~/components/LoadErrorAlert";
 import { LABELER_DID } from "~/config";
+import { LocalAttendingContext } from "~/contexts";
 import {
   Con,
   useCons,
@@ -88,7 +89,7 @@ function Header({
 }: {
   con: Con;
   thread: ThreadViewPost;
-  setIsSelfAttending: React.Dispatch<React.SetStateAction<boolean>>;
+  setIsSelfAttending: (v: boolean) => void;
   isSelfAttending: boolean;
 }) {
   const { i18n } = useLingui();
@@ -109,11 +110,8 @@ function Header({
       <Group gap={7} wrap="nowrap">
         {thread.post.viewer != null ? (
           <LikeButton
-            uri={thread.post.uri}
-            cid={thread.post.cid}
             size="sm"
             iconSize={24}
-            initialLike={thread.post.viewer?.like ?? null}
             setIsLiked={setIsSelfAttending}
             isLiked={isSelfAttending}
           />
@@ -180,9 +178,6 @@ function Attendees({
     }
 
     let knownLikes: (ProfileView | ProfileViewDetailed)[] = [];
-    if (isSelfAttending && self != null) {
-      knownLikes.push(self);
-    }
     let unknownLikes: (ProfileView | ProfileViewDetailed)[] = [];
 
     for (const like of likes) {
@@ -198,6 +193,10 @@ function Attendees({
 
     knownLikes = sortBy(knownLikes, (actor) => actor.handle);
     unknownLikes = sortBy(unknownLikes, (actor) => actor.handle);
+
+    if (isSelfAttending && self != null) {
+      knownLikes.unshift(self);
+    }
 
     return [knownLikes, unknownLikes];
   }, [isSelfAttending, self, selfFollows, likes]);
@@ -262,7 +261,7 @@ export default function Index() {
   const { data: cons, error, isLoading } = useCons();
   const { identifier } = useParams();
 
-  const [isSelfAttending, setIsSelfAttending] = useState(false);
+  const { getIsAttending, setIsAttending } = useContext(LocalAttendingContext);
 
   const con =
     cons != null ? cons.find((con) => con.identifier == identifier) : null;
@@ -274,12 +273,6 @@ export default function Index() {
   const { data: thread, isLoading: threadIsLoading } = useThread(
     con != null ? `at://${LABELER_DID}/app.bsky.feed.post/${con.rkey}` : null
   );
-
-  useEffect(() => {
-    if (thread != null && thread.post.viewer != null) {
-      setIsSelfAttending(thread.post.viewer.like != null);
-    }
-  }, [thread, setIsSelfAttending]);
 
   const {
     data: likes,
@@ -312,13 +305,15 @@ export default function Index() {
     });
   }
 
+  const isSelfAttending = getIsAttending(con.identifier);
+
   return (
     <Box px="sm">
       <Header
         con={con}
         thread={thread}
         isSelfAttending={isSelfAttending}
-        setIsSelfAttending={setIsSelfAttending}
+        setIsSelfAttending={(v) => setIsAttending(con.identifier, v)}
       />
       {likesError != null ? (
         <LoadErrorAlert error={error} />

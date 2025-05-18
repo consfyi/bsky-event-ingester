@@ -5,7 +5,7 @@ import { sortBy } from "lodash-es";
 import { useContext, useMemo } from "react";
 import useSWR, { SWRConfiguration, SWRResponse } from "swr";
 import { LABELER_DID } from "~/config";
-import { ClientContext } from "./context";
+import { ClientContext } from "./contexts";
 
 export function useClient() {
   return useContext(ClientContext)!;

@@ -25,11 +25,12 @@ import {
 import { addMonths, format as formatDate, getDay, setDate } from "date-fns";
 import { differenceInDays } from "date-fns/fp";
 import { groupBy } from "lodash-es";
-import { Fragment, useMemo, useState } from "react";
+import { Fragment, useContext, useMemo } from "react";
 import LikeButton from "~/components/LikeButton";
 import LoadErrorAlert from "~/components/LoadErrorAlert";
 import { Con, useClient, useConPosts, useCons } from "~/hooks";
 import clientMetadata from "../../public/client-metadata.json";
+import { LocalAttendingContext } from "~/contexts";
 
 function* monthRange(start: Date, end: Date): Generator<Date> {
   while (start < end) {
@@ -43,9 +44,7 @@ export const meta: MetaFunction = () => {
 };
 
 function ConTableRow({ con, post }: { con: Con; post: PostView }) {
-  const [isSelfAttending, setIsSelfAttending] = useState(
-    post.viewer?.like != null
-  );
+  const { getIsAttending, setIsAttending } = useContext(LocalAttendingContext);
 
   const likeCountWithoutSelf =
     (post.likeCount || 0) - (post.viewer?.like != null ? 1 : 0);
@@ -63,6 +62,8 @@ function ConTableRow({ con, post }: { con: Con; post: PostView }) {
       }),
     [i18n]
   );
+
+  const isSelfAttending = getIsAttending(con.identifier);
 
   return (
     <Table.Tr key={con.identifier}>
@@ -105,12 +106,9 @@ function ConTableRow({ con, post }: { con: Con; post: PostView }) {
             <Group gap={7} wrap="nowrap">
               {post.viewer != null ? (
                 <LikeButton
-                  uri={post.uri}
-                  cid={post.cid}
                   size="xs"
-                  initialLike={post.viewer?.like ?? null}
                   isLiked={isSelfAttending}
-                  setIsLiked={setIsSelfAttending}
+                  setIsLiked={(v) => setIsAttending(con.identifier, v)}
                 />
               ) : null}
 
