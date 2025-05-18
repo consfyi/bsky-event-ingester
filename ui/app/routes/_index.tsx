@@ -187,34 +187,41 @@ function ConsTable({}: {}) {
     return <LoadErrorAlert error={null} />;
   }
 
-  const firstDate = setDate(cons[0].start, 1);
-  const lastDate = addMonths(setDate(cons[cons.length - 1].start, 1), 1);
-
   return (
     <>
       <Table>
         <Table.Tbody>
-          {Array.from(monthRange(firstDate, lastDate)).map((date) => {
-            const groupKey = formatDate(date, "yyyy-MM");
-            return (
-              <Fragment key={groupKey}>
-                <Table.Tr bg="var(--mantine-color-default-hover)">
-                  <Table.Th>
-                    <Text fw={500} size="md">
-                      {i18n.date(date, { month: "long", year: "numeric" })}
-                    </Text>
-                  </Table.Th>
-                </Table.Tr>
-                {(consByMonth[groupKey] ?? []).map((con) => (
-                  <ConTableRow
-                    key={con.identifier}
-                    con={con}
-                    post={conPosts[con.rkey]}
-                  />
-                ))}
-              </Fragment>
-            );
-          })}
+          {cons.length > 0
+            ? Array.from(
+                monthRange(
+                  setDate(cons[0].start, 1),
+                  addMonths(setDate(cons[cons.length - 1].start, 1), 1)
+                )
+              ).map((date) => {
+                const groupKey = formatDate(date, "yyyy-MM");
+                return (
+                  <Fragment key={groupKey}>
+                    <Table.Tr bg="var(--mantine-color-default-hover)">
+                      <Table.Th>
+                        <Text fw={500} size="md">
+                          {i18n.date(date, {
+                            month: "long",
+                            year: "numeric",
+                          })}
+                        </Text>
+                      </Table.Th>
+                    </Table.Tr>
+                    {(consByMonth[groupKey] ?? []).map((con) => (
+                      <ConTableRow
+                        key={con.identifier}
+                        con={con}
+                        post={conPosts[con.rkey]}
+                      />
+                    ))}
+                  </Fragment>
+                );
+              })
+            : null}
         </Table.Tbody>
       </Table>
     </>
