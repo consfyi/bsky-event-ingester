@@ -109,7 +109,8 @@ function ConTableRow({ con, post }: { con: Con; post: PostView }) {
                   cid={post.cid}
                   size="xs"
                   initialLike={post.viewer?.like ?? null}
-                  setLikeState={setIsSelfAttending}
+                  isLiked={isSelfAttending}
+                  setIsLiked={setIsSelfAttending}
                 />
               ) : null}
 

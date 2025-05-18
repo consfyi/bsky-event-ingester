@@ -83,11 +83,13 @@ function Actor({ actor }: { actor: ProfileView | ProfileViewDetailed }) {
 function Header({
   con,
   thread,
-  setLikeState,
+  setIsSelfAttending,
+  isSelfAttending,
 }: {
   con: Con;
   thread: ThreadViewPost;
-  setLikeState: (v: boolean) => void;
+  setIsSelfAttending: React.Dispatch<React.SetStateAction<boolean>>;
+  isSelfAttending: boolean;
 }) {
   const { i18n } = useLingui();
 
@@ -112,7 +114,8 @@ function Header({
             size="sm"
             iconSize={24}
             initialLike={thread.post.viewer?.like ?? null}
-            setLikeState={setLikeState}
+            setIsLiked={setIsSelfAttending}
+            isLiked={isSelfAttending}
           />
         ) : null}
         <Text size="lg" fw={500}>
@@ -311,7 +314,12 @@ export default function Index() {
 
   return (
     <Box px="sm">
-      <Header con={con} thread={thread} setLikeState={setIsSelfAttending} />
+      <Header
+        con={con}
+        thread={thread}
+        isSelfAttending={isSelfAttending}
+        setIsSelfAttending={setIsSelfAttending}
+      />
       {likesError != null ? (
         <LoadErrorAlert error={error} />
       ) : likesIsLoading ? (
