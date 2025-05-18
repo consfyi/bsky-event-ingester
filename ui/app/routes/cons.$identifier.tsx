@@ -25,11 +25,11 @@ import {
   IconMapPin,
 } from "@tabler/icons-react";
 import { sortBy } from "lodash-es";
-import { useContext, useEffect, useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import LikeButton from "~/components/LikeButton";
 import LoadErrorAlert from "~/components/LoadErrorAlert";
+import { useLocalAttendingContext } from "~/components/LocalAttendingContextProvider";
 import { LABELER_DID } from "~/config";
-import { LocalAttendingContext } from "~/contexts";
 import {
   Con,
   useCons,
@@ -261,7 +261,7 @@ export default function Index() {
   const { data: cons, error, isLoading } = useCons();
   const { identifier } = useParams();
 
-  const { getIsAttending, setIsAttending } = useContext(LocalAttendingContext);
+  const { getIsAttending, setIsAttending } = useLocalAttendingContext();
 
   const con =
     cons != null ? cons.find((con) => con.identifier == identifier) : null;

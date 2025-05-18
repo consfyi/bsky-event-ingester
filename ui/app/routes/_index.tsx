@@ -25,12 +25,12 @@ import {
 import { addMonths, format as formatDate, getDay, setDate } from "date-fns";
 import { differenceInDays } from "date-fns/fp";
 import { groupBy } from "lodash-es";
-import { Fragment, useContext, useMemo } from "react";
+import { Fragment, useMemo } from "react";
 import LikeButton from "~/components/LikeButton";
 import LoadErrorAlert from "~/components/LoadErrorAlert";
 import { Con, useClient, useConPosts, useCons } from "~/hooks";
 import clientMetadata from "../../public/client-metadata.json";
-import { LocalAttendingContext } from "~/contexts";
+import { useLocalAttendingContext } from "~/components/LocalAttendingContextProvider";
 
 function* monthRange(start: Date, end: Date): Generator<Date> {
   while (start < end) {
@@ -44,7 +44,7 @@ export const meta: MetaFunction = () => {
 };
 
 function ConTableRow({ con, post }: { con: Con; post: PostView }) {
-  const { getIsAttending, setIsAttending } = useContext(LocalAttendingContext);
+  const { getIsAttending, setIsAttending } = useLocalAttendingContext();
 
   const likeCountWithoutSelf =
     (post.likeCount || 0) - (post.viewer?.like != null ? 1 : 0);
