@@ -97,13 +97,20 @@ impl Event {
 async fn sync_labels(
     ics_url: &str,
     ui_endpoint: &str,
-    app_state: &AppState,
+    did: &atrium_api::types::string::Did,
+    agent: &atrium_api::agent::Agent<
+        atrium_api::agent::atp_agent::CredentialSession<
+            atrium_api::agent::atp_agent::store::MemorySessionStore,
+            atrium_xrpc_client::reqwest::ReqwestClient,
+        >,
+    >,
+    events_state: std::sync::Arc<tokio::sync::Mutex<EventsState>>,
 ) -> Result<(), anyhow::Error> {
     // Lock the entire events state while labels are syncing.
     //
     // This means that we hold the mutex while events are being created, such that any likes on those posts must wait until the mutex is unlocked.
     // This ensures that we don't get into a state where if someone likes a post but we haven't saved it into the events state yet we end up missing their like.
-    let mut events_state = app_state.events_state.lock().await;
+    let mut events_state = events_state.lock().await;
 
     const EXTRA_DATA_POST_RKEY: &str = "fbl_postRkey";
     const EXTRA_DATA_EVENT_INFO: &str = "fbl_eventInfo";
@@ -134,8 +141,7 @@ async fn sync_labels(
         .map(|event| (event.id, event))
         .collect::<std::collections::HashMap<_, _>>();
 
-    let original_record = match app_state
-        .agent
+    let original_record = match agent
         .api
         .com
         .atproto
@@ -143,7 +149,7 @@ async fn sync_labels(
         .get_record(
             atrium_api::com::atproto::repo::get_record::ParametersData {
                 collection: atrium_api::app::bsky::labeler::Service::nsid(),
-                repo: app_state.did.clone().into(),
+                repo: did.clone().into(),
                 rkey: atrium_api::types::string::RecordKey::new("self".to_string()).unwrap(),
                 cid: None,
             }
@@ -313,7 +319,7 @@ async fn sync_labels(
                     hidden_replies: None,
                     post: format!(
                         "at://{}/{}/{}",
-                        app_state.did.to_string(),
+                        did.to_string(),
                         atrium_api::app::bsky::feed::Post::NSID,
                         rkey.to_string()
                     ),
@@ -332,8 +338,7 @@ async fn sync_labels(
             );
         }
 
-        app_state
-            .agent
+        agent
             .api
             .com
             .atproto
@@ -341,7 +346,7 @@ async fn sync_labels(
             .delete_record(
                 atrium_api::com::atproto::repo::delete_record::InputData {
                     collection: atrium_api::app::bsky::feed::Post::nsid(),
-                    repo: app_state.did.clone().into(),
+                    repo: did.clone().into(),
                     rkey: rkey.clone(),
                     swap_commit: None,
                     swap_record: None,
@@ -459,15 +464,14 @@ async fn sync_labels(
         .map(|(id, rkey)| (rkey, id))
         .collect();
 
-    app_state
-        .agent
+    agent
         .api
         .com
         .atproto
         .repo
         .apply_writes(
             atrium_api::com::atproto::repo::apply_writes::InputData {
-                repo: app_state.did.clone().into(),
+                repo: did.clone().into(),
                 swap_commit: None,
                 validate: Some(true),
                 writes,
@@ -619,27 +623,19 @@ struct EventsState {
 
 #[derive(Clone)]
 struct AppState {
-    keypair: std::sync::Arc<atrium_crypto::keypair::Secp256k1Keypair>,
-    agent: std::sync::Arc<
-        atrium_api::agent::Agent<
-            atrium_api::agent::atp_agent::CredentialSession<
-                atrium_api::agent::atp_agent::store::MemorySessionStore,
-                atrium_xrpc_client::reqwest::ReqwestClient,
-            >,
-        >,
-    >,
-    did: atrium_api::types::string::Did,
     db_pool: sqlx::PgPool,
     notify_recv: tokio::sync::watch::Receiver<()>,
-    events_state: std::sync::Arc<tokio::sync::Mutex<EventsState>>,
 }
 
 async fn service_jetstream(
-    app_state: &AppState,
+    db_pool: &sqlx::PgPool,
+    did: &atrium_api::types::string::Did,
+    keypair: &atrium_crypto::keypair::Secp256k1Keypair,
+    events_state: std::sync::Arc<tokio::sync::Mutex<EventsState>>,
     jetstream_endpoint: &str,
 ) -> Result<(), anyhow::Error> {
     let mut cursor = {
-        let mut db_conn = app_state.db_pool.acquire().await?;
+        let mut db_conn = db_pool.acquire().await?;
         sqlx::query!(r#"SELECT cursor FROM jetstream_cursor"#)
             .fetch_optional(&mut *db_conn)
             .await?
@@ -647,13 +643,24 @@ async fn service_jetstream(
     };
 
     loop {
-        cursor = service_jetstream_once(app_state, jetstream_endpoint, cursor).await?;
+        cursor = service_jetstream_once(
+            db_pool,
+            did,
+            keypair,
+            events_state.clone(),
+            jetstream_endpoint,
+            cursor,
+        )
+        .await?;
         tokio::time::sleep(std::time::Duration::from_secs(1)).await;
     }
 }
 
 async fn service_jetstream_once(
-    app_state: &AppState,
+    db_pool: &sqlx::PgPool,
+    did: &atrium_api::types::string::Did,
+    keypair: &atrium_crypto::keypair::Secp256k1Keypair,
+    events_state: std::sync::Arc<tokio::sync::Mutex<EventsState>>,
     jetstream_endpoint: &str,
     mut cursor: Option<i64>,
 ) -> Result<Option<i64>, anyhow::Error> {
@@ -682,7 +689,7 @@ async fn service_jetstream_once(
             | jetstream_oxide::events::commit::CommitEvent::Delete { info, .. } => info.time_us,
         } as i64;
 
-        let mut db_conn = app_state.db_pool.acquire().await?;
+        let mut db_conn = db_pool.acquire().await?;
 
         async {
             match commit {
@@ -698,11 +705,12 @@ async fn service_jetstream_once(
                         .strip_prefix("at://")
                         .map(|v| v.splitn(3, '/').collect::<Vec<_>>());
 
-                    let Some(&[did, collection, rkey]) = parts.as_ref().map(|v| &v[..]) else {
+                    let Some(&[record_did, collection, rkey]) = parts.as_ref().map(|v| &v[..])
+                    else {
                         return Ok(());
                     };
 
-                    if did != app_state.did.to_string() {
+                    if record_did != did.to_string() {
                         return Ok(());
                     }
 
@@ -710,7 +718,7 @@ async fn service_jetstream_once(
                         return Ok(());
                     }
 
-                    let events_state = app_state.events_state.lock().await;
+                    let events_state = events_state.lock().await;
 
                     let Some(id) = events_state
                         .rkeys_to_ids
@@ -735,7 +743,7 @@ async fn service_jetstream_once(
                                     .and_utc()
                                     .fixed_offset(),
                             )),
-                            src: app_state.did.clone(),
+                            src: did.clone(),
                             cid: None,
                             neg: None,
                             uri: info.did.to_string(),
@@ -748,8 +756,7 @@ async fn service_jetstream_once(
                     log::info!("applying label: {:?}", label);
 
                     let mut tx = db_conn.begin().await?;
-                    let seq =
-                        labels::emit(&app_state.keypair, &mut tx, label, &commit.info.rkey).await?;
+                    let seq = labels::emit(keypair, &mut tx, label, &commit.info.rkey).await?;
                     tx.commit().await?;
 
                     metrics::gauge!("label_seq").set(seq as f64);
@@ -781,7 +788,7 @@ async fn service_jetstream_once(
                                     .fixed_offset(),
                             ),
                             exp: None,
-                            src: app_state.did.clone(),
+                            src: did.clone(),
                             cid: None,
                             neg: Some(true),
                             uri: info.did.to_string(),
@@ -794,8 +801,7 @@ async fn service_jetstream_once(
                     log::info!("removing label: {:?}", label);
 
                     let mut tx = db_conn.begin().await?;
-                    let seq =
-                        labels::emit(&app_state.keypair, &mut tx, label, &commit.rkey).await?;
+                    let seq = labels::emit(keypair, &mut tx, label, &commit.rkey).await?;
                     tx.commit().await?;
 
                     metrics::gauge!("label_seq").set(seq as f64);
@@ -883,17 +889,10 @@ async fn main() -> Result<(), anyhow::Error> {
 
     let (notify_send, notify_recv) = tokio::sync::watch::channel(());
 
-    let app_state = AppState {
-        keypair: std::sync::Arc::new(keypair),
-        agent: agent.clone(),
-        did,
-        db_pool,
-        notify_recv,
-        events_state: std::sync::Arc::new(tokio::sync::Mutex::new(EventsState {
-            rkeys_to_ids: std::collections::HashMap::new(),
-            events: std::collections::HashMap::new(),
-        })),
-    };
+    let events_state = std::sync::Arc::new(tokio::sync::Mutex::new(EventsState {
+        rkeys_to_ids: std::collections::HashMap::new(),
+        events: std::collections::HashMap::new(),
+    }));
 
     let handle = metrics_exporter_prometheus::PrometheusBuilder::new().install_recorder()?;
 
@@ -913,22 +912,38 @@ async fn main() -> Result<(), anyhow::Error> {
             axum::routing::get(move || async move { handle.render() }),
         )
         .route("/", axum::routing::get(|| async { ">:3" }))
-        .with_state(app_state.clone());
+        .with_state(AppState {
+            db_pool: db_pool.clone(),
+            notify_recv,
+        });
 
     log::info!("syncing initial labels");
-    sync_labels(&config.ics_url, &config.ui_endpoint, &app_state).await?;
+    sync_labels(
+        &config.ics_url,
+        &config.ui_endpoint,
+        &did,
+        &agent,
+        events_state.clone(),
+    )
+    .await?;
 
     let listener = tokio::net::TcpListener::bind(&config.bind).await?;
 
     tokio::try_join!(
         async {
             // Sync labels.
-            let app_state = app_state.clone();
             loop {
                 tokio::time::sleep(std::time::Duration::from_secs(config.label_sync_delay_secs))
                     .await;
                 log::info!("syncing labels");
-                sync_labels(&config.ics_url, &config.ui_endpoint, &app_state).await?;
+                sync_labels(
+                    &config.ics_url,
+                    &config.ui_endpoint,
+                    &did,
+                    &agent,
+                    events_state.clone(),
+                )
+                .await?;
             }
 
             #[allow(unreachable_code)]
@@ -941,7 +956,7 @@ async fn main() -> Result<(), anyhow::Error> {
                     .max_connections(1)
                     .max_lifetime(None)
                     .idle_timeout(None)
-                    .connect_with((*app_state.db_pool.connect_options()).clone())
+                    .connect_with((*db_pool.connect_options()).clone())
                     .await?,
             )
             .await?;
@@ -963,8 +978,14 @@ async fn main() -> Result<(), anyhow::Error> {
             }
 
             // Wait on events.
-            let app_state = app_state.clone();
-            service_jetstream(&app_state, &config.jetstream_endpoint).await?;
+            service_jetstream(
+                &db_pool,
+                &did,
+                &keypair,
+                events_state.clone(),
+                &config.jetstream_endpoint,
+            )
+            .await?;
             unreachable!();
 
             #[allow(unreachable_code)]
