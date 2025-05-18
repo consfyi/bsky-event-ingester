@@ -5,7 +5,7 @@ import { IconHeartFilled, IconHeart } from "@tabler/icons-react";
 import { useState, useCallback, useEffect } from "react";
 import { useClient } from "~/hooks";
 
-export function LikeButton({
+export default function LikeButton({
   uri,
   cid,
   initialLike,

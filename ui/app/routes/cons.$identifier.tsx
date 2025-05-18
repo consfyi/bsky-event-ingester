@@ -6,7 +6,6 @@ import {
 } from "@tabler/icons-react";
 import { useParams } from "@remix-run/react";
 import {
-  Alert,
   Anchor,
   Avatar,
   Box,
@@ -35,8 +34,9 @@ import type {
   ProfileViewDetailed,
 } from "@atcute/bluesky/types/app/actor/defs";
 import type { ThreadViewPost } from "@atcute/bluesky/types/app/feed/defs";
-import { LikeButton } from "~/components/LikeButton";
+import LikeButton from "~/components/LikeButton";
 import { Trans, useLingui } from "@lingui/react/macro";
+import LoadErrorAlert from "~/components/LoadErrorAlert";
 
 function Actor({ actor }: { actor: ProfileView | ProfileViewDetailed }) {
   return (
@@ -289,14 +289,7 @@ export default function Index() {
   );
 
   if (error != null) {
-    return (
-      <Alert color="red" title="Error">
-        <Text size="sm">
-          <Trans>An error occurred while attempting to load this data.</Trans>
-        </Text>
-        <pre>{error.toString()}</pre>
-      </Alert>
-    );
+    return <LoadErrorAlert error={error} />;
   }
 
   if (isLoading || threadIsLoading) {
@@ -308,13 +301,7 @@ export default function Index() {
   }
 
   if (cons == null) {
-    return (
-      <Alert color="red" title="Error">
-        <Text size="sm">
-          <Trans>An error occurred while attempting to load this data.</Trans>
-        </Text>
-      </Alert>
-    );
+    return <LoadErrorAlert error={null} />;
   }
 
   if (con == null || thread == null) {
@@ -328,22 +315,13 @@ export default function Index() {
     <Box px="sm">
       <Header con={con} thread={thread} setLikeState={setIsSelfAttending} />
       {likesError != null ? (
-        <Alert color="red" title="Error">
-          <Text size="sm">
-            <Trans>An error occurred while attempting to load this data.</Trans>
-          </Text>
-          <pre>{likesError.toString()}</pre>
-        </Alert>
+        <LoadErrorAlert error={error} />
       ) : likesIsLoading ? (
         <Center p="lg">
           <Loader />
         </Center>
       ) : likes == null ? (
-        <Alert color="red" title="Error">
-          <Text size="sm">
-            <Trans>An error occurred while attempting to load this data.</Trans>
-          </Text>
-        </Alert>
+        <LoadErrorAlert error={null} />
       ) : (
         <Attendees
           thread={thread}

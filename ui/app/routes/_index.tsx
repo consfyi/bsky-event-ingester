@@ -25,10 +25,11 @@ import {
   IconUsers,
 } from "@tabler/icons-react";
 import clientMetadata from "../../public/client-metadata.json";
-import { LikeButton } from "~/components/LikeButton";
+import LikeButton from "~/components/LikeButton";
 import type { PostView } from "@atcute/bluesky/types/app/feed/defs";
 import { differenceInDays } from "date-fns/fp";
 import { Plural, Trans, useLingui } from "@lingui/react/macro";
+import LoadErrorAlert from "~/components/LoadErrorAlert";
 
 function* monthRange(start: Date, end: Date): Generator<Date> {
   while (start < end) {
@@ -171,14 +172,7 @@ function ConsTable({}: {}) {
   }, [cons]);
 
   if (error != null) {
-    return (
-      <Alert color="red" title="Error">
-        <Text size="sm">
-          <Trans>An error occurred while attempting to load this data.</Trans>
-        </Text>
-        <pre>{error.toString()}</pre>
-      </Alert>
-    );
+    return <LoadErrorAlert error={error} />;
   }
 
   if (isLoading || conPostsIsLoading) {
@@ -190,13 +184,7 @@ function ConsTable({}: {}) {
   }
 
   if (cons == null || conPosts == null || consByMonth == null) {
-    return (
-      <Alert color="red" title="Error">
-        <Text size="sm">
-          <Trans>An error occurred while attempting to load this data.</Trans>
-        </Text>
-      </Alert>
-    );
+    return <LoadErrorAlert error={null} />;
   }
 
   const firstDate = setDate(cons[0].start, 1);
