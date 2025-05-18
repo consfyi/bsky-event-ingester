@@ -568,23 +568,14 @@ async fn subscribe_labels(
     ws.on_upgrade(move |socket: axum::extract::ws::WebSocket| async move {
         log::info!("got websocket subscriber, cursor = {:?}", params.cursor);
 
+        let (sink, mut stream) = socket.split();
+        let mut subscriber = Subscriber::new(sink);
+
+        let mut notify_recv = app_state.notify_recv.clone();
+
         match async {
-            let pool = sqlx::pool::PoolOptions::<sqlx::Postgres>::new()
-                .max_connections(1)
-                .max_lifetime(None)
-                .idle_timeout(None)
-                .connect_with((*app_state.db_pool.connect_options()).clone())
-                .await?;
-
-            let mut listener = sqlx::postgres::PgListener::connect_with(&pool).await?;
-            listener.ignore_pool_close_event(true);
-            listener.listen("labels").await?;
-
-            let (sink, mut stream) = socket.split();
-            let mut subscriber = Subscriber::new(sink);
-
             let mut seq = {
-                let mut db_conn = listener.acquire().await?;
+                let mut db_conn = app_state.db_pool.acquire().await?;
 
                 let seq = if let Some(cursor) = params.cursor {
                     cursor
@@ -610,9 +601,8 @@ async fn subscribe_labels(
                         };
                         let _ = msg?;
                     }
-                    notification = listener.recv() => {
-                        let _ = notification?;
-                        let mut db_conn = listener.acquire().await?;
+                    _ = notify_recv.changed() => {
+                        let mut db_conn = app_state.db_pool.acquire().await?;
                         seq = send_labels_since_seq(seq, &mut db_conn, &mut subscriber).await?;
                     }
                 };
@@ -650,6 +640,7 @@ struct AppState {
     >,
     did: atrium_api::types::string::Did,
     db_pool: sqlx::PgPool,
+    notify_recv: tokio::sync::watch::Receiver<()>,
     events_state: std::sync::Arc<tokio::sync::Mutex<EventsState>>,
 }
 
@@ -940,11 +931,14 @@ async fn main() -> Result<(), anyhow::Error> {
     let keypair =
         atrium_crypto::keypair::Secp256k1Keypair::import(&std::fs::read(&config.keypair_path)?)?;
 
+    let (notify_send, notify_recv) = tokio::sync::watch::channel(());
+
     let app_state = AppState {
         keypair: std::sync::Arc::new(keypair),
         agent: agent.clone(),
         did,
         db_pool,
+        notify_recv,
         events_state: std::sync::Arc::new(tokio::sync::Mutex::new(EventsState {
             rkeys_to_ids: std::collections::HashMap::new(),
             events: std::collections::HashMap::new(),
@@ -985,6 +979,28 @@ async fn main() -> Result<(), anyhow::Error> {
                     .await;
                 log::info!("syncing labels");
                 sync_labels(&config.ics_url, &config.ui_endpoint, &app_state).await?;
+            }
+
+            #[allow(unreachable_code)]
+            Ok::<_, anyhow::Error>(())
+        },
+        async {
+            // Listen to changes on the label channel.
+            let mut pg_listener = sqlx::postgres::PgListener::connect_with(
+                &sqlx::pool::PoolOptions::<sqlx::Postgres>::new()
+                    .max_connections(1)
+                    .max_lifetime(None)
+                    .idle_timeout(None)
+                    .connect_with((*app_state.db_pool.connect_options()).clone())
+                    .await?,
+            )
+            .await?;
+            pg_listener.ignore_pool_close_event(true);
+            pg_listener.listen("labels").await?;
+
+            loop {
+                pg_listener.recv().await?;
+                notify_send.send(())?;
             }
 
             #[allow(unreachable_code)]
