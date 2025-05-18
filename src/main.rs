@@ -965,12 +965,18 @@ async fn main() -> Result<(), anyhow::Error> {
             // Wait on events.
             let app_state = app_state.clone();
             service_jetstream(&app_state, &config.jetstream_endpoint).await?;
-            Ok(())
+            unreachable!();
+
+            #[allow(unreachable_code)]
+            Ok::<_, anyhow::Error>(())
         },
         async {
             // Serve labeler.
             axum::serve(listener, app).await?;
-            Ok(())
+            unreachable!();
+
+            #[allow(unreachable_code)]
+            Ok::<_, anyhow::Error>(())
         }
     )?;
 
