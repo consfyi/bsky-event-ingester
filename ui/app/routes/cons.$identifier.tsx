@@ -204,7 +204,7 @@ function Attendees({
       <Text size="md" fw={500}>
         <Trans>Attendees</Trans>{" "}
         {likes != null ? (
-          <small>
+          <Text size="sm" span c="dimmed">
             {isSelfAttending ? (
               <Trans context="attendee count, including you">
                 {likeCountWithoutSelf + 1} including you
@@ -212,7 +212,7 @@ function Attendees({
             ) : (
               <Trans context="attendee count">{likeCountWithoutSelf}</Trans>
             )}
-          </small>
+          </Text>
         ) : null}
       </Text>
       {!selfFollowsIsLoading && knownLikes != null && unknownLikes != null ? (
