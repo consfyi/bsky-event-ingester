@@ -1,0 +1,82 @@
+msgid ""
+msgstr ""
+"POT-Creation-Date: 2025-05-17 20:12-0700\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"X-Generator: @lingui/cli\n"
+"Language: en\n"
+"Project-Id-Version: \n"
+"Report-Msgid-Bugs-To: \n"
+"PO-Revision-Date: \n"
+"Last-Translator: \n"
+"Language-Team: \n"
+"Plural-Forms: \n"
+
+#. placeholder {0}: i18n.date(con.start, { weekday: "short", day: "numeric", month: "long", year: "numeric", })
+#. placeholder {0}: i18n.date(con.start, { weekday: "short", day: "numeric", month: "long", year: "numeric", })
+#. placeholder {1}: i18n.date(con.end, { weekday: "short", day: "numeric", month: "long", year: "numeric", })
+#. placeholder {1}: i18n.date(con.end, { weekday: "short", day: "numeric", month: "long", year: "numeric", })
+#: app/routes/cons.$identifier.tsx:122
+#: app/routes/_index.tsx:120
+msgid "{0} – {1}"
+msgstr "{0} – {1}"
+
+#. placeholder {0}: likeCountWithoutSelf + 1
+#: app/routes/cons.$identifier.tsx:212
+msgctxt "attendee count, including you"
+msgid "{0} including you"
+msgstr "{0} including you"
+
+#: app/routes/_index.tsx:139
+msgid "{duration, plural, one {1 day} other {# days}}"
+msgstr "{duration, plural, one {1 day} other {# days}}"
+
+#: app/routes/cons.$identifier.tsx:216
+msgctxt "attendee count"
+msgid "{likeCountWithoutSelf}"
+msgstr "{likeCountWithoutSelf}"
+
+#: app/routes/_index.tsx:252
+msgid "<0>This the website for the <1><2/> @conlabels.furryli.st</1> service. For the full experience, please log in. You’ll be able to:</0><3><4>Tell people which cons you’re going to (you can also do this by liking the con post on Bluesky).</4><5>See who you follow is going to a con.</5></3><6>A huge thank you to <7>furrycons.com</7> who provides all the data on conventions!</6>"
+msgstr "<0>This the website for the <1><2/> @conlabels.furryli.st</1> service. For the full experience, please log in. You’ll be able to:</0><3><4>Tell people which cons you’re going to (you can also do this by liking the con post on Bluesky).</4><5>See who you follow is going to a con.</5></3><6>A huge thank you to <7>furrycons.com</7> who provides all the data on conventions!</6>"
+
+#: app/routes/cons.$identifier.tsx:208
+msgid "Attendees"
+msgstr "Attendees"
+
+#: app/components/LikeButton.tsx:65
+msgid "Attending"
+msgstr "Attending"
+
+#: app/routes/cons.$identifier.tsx:336
+#: app/routes/cons.$identifier.tsx:347
+msgid "Couldn’t load attendees data."
+msgstr "Couldn’t load attendees data."
+
+#: app/routes/cons.$identifier.tsx:298
+#: app/routes/cons.$identifier.tsx:317
+#: app/routes/_index.tsx:182
+#: app/routes/_index.tsx:201
+msgid "Couldn’t load con data."
+msgstr "Couldn’t load con data."
+
+#: app/root.tsx:193
+msgid "Log in"
+msgstr "Log in"
+
+#: app/components/LikeButton.tsx:65
+msgid "Not attending"
+msgstr "Not attending"
+
+#: app/routes/cons.$identifier.tsx:240
+msgid "People you don’t follow"
+msgstr "People you don’t follow"
+
+#: app/routes/cons.$identifier.tsx:116
+msgid "View Bluesky Post"
+msgstr "View Bluesky Post"
+
+#: app/routes/_index.tsx:250
+msgid "Welcome!"
+msgstr "Welcome!"

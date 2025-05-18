@@ -52,6 +52,8 @@ import { Client } from "./bluesky";
 
 import clientMetadata from "../public/client-metadata.json";
 import { LinksFunction } from "@remix-run/node";
+import { LinguiProvider } from "./components/LinguiProvider";
+import { Trans } from "@lingui/react/macro";
 
 const theme = createTheme({});
 
@@ -188,7 +190,7 @@ function Header() {
                     size="xs"
                     leftSection={<IconBrandBluesky size={18} />}
                   >
-                    Log in
+                    <Trans>Log in</Trans>
                   </Button>
                   <Menu
                     position="bottom-end"
@@ -287,19 +289,28 @@ export function Layout({ children }: { children: React.ReactNode }) {
       </head>
       <body>
         <MantineProvider theme={theme} defaultColorScheme="auto">
-          {client != null ? (
-            <ClientContext.Provider value={client}>
-              <Header />
-              <Container size="lg" px={0}>
-                {children}
-              </Container>
-            </ClientContext.Provider>
-          ) : (
-            <Center p="lg">
-              <Loader />
-            </Center>
-          )}
+          <LinguiProvider
+            loadingPlaceholder={
+              <Center p="lg">
+                <Loader />
+              </Center>
+            }
+          >
+            {client != null ? (
+              <ClientContext.Provider value={client}>
+                <Header />
+                <Container size="lg" px={0}>
+                  {children}
+                </Container>
+              </ClientContext.Provider>
+            ) : (
+              <Center p="lg">
+                <Loader />
+              </Center>
+            )}
+          </LinguiProvider>
         </MantineProvider>
+
         <ScrollRestoration />
         <Scripts />
       </body>

@@ -1,4 +1,5 @@
 import type { ResourceUri, Cid } from "@atcute/lexicons";
+import { Trans } from "@lingui/react/macro";
 import { Tooltip, ActionIcon, ActionIconProps } from "@mantine/core";
 import { IconHeartFilled, IconHeart } from "@tabler/icons-react";
 import { useState, useCallback, useEffect } from "react";
@@ -59,7 +60,11 @@ export function LikeButton({
   iconSize = iconSize ?? 16;
 
   return (
-    <Tooltip label={expectedOn ? "Attending" : "Not attending"}>
+    <Tooltip
+      label={
+        expectedOn ? <Trans>Attending</Trans> : <Trans>Not attending</Trans>
+      }
+    >
       <ActionIcon
         color={expectedOn ? "red" : "dimmed"}
         variant="transparent"

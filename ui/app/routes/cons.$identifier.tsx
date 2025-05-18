@@ -26,7 +26,6 @@ import {
   useSelfFollows,
   useThread,
 } from "~/hooks";
-import { format as formatDate } from "date-fns";
 import { LABELER_DID } from "~/config";
 import { useEffect, useMemo, useState } from "react";
 import { sortBy } from "lodash-es";
@@ -37,6 +36,7 @@ import type {
 } from "@atcute/bluesky/types/app/actor/defs";
 import type { ThreadViewPost } from "@atcute/bluesky/types/app/feed/defs";
 import { LikeButton } from "~/components/LikeButton";
+import { Trans, useLingui } from "@lingui/react/macro";
 
 function Actor({ actor }: { actor: ProfileView | ProfileViewDetailed }) {
   return (
@@ -89,6 +89,8 @@ function Header({
   thread: ThreadViewPost;
   setLikeState: (v: boolean) => void;
 }) {
+  const { i18n } = useLingui();
+
   return (
     <Box mt="sm">
       <Group gap={7} wrap="nowrap">
@@ -111,14 +113,27 @@ function Header({
           rel="noreferrer"
           size="xs"
         >
-          <IconExternalLink size={12} /> View Bluesky Post
+          <IconExternalLink size={12} /> <Trans>View Bluesky Post</Trans>
         </Anchor>
       </Group>
       <Box mt={4}>
         <Text size="sm" mb={5}>
-          <IconCalendar size={12} /> {WEEKDAY_FORMAT.format(con.start)}{" "}
-          {formatDate(con.start, "yyyy-MM-dd")} –{" "}
-          {WEEKDAY_FORMAT.format(con.end)} {formatDate(con.end, "yyyy-MM-dd")}
+          <IconCalendar size={12} />{" "}
+          <Trans>
+            {i18n.date(con.start, {
+              weekday: "short",
+              day: "numeric",
+              month: "long",
+              year: "numeric",
+            })}{" "}
+            –{" "}
+            {i18n.date(con.end, {
+              weekday: "short",
+              day: "numeric",
+              month: "long",
+              year: "numeric",
+            })}
+          </Trans>
         </Text>
 
         <Text size="sm" mb={5}>
@@ -190,11 +205,16 @@ function Attendees({
   return (
     <Box mt="sm">
       <Text size="md" fw={500}>
-        Attendees{" "}
+        <Trans>Attendees</Trans>{" "}
         {likes != null ? (
           <small>
-            {likeCountWithoutSelf + (isSelfAttending ? 1 : 0)}
-            {isSelfAttending ? " including you" : ""}
+            {isSelfAttending ? (
+              <Trans context="attendee count, including you">
+                {likeCountWithoutSelf + 1} including you
+              </Trans>
+            ) : (
+              <Trans context="attendee count">{likeCountWithoutSelf}</Trans>
+            )}
           </small>
         ) : null}
       </Text>
@@ -217,7 +237,7 @@ function Attendees({
           {unknownLikes.length > 0 ? (
             <>
               <Divider
-                label={"People you don't follow"}
+                label={<Trans>People you don’t follow</Trans>}
                 labelPosition="left"
                 mt="xs"
               />
@@ -274,7 +294,9 @@ export default function Index() {
   if (error != null) {
     return (
       <Alert color="red" title="Error">
-        <Text size="sm">Couldn’t load con data.</Text>
+        <Text size="sm">
+          <Trans>Couldn’t load con data.</Trans>
+        </Text>
         <pre>{error.toString()}</pre>
       </Alert>
     );
@@ -291,7 +313,9 @@ export default function Index() {
   if (cons == null) {
     return (
       <Alert color="red" title="Error">
-        <Text size="sm">Couldn’t load con data.</Text>
+        <Text size="sm">
+          <Trans>Couldn’t load con data.</Trans>
+        </Text>
       </Alert>
     );
   }
@@ -308,7 +332,9 @@ export default function Index() {
       <Header con={con} thread={thread} setLikeState={setIsSelfAttending} />
       {likesError != null ? (
         <Alert color="red" title="Error">
-          <Text size="sm">Couldn’t load attendees data.</Text>
+          <Text size="sm">
+            <Trans>Couldn’t load attendees data.</Trans>
+          </Text>
           <pre>{likesError.toString()}</pre>
         </Alert>
       ) : likesIsLoading ? (
@@ -317,7 +343,9 @@ export default function Index() {
         </Center>
       ) : likes == null ? (
         <Alert color="red" title="Error">
-          <Text size="sm">Couldn’t load attendees data.</Text>
+          <Text size="sm">
+            <Trans>Couldn’t load attendees data.</Trans>
+          </Text>
         </Alert>
       ) : (
         <Attendees
@@ -329,5 +357,3 @@ export default function Index() {
     </Box>
   );
 }
-
-const WEEKDAY_FORMAT = new Intl.DateTimeFormat("en", { weekday: "short" });

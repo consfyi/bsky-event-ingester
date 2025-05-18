@@ -14,13 +14,7 @@ import {
 import type { MetaFunction } from "@remix-run/node";
 import { Link } from "@remix-run/react";
 import { groupBy } from "lodash-es";
-import {
-  format as formatDate,
-  addMonths,
-  setDate,
-  getDate,
-  getDay,
-} from "date-fns";
+import { format as formatDate, addMonths, setDate, getDay } from "date-fns";
 import { Fragment, useMemo, useState } from "react";
 import { Con, useClient, useConPosts, useCons } from "~/hooks";
 import {
@@ -34,6 +28,7 @@ import clientMetadata from "../../public/client-metadata.json";
 import { LikeButton } from "~/components/LikeButton";
 import type { PostView } from "@atcute/bluesky/types/app/feed/defs";
 import { differenceInDays } from "date-fns/fp";
+import { Plural, Trans, useLingui } from "@lingui/react/macro";
 
 function* monthRange(start: Date, end: Date): Generator<Date> {
   while (start < end) {
@@ -54,6 +49,8 @@ function ConTableRow({ con, post }: { con: Con; post: PostView }) {
   const likeCountWithoutSelf =
     (post.likeCount || 0) - (post.viewer?.like != null ? 1 : 0);
   const duration = differenceInDays(con.start, con.end);
+
+  const { i18n } = useLingui();
 
   return (
     <Table.Tr key={con.identifier}>
@@ -84,10 +81,10 @@ function ConTableRow({ con, post }: { con: Con; post: PostView }) {
             >
               <Stack gap={0}>
                 <Text size="md" ta="center" fw={500}>
-                  {WEEKDAY_FORMAT.format(con.start)}
+                  {i18n.date(con.start, { weekday: "short" })}
                 </Text>
                 <Text size="xs" ta="center" fw={500}>
-                  {getDate(con.start)}
+                  {i18n.date(con.start, { day: "numeric" })}
                 </Text>
               </Stack>
             </ThemeIcon>
@@ -118,17 +115,28 @@ function ConTableRow({ con, post }: { con: Con; post: PostView }) {
               <IconUsers size={12} />{" "}
               {likeCountWithoutSelf + (isSelfAttending ? 1 : 0)} •{" "}
               <Tooltip
-                label={`${WEEKDAY_FORMAT.format(con.start)} ${formatDate(
-                  con.start,
-                  "yyyy-MM-dd"
-                )} – ${WEEKDAY_FORMAT.format(con.end)} ${formatDate(
-                  con.end,
-                  "yyyy-MM-dd"
-                )}`}
+                position="bottom"
+                label={
+                  <Trans>
+                    {i18n.date(con.start, {
+                      weekday: "short",
+                      day: "numeric",
+                      month: "long",
+                      year: "numeric",
+                    })}{" "}
+                    –{" "}
+                    {i18n.date(con.end, {
+                      weekday: "short",
+                      day: "numeric",
+                      month: "long",
+                      year: "numeric",
+                    })}
+                  </Trans>
+                }
               >
                 <span>
-                  <IconCalendarMonth size={12} /> {duration}{" "}
-                  {duration != 1 ? "days" : "day"}
+                  <IconCalendarMonth size={12} />{" "}
+                  <Plural value={duration} one="1 day" other="# days" />
                 </span>
               </Tooltip>{" "}
               • <IconMapPin size={12} />{" "}
@@ -141,7 +149,7 @@ function ConTableRow({ con, post }: { con: Con; post: PostView }) {
                 }}
               >
                 {con.location}
-              </Anchor>{" "}
+              </Anchor>
             </Text>
           </Box>
         </Group>
@@ -154,6 +162,8 @@ function ConTableRow({ con, post }: { con: Con; post: PostView }) {
 function ConsTable({}: {}) {
   const { data: cons, error, isLoading } = useCons();
   const { data: conPosts, isLoading: conPostsIsLoading } = useConPosts();
+
+  const { i18n } = useLingui();
 
   const consByMonth = useMemo(() => {
     if (cons == null) {
@@ -168,7 +178,9 @@ function ConsTable({}: {}) {
   if (error != null) {
     return (
       <Alert color="red" title="Error">
-        <Text size="sm">Couldn’t load con data.</Text>
+        <Text size="sm">
+          <Trans>Couldn’t load con data.</Trans>
+        </Text>
         <pre>{error.toString()}</pre>
       </Alert>
     );
@@ -185,7 +197,9 @@ function ConsTable({}: {}) {
   if (cons == null || conPosts == null || consByMonth == null) {
     return (
       <Alert color="red" title="Error">
-        <Text size="sm">Couldn’t load con data.</Text>
+        <Text size="sm">
+          <Trans>Couldn’t load con data.</Trans>
+        </Text>
       </Alert>
     );
   }
@@ -204,7 +218,7 @@ function ConsTable({}: {}) {
                 <Table.Tr bg="var(--mantine-color-default-hover)">
                   <Table.Th>
                     <Text fw={500} size="md">
-                      {MONTH_FORMAT.format(date)} {formatDate(date, "yyyy")}
+                      {i18n.date(date, { month: "long", year: "numeric" })}
                     </Text>
                   </Table.Th>
                 </Table.Tr>
@@ -230,49 +244,53 @@ export default function Index() {
   return (
     <>
       {client.did == null ? (
-        <Alert my={{ lg: "xs" }} icon={<IconPaw />} title="Welcome!">
-          <Text size="sm" mb="xs">
-            This the website for the{" "}
-            <Anchor
-              href="https://bsky.app/profile/conlabels.furryli.st"
-              target="_blank"
-              rel="noreferrer"
+        <Alert
+          my={{ lg: "xs" }}
+          icon={<IconPaw />}
+          title={<Trans>Welcome!</Trans>}
+        >
+          <Trans>
+            <Text size="sm" mb="xs">
+              This the website for the{" "}
+              <Anchor
+                href="https://bsky.app/profile/conlabels.furryli.st"
+                target="_blank"
+                rel="noreferrer"
+              >
+                <IconBrandBluesky size={12} /> @conlabels.furryli.st
+              </Anchor>{" "}
+              service. For the full experience, please log in. You’ll be able
+              to:
+            </Text>
+            {/* Using the List component here is wacky, so we don't use it */}
+            <ul
+              style={{
+                marginTop: 0,
+                marginBottom: "var(--mantine-spacing-xs)",
+                paddingLeft: "var(--mantine-spacing-xl)",
+              }}
             >
-              <IconBrandBluesky size={12} /> @conlabels.furryli.st
-            </Anchor>{" "}
-            service. For the full experience, please log in. You’ll be able to:
-          </Text>
-          {/* Using the List component here is wacky, so we don't use it */}
-          <ul
-            style={{
-              marginTop: 0,
-              marginBottom: "var(--mantine-spacing-xs)",
-              paddingLeft: "var(--mantine-spacing-xl)",
-            }}
-          >
-            <li>
-              Tell people which cons you’re going to (you can also do this by
-              liking the con post on Bluesky).
-            </li>
-            <li>See who you follow is going to a con.</li>
-          </ul>
-          <Text size="sm">
-            A huge thank you to{" "}
-            <Anchor
-              href="https://furrycons.com"
-              target="_blank"
-              rel="noreferrer"
-            >
-              furrycons.com
-            </Anchor>{" "}
-            who provides all the data on conventions!
-          </Text>
+              <li>
+                Tell people which cons you’re going to (you can also do this by
+                liking the con post on Bluesky).
+              </li>
+              <li>See who you follow is going to a con.</li>
+            </ul>
+            <Text size="sm">
+              A huge thank you to{" "}
+              <Anchor
+                href="https://furrycons.com"
+                target="_blank"
+                rel="noreferrer"
+              >
+                furrycons.com
+              </Anchor>{" "}
+              who provides all the data on conventions!
+            </Text>
+          </Trans>
         </Alert>
       ) : null}
       <ConsTable />
     </>
   );
 }
-
-const MONTH_FORMAT = new Intl.DateTimeFormat("en", { month: "long" });
-const WEEKDAY_FORMAT = new Intl.DateTimeFormat("en", { weekday: "short" });
