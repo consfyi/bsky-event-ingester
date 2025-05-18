@@ -17,7 +17,7 @@ pub async fn emit(
             "#,
             label.val,
             label.uri,
-            label.neg,
+            label.neg.unwrap_or(false),
             serde_ipld_dagcbor::to_vec(&label)?,
             like_rkey,
         )
