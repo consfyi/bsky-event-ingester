@@ -843,11 +843,8 @@ async fn main() -> Result<(), anyhow::Error> {
         metrics::Unit::Microseconds,
         "jetstream cursor location"
     );
-
     metrics::describe_gauge!("label_seq", "sequence number of currently emitted label");
-
     metrics::describe_gauge!("num_subscriptions", "number of active subscriptions");
-
     metrics::describe_gauge!(
         "label_sync_time",
         metrics::Unit::Microseconds,
@@ -871,6 +868,16 @@ async fn main() -> Result<(), anyhow::Error> {
         .build()?
         .try_deserialize()?;
 
+    let keypair =
+        atrium_crypto::keypair::Secp256k1Keypair::import(&std::fs::read(&config.keypair_path)?)?;
+
+    let (notify_send, notify_recv) = tokio::sync::watch::channel(());
+
+    let events_state = std::sync::Arc::new(tokio::sync::Mutex::new(EventsState {
+        rkeys_to_ids: std::collections::HashMap::new(),
+        events: std::collections::HashMap::new(),
+    }));
+
     let session = atrium_api::agent::atp_agent::CredentialSession::new(
         atrium_xrpc_client::reqwest::ReqwestClient::new(&config.bsky_endpoint),
         atrium_api::agent::atp_agent::store::MemorySessionStore::default(),
@@ -884,70 +891,42 @@ async fn main() -> Result<(), anyhow::Error> {
 
     let db_pool = sqlx::PgPool::connect(&config.postgres_url).await?;
 
-    let keypair =
-        atrium_crypto::keypair::Secp256k1Keypair::import(&std::fs::read(&config.keypair_path)?)?;
-
-    let (notify_send, notify_recv) = tokio::sync::watch::channel(());
-
-    let events_state = std::sync::Arc::new(tokio::sync::Mutex::new(EventsState {
-        rkeys_to_ids: std::collections::HashMap::new(),
-        events: std::collections::HashMap::new(),
-    }));
-
-    let handle = metrics_exporter_prometheus::PrometheusBuilder::new().install_recorder()?;
-
-    let app = axum::Router::new()
-        .nest(
-            "/xrpc",
-            axum::Router::new().route(
-                &format!(
-                    "/{}",
-                    atrium_api::com::atproto::label::subscribe_labels::NSID
-                ),
-                axum::routing::get(subscribe_labels),
-            ),
-        )
-        .route(
-            "/metrics",
-            axum::routing::get(move || async move { handle.render() }),
-        )
-        .route("/", axum::routing::get(|| async { ">:3" }))
-        .with_state(AppState {
-            db_pool: db_pool.clone(),
-            notify_recv,
-        });
-
-    log::info!("syncing initial labels");
-    sync_labels(
-        &config.ics_url,
-        &config.ui_endpoint,
-        &did,
-        &agent,
-        events_state.clone(),
-    )
-    .await?;
-
     let listener = tokio::net::TcpListener::bind(&config.bind).await?;
 
     tokio::try_join!(
-        async {
-            // Sync labels.
-            loop {
-                tokio::time::sleep(std::time::Duration::from_secs(config.label_sync_delay_secs))
-                    .await;
-                log::info!("syncing labels");
-                sync_labels(
-                    &config.ics_url,
-                    &config.ui_endpoint,
-                    &did,
-                    &agent,
-                    events_state.clone(),
-                )
-                .await?;
-            }
+        {
+            log::info!("syncing initial labels");
 
-            #[allow(unreachable_code)]
-            Ok::<_, anyhow::Error>(())
+            sync_labels(
+                &config.ics_url,
+                &config.ui_endpoint,
+                &did,
+                &agent,
+                events_state.clone(),
+            )
+            .await?;
+
+            async {
+                // Sync labels.
+                loop {
+                    tokio::time::sleep(std::time::Duration::from_secs(
+                        config.label_sync_delay_secs,
+                    ))
+                    .await;
+                    log::info!("syncing labels");
+                    sync_labels(
+                        &config.ics_url,
+                        &config.ui_endpoint,
+                        &did,
+                        &agent,
+                        events_state.clone(),
+                    )
+                    .await?;
+                }
+
+                #[allow(unreachable_code)]
+                Ok::<_, anyhow::Error>(())
+            }
         },
         async {
             // Listen to changes on the label channel.
@@ -991,13 +970,39 @@ async fn main() -> Result<(), anyhow::Error> {
             #[allow(unreachable_code)]
             Ok::<_, anyhow::Error>(())
         },
-        async {
-            // Serve labeler.
-            axum::serve(listener, app).await?;
-            unreachable!();
+        {
+            let metrics_handle =
+                metrics_exporter_prometheus::PrometheusBuilder::new().install_recorder()?;
 
-            #[allow(unreachable_code)]
-            Ok::<_, anyhow::Error>(())
+            let app = axum::Router::new()
+                .nest(
+                    "/xrpc",
+                    axum::Router::new().route(
+                        &format!(
+                            "/{}",
+                            atrium_api::com::atproto::label::subscribe_labels::NSID
+                        ),
+                        axum::routing::get(subscribe_labels),
+                    ),
+                )
+                .route(
+                    "/metrics",
+                    axum::routing::get(move || async move { metrics_handle.render() }),
+                )
+                .route("/", axum::routing::get(|| async { ">:3" }))
+                .with_state(AppState {
+                    db_pool: db_pool.clone(),
+                    notify_recv,
+                });
+
+            async {
+                // Serve labeler.
+                axum::serve(listener, app).await?;
+                unreachable!();
+
+                #[allow(unreachable_code)]
+                Ok::<_, anyhow::Error>(())
+            }
         }
     )?;
 
