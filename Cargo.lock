@@ -1066,6 +1066,7 @@ dependencies = [
  "reqwest",
  "serde",
  "serde_ipld_dagcbor",
+ "serde_json",
  "sqlx",
  "tokio",
 ]
