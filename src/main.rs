@@ -904,8 +904,6 @@ async fn main() -> Result<(), anyhow::Error> {
     pg_listener.ignore_pool_close_event(true);
     pg_listener.listen("labels").await?;
 
-    log::info!("syncing initial labels");
-
     let listener = tokio::net::TcpListener::bind(&config.bind).await?;
 
     let metrics_handle =
@@ -931,6 +929,8 @@ async fn main() -> Result<(), anyhow::Error> {
             db_pool: db_pool.clone(),
             notify_recv,
         });
+
+    log::info!("syncing initial labels");
 
     sync_labels(
         &config.ics_url,
