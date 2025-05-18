@@ -120,7 +120,7 @@ function Header() {
                       <Text fw={500} size="sm" lh={1} mr={3} visibleFrom="xs">
                         @{self.handle}
                       </Text>
-                      <IconChevronDown size={12} stroke={1.5} />
+                      <IconChevronDown size={14} />
                     </Group>
                   </UnstyledButton>
                 </Menu.Target>
