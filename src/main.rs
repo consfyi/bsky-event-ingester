@@ -638,7 +638,7 @@ async fn service_jetstream(
     app_state: &AppState,
     jetstream_endpoint: &str,
 ) -> Result<(), anyhow::Error> {
-    let mut cursor = {
+    let cursor = {
         let mut db_conn = app_state.db_pool.acquire().await?;
         sqlx::query!(r#"SELECT cursor FROM jetstream_cursor"#)
             .fetch_optional(&mut *db_conn)
@@ -651,7 +651,10 @@ async fn service_jetstream(
         compression: jetstream_oxide::JetstreamCompression::Zstd,
         wanted_collections: vec![atrium_api::app::bsky::feed::Like::nsid()],
         cursor: cursor.map(|cursor| chrono::DateTime::from_timestamp_micros(cursor).unwrap()),
+
+        // Do NOT let jetstream_oxide retry: this results in wonky cursor behavior!
         max_retries: 0,
+
         ..Default::default()
     })?;
 
@@ -662,7 +665,7 @@ async fn service_jetstream(
             continue;
         };
 
-        let next_cursor = match &commit {
+        let cursor = match &commit {
             jetstream_oxide::events::commit::CommitEvent::Create { info, .. }
             | jetstream_oxide::events::commit::CommitEvent::Update { info, .. }
             | jetstream_oxide::events::commit::CommitEvent::Delete { info, .. } => info.time_us,
@@ -793,26 +796,17 @@ async fn service_jetstream(
         }
         .await?;
 
-        if let Some(cursor) = cursor {
-            if cursor > next_cursor {
-                log::warn!("got non-monotonic cursor? {cursor} (current) > {next_cursor} (next)");
-                continue;
-            }
-        }
-
-        metrics::gauge!("jetstream_cursor").set(next_cursor as f64);
+        metrics::gauge!("jetstream_cursor").set(cursor as f64);
 
         sqlx::query!(
             r#"
             INSERT INTO jetstream_cursor (cursor) VALUES ($1)
             ON CONFLICT ((true)) DO UPDATE SET cursor = excluded.cursor
             "#,
-            next_cursor as i64,
+            cursor as i64,
         )
         .execute(&mut *db_conn)
         .await?;
-
-        cursor = Some(next_cursor);
     }
 
     Ok(())
