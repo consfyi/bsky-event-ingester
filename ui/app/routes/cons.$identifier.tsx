@@ -112,7 +112,7 @@ function Header({ con, post }: { con: Con; post: PostView }) {
     <Box>
       <Group gap={7} wrap="nowrap" align="top">
         {post.viewer != null ? (
-          <Box mt={4}>
+          <Box mt={2} mb={-2}>
             <LikeButton size="sm" iconSize={24} conId={con.identifier} />
           </Box>
         ) : null}
