@@ -131,15 +131,21 @@ function Header() {
                 <UnstyledButton aria-label={`@${self.handle}`}>
                   <Group gap={7} wrap="nowrap">
                     <Box pos="relative">
-                      <LoadingOverlay
-                        visible={selfFollowsIsLoading}
-                        loaderProps={{ size: "sm" }}
-                      />
                       <Avatar
                         src={self.avatar}
                         alt={`@${self.handle}`}
                         size="sm"
+                        opacity={selfFollowsIsLoading ? 0.5 : 1.0}
                       />
+                      {selfFollowsIsLoading ? (
+                        <Loader
+                          size={26}
+                          pos="absolute"
+                          top={0}
+                          left={0}
+                          display="block"
+                        />
+                      ) : null}
                     </Box>
                     <Text fw={500} size="sm" lh={1} mr={3} visibleFrom="xs">
                       @{self.handle}
