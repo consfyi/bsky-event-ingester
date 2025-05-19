@@ -1,37 +1,19 @@
 use furcons_bsky_labeler::*;
 
 use atrium_api::types::{Collection as _, TryFromUnknown as _, TryIntoUnknown as _};
-use futures::{SinkExt as _, StreamExt as _};
+use futures::StreamExt as _;
 use icalendar::Component as _;
 use sqlx::Acquire as _;
 
-struct AppError(anyhow::Error);
-
-impl axum::response::IntoResponse for AppError {
-    fn into_response(self) -> axum::response::Response {
-        log::error!("{}", self.0);
-        reqwest::StatusCode::INTERNAL_SERVER_ERROR.into_response()
-    }
-}
-
-impl<E> From<E> for AppError
-where
-    E: Into<anyhow::Error>,
-{
-    fn from(err: E) -> Self {
-        Self(err.into())
-    }
-}
-
 #[derive(serde::Deserialize)]
 struct Config {
+    ingester_bind: std::net::SocketAddr,
     bsky_username: String,
     bsky_password: String,
     bsky_endpoint: String,
     ui_endpoint: String,
     jetstream_endpoint: String,
     ics_url: String,
-    bind: std::net::SocketAddr,
     postgres_url: String,
     keypair_path: String,
     label_sync_delay_secs: u64,
@@ -482,148 +464,9 @@ async fn sync_labels(
     Ok(())
 }
 
-struct Subscriber {
-    sink: futures::prelude::stream::SplitSink<
-        axum::extract::ws::WebSocket,
-        axum::extract::ws::Message,
-    >,
-}
-
-impl Subscriber {
-    fn new(
-        sink: futures::prelude::stream::SplitSink<
-            axum::extract::ws::WebSocket,
-            axum::extract::ws::Message,
-        >,
-    ) -> Self {
-        Self { sink }
-    }
-
-    async fn send(
-        &mut self,
-        labels: &atrium_api::com::atproto::label::subscribe_labels::Labels,
-    ) -> Result<(), anyhow::Error> {
-        let mut buf = vec![];
-
-        #[derive(serde::Serialize)]
-        struct Header {
-            t: String,
-            op: i64,
-        }
-        buf.extend(serde_ipld_dagcbor::to_vec(&Header {
-            t: "#labels".to_string(),
-            op: 1,
-        })?);
-        buf.extend(serde_ipld_dagcbor::to_vec(labels)?);
-
-        self.sink
-            .send(axum::extract::ws::Message::Binary(buf.into()))
-            .await?;
-
-        Ok(())
-    }
-}
-
-async fn subscribe_labels(
-    axum::extract::State(app_state): axum::extract::State<AppState>,
-    ws: axum::extract::ws::WebSocketUpgrade,
-    axum_extra::extract::Query(params): axum_extra::extract::Query<
-        atrium_api::com::atproto::label::subscribe_labels::ParametersData,
-    >,
-) -> axum::response::Response {
-    ws.on_upgrade(move |socket: axum::extract::ws::WebSocket| async move {
-        log::info!("got websocket subscriber, cursor = {:?}", params.cursor);
-        metrics::gauge!("num_subscriptions").increment(1);
-
-        let (sink, mut stream) = socket.split();
-        let mut subscriber = Subscriber::new(sink);
-
-        let mut notify_recv = app_state.notify_recv.clone();
-        notify_recv.mark_changed();
-
-        match async {
-            let mut seq = {
-                if let Some(cursor) = params.cursor {
-                    cursor
-                } else {
-                    let mut db_conn = app_state.db_pool.acquire().await?;
-                    sqlx::query!(
-                        r#"
-                        SELECT COALESCE((SELECT MAX(seq) FROM labels), 0) AS "seq!"
-                        "#
-                    )
-                    .fetch_one(&mut *db_conn)
-                    .await?
-                    .seq
-                }
-            };
-
-            loop {
-                tokio::select! {
-                    msg = stream.next() => {
-                        let Some(msg) = msg else {
-                            break;
-                        };
-                        let _ = msg?;
-                    }
-                    msg = notify_recv.changed() => {
-                        let _ = msg?;
-                        let mut db_conn = app_state.db_pool.acquire().await?;
-
-                        let mut rows = sqlx::query!(
-                            r#"
-                            SELECT seq, payload
-                            FROM labels
-                            WHERE seq > $1
-                            "#,
-                            seq
-                        )
-                        .fetch(&mut *db_conn);
-
-                        while let Some(row) = rows.next().await {
-                            let row = row?;
-
-                            subscriber
-                                .send(
-                                    &atrium_api::com::atproto::label::subscribe_labels::LabelsData {
-                                        seq: row.seq,
-                                        labels: vec![serde_ipld_dagcbor::from_slice::<
-                                            atrium_api::com::atproto::label::defs::Label,
-                                        >(&row.payload)?],
-                                    }
-                                    .into(),
-                                )
-                                .await?;
-                            seq = row.seq;
-                        }
-                    }
-                };
-            }
-
-            Ok::<_, anyhow::Error>(())
-        }
-        .await
-        {
-            Ok(_) => {}
-            Err(err) => {
-                log::error!("subscribeLabels error: {err}");
-            }
-        }
-
-        log::info!("websocket subscriber disconnected");
-        metrics::gauge!("num_subscriptions").decrement(1);
-    })
-}
-
 struct EventsState {
     rkeys_to_ids: std::collections::HashMap<atrium_api::types::string::RecordKey, u64>,
     events: std::collections::HashMap<u64, Event>,
-}
-
-#[derive(Clone)]
-struct AppState {
-    db_pool: sqlx::PgPool,
-    notify_recv: tokio::sync::watch::Receiver<()>,
 }
 
 async fn service_jetstream(
@@ -842,8 +685,6 @@ async fn main() -> Result<(), anyhow::Error> {
         metrics::Unit::Microseconds,
         "jetstream cursor location"
     );
-    metrics::describe_gauge!("label_seq", "sequence number of currently emitted label");
-    metrics::describe_gauge!("num_subscriptions", "number of active subscriptions");
     metrics::describe_gauge!(
         "label_sync_time",
         metrics::Unit::Microseconds,
@@ -856,7 +697,6 @@ async fn main() -> Result<(), anyhow::Error> {
         .add_source(config::File::with_name("config.toml"))
         .set_default("bsky_endpoint", "https://bsky.social")?
         .set_default("ics_url", "https://furrycons.com/calendar/furrycons.ics")?
-        .set_default("bind", "127.0.0.1:3001")?
         .set_default("keypair_path", "signing.key")?
         .set_default("ui_endpoint", "https://conlabels.furryli.st")?
         .set_default(
@@ -864,13 +704,12 @@ async fn main() -> Result<(), anyhow::Error> {
             String::from(jetstream_oxide::DefaultJetstreamEndpoints::USEastOne),
         )?
         .set_default("label_sync_delay_secs", 60 * 60)?
+        .set_default("ingester_bind", "127.0.0.1:3002")?
         .build()?
         .try_deserialize()?;
 
     let keypair =
         atrium_crypto::keypair::Secp256k1Keypair::import(&std::fs::read(&config.keypair_path)?)?;
-
-    let (notify_send, notify_recv) = tokio::sync::watch::channel(());
 
     let events_state = std::sync::Arc::new(tokio::sync::Mutex::new(EventsState {
         rkeys_to_ids: std::collections::HashMap::new(),
@@ -890,44 +729,10 @@ async fn main() -> Result<(), anyhow::Error> {
 
     let db_pool = sqlx::PgPool::connect(&config.postgres_url).await?;
 
-    // Listen to changes on the label channel.
-    let mut pg_listener = sqlx::postgres::PgListener::connect_with(
-        &sqlx::pool::PoolOptions::<sqlx::Postgres>::new()
-            .max_connections(1)
-            .max_lifetime(None)
-            .idle_timeout(None)
-            .connect_with((*db_pool.connect_options()).clone())
-            .await?,
-    )
-    .await?;
-    pg_listener.ignore_pool_close_event(true);
-    pg_listener.listen("labels").await?;
-
-    let listener = tokio::net::TcpListener::bind(&config.bind).await?;
+    let listener = tokio::net::TcpListener::bind(&config.ingester_bind).await?;
 
     let metrics_handle =
         metrics_exporter_prometheus::PrometheusBuilder::new().install_recorder()?;
-
-    let app = axum::Router::new()
-        .nest(
-            "/xrpc",
-            axum::Router::new().route(
-                &format!(
-                    "/{}",
-                    atrium_api::com::atproto::label::subscribe_labels::NSID
-                ),
-                axum::routing::get(subscribe_labels),
-            ),
-        )
-        .route(
-            "/metrics",
-            axum::routing::get(|| async move { metrics_handle.render() }),
-        )
-        .route("/", axum::routing::get(|| async { ">:3" }))
-        .with_state(AppState {
-            db_pool: db_pool.clone(),
-            notify_recv,
-        });
 
     log::info!("syncing initial labels");
 
@@ -939,6 +744,13 @@ async fn main() -> Result<(), anyhow::Error> {
         events_state.clone(),
     )
     .await?;
+
+    let app = axum::Router::new()
+        .route(
+            "/metrics",
+            axum::routing::get(|| async move { metrics_handle.render() }),
+        )
+        .route("/", axum::routing::get(|| async { ">:3" }));
 
     tokio::try_join!(
         async {
@@ -955,15 +767,6 @@ async fn main() -> Result<(), anyhow::Error> {
                     events_state.clone(),
                 )
                 .await?;
-            }
-
-            #[allow(unreachable_code)]
-            Ok::<_, anyhow::Error>(())
-        },
-        async {
-            loop {
-                pg_listener.recv().await?;
-                notify_send.send(())?;
             }
 
             #[allow(unreachable_code)]
