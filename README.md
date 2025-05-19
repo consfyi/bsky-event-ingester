@@ -50,7 +50,12 @@ cargo run --bin update_plc
 
 ## Running
 
-Run `furcons-bsky-labeler`. This will start the labeler server, as well as start ingestion of events and sync the labeler record with the ICS file from furrycons.com.
+There are two components:
+
+- **event_ingester:** This polls the ICS file from furrycons.com and updates the labeler service, as well as listens to Jetstream to write new labels to Postgres.
+- **labeler_server:** This implements `com.atproto.label.subscribeLabels`. It reads new labels from Postgres and emits them to subscribers. This is a generic service that can be used to emit labels for any labeler that follows the schema.
+
+Make sure you run both of them!
 
 ## Design
 
