@@ -43,7 +43,7 @@ impl Event {
                 .ok_or(EventParseError::InvalidOrMissingField("UID"))?
                 .to_string(),
             url: event
-                .get_uid()
+                .get_url()
                 .ok_or(EventParseError::InvalidOrMissingField("URL"))?
                 .to_string(),
             summary: event
