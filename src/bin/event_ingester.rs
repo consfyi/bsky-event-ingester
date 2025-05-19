@@ -685,6 +685,7 @@ async fn main() -> Result<(), anyhow::Error> {
         metrics::Unit::Microseconds,
         "jetstream cursor location"
     );
+    metrics::describe_gauge!("label_seq", "sequence number of currently emitted label");
     metrics::describe_gauge!(
         "label_sync_time",
         metrics::Unit::Microseconds,
