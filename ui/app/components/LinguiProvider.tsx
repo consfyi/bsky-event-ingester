@@ -1,7 +1,7 @@
 import { negotiateLanguages } from "@fluent/langneg";
 import { i18n, Locale } from "@lingui/core";
 import { I18nProvider, I18nProviderProps } from "@lingui/react";
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useEffect, useState } from "react";
 import { hookifyPromise } from "~/hooks";
 
 const AVAILABLE_LOCALES = Object.keys(
@@ -29,7 +29,7 @@ const INITIAL_LOCALE = getNegotiatedBrowserLocale();
 
 const useInitialLoad = hookifyPromise(loadAndActivate(INITIAL_LOCALE));
 
-const LinguiContext = createContext({
+export const LinguiContext = createContext({
   locale: INITIAL_LOCALE,
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   setLocale(locale: Locale) {},
@@ -51,9 +51,4 @@ export default function LinguiProvider(props: Omit<I18nProviderProps, "i18n">) {
       <I18nProvider i18n={i18n} {...props} />
     </LinguiContext.Provider>
   );
-}
-
-export function useSetLocale() {
-  const { setLocale } = useContext(LinguiContext);
-  return setLocale;
 }
