@@ -283,7 +283,7 @@ function Footer() {
             </Anchor>{" "}
             – thank you! Convention missing?{" "}
             <Anchor
-              href="https://furrycons.com"
+              href="https://furrycons.com/calendar/new.php"
               target="_blank"
               rel="noreferrer"
             >
