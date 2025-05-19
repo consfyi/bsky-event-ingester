@@ -19,8 +19,8 @@ import {
 } from "@mantine/core";
 import { useParams } from "@remix-run/react";
 import {
+  IconBrandBluesky,
   IconCalendar,
-  IconExternalLink,
   IconLink,
   IconMapPin,
 } from "@tabler/icons-react";
@@ -110,56 +110,79 @@ function Header({ con, post }: { con: Con; post: PostView }) {
 
   return (
     <Box>
-      <Group gap={7} wrap="nowrap">
+      <Group gap={7} wrap="nowrap" align="top">
         {post.viewer != null ? (
-          <LikeButton size="sm" iconSize={24} conId={con.identifier} />
+          <Box mt={4}>
+            <LikeButton size="sm" iconSize={24} conId={con.identifier} />
+          </Box>
         ) : null}
         <Text size="lg" fw={500}>
-          {con.name}
+          {con.name}{" "}
+          <Tooltip label={<Trans>View Bluesky Post</Trans>} position="bottom">
+            <Anchor
+              href={`https://bsky.app/profile/${LABELER_DID}/post/${con.rkey}`}
+              target="_blank"
+              rel="noreferrer"
+            >
+              <IconBrandBluesky
+                title={t`View Bluesky Post`}
+                size={16}
+                stroke={1.5}
+              />
+            </Anchor>
+          </Tooltip>
         </Text>
-        <Anchor
-          href={`https://bsky.app/profile/${LABELER_DID}/post/${con.rkey}`}
-          target="_blank"
-          rel="noreferrer"
-          size="xs"
-        >
-          <IconExternalLink title={t`View Bluesky Post`} size={12} />{" "}
-          <Trans>View Bluesky Post</Trans>
-        </Anchor>
       </Group>
       <Box mt={4}>
-        <Text size="sm" mb={5}>
-          <IconCalendar title={t`Date`} size={12} />{" "}
-          <Trans context="[start date]-[end date] ([duration] days)">
-            {dateTimeFormat.formatRange(con.start, con.end)} (
-            {plural(differenceInDays(con.end, con.start) + 1, {
-              one: "# day",
-              other: "# days",
-            })}
-            )
-          </Trans>
-        </Text>
+        <Group wrap="nowrap" gap="xs" align="top">
+          <Box>
+            <IconCalendar title={t`Date`} size={16} stroke={1.5} />
+          </Box>
+          <Text size="sm" mb={5}>
+            <Trans context="[start date]-[end date] ([duration] days)">
+              {dateTimeFormat.formatRange(con.start, con.end)} (
+              {plural(differenceInDays(con.end, con.start) + 1, {
+                one: "# day",
+                other: "# days",
+              })}
+              )
+            </Trans>
+          </Text>
+        </Group>
 
-        <Text size="sm" mb={5}>
-          <IconMapPin title={t`Location`} size={12} />{" "}
-          <Anchor
-            href={`https://www.google.com/maps?q=${con.location}`}
-            target="_blank"
-            rel="noreferrer"
-            style={{
-              color: "unset",
-            }}
-          >
-            {con.location}
-          </Anchor>
-        </Text>
+        <Group wrap="nowrap" gap="xs" align="top">
+          <Box>
+            <IconMapPin title={t`Location`} size={16} stroke={1.5} />
+          </Box>
+          <Text size="sm" mb={5}>
+            <Anchor
+              href={`https://www.google.com/maps?q=${con.location}`}
+              target="_blank"
+              rel="noreferrer"
+              style={{
+                color: "unset",
+              }}
+            >
+              {con.location}
+            </Anchor>
+          </Text>
+        </Group>
 
-        <Text size="sm" mb={5}>
-          <IconLink title={t`Link`} size={12} />{" "}
-          <Anchor href={con.url} target="_blank" rel="noreferrer">
-            {con.url.replace(/https?:\/\//, "")}
-          </Anchor>
-        </Text>
+        <Group wrap="nowrap" gap="xs" align="top">
+          <Box>
+            <IconLink title={t`Link`} size={16} stroke={1.5} />
+          </Box>
+          <Text size="sm" mb={5}>
+            <Anchor
+              href={con.url}
+              target="_blank"
+              rel="noreferrer"
+              style={{ wordBreak: "break-all" }}
+            >
+              {con.url.replace(/https?:\/\//, "")}
+            </Anchor>
+          </Text>
+        </Group>
       </Box>
     </Box>
   );
