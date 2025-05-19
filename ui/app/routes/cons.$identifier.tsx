@@ -9,11 +9,11 @@ import {
   Anchor,
   Avatar,
   Box,
-  Center,
   Divider,
   Group,
-  Loader,
   SimpleGrid,
+  Skeleton,
+  Stack,
   Text,
   Tooltip,
 } from "@mantine/core";
@@ -25,7 +25,7 @@ import {
   IconMapPin,
 } from "@tabler/icons-react";
 import { differenceInDays } from "date-fns";
-import { sortBy } from "lodash-es";
+import { range, sortBy } from "lodash-es";
 import { Suspense, useEffect, useMemo } from "react";
 import LikeButton from "~/components/LikeButton";
 import { useLocalAttending } from "~/components/LocalAttendingContextProvider";
@@ -40,6 +40,18 @@ import {
   useSelfFollows,
 } from "~/hooks";
 
+function ActorSkeleton() {
+  return (
+    <Group wrap="nowrap" gap="sm">
+      <Skeleton circle height={38} />
+
+      <Stack gap={8} miw={0} flex="1 0">
+        <Skeleton height={14} width="100%" />
+        <Skeleton height={12} />
+      </Stack>
+    </Group>
+  );
+}
 function Actor({ actor }: { actor: ProfileView | ProfileViewDetailed }) {
   return (
     <Anchor
@@ -55,7 +67,7 @@ function Actor({ actor }: { actor: ProfileView | ProfileViewDetailed }) {
         <Tooltip
           position="right"
           label={
-            <div style={{ flex: 1, minWidth: 0 }}>
+            <Stack gap={0} miw={0}>
               <Text size="sm" fw={500} truncate>
                 {actor.displayName ? actor.displayName : actor.handle}
               </Text>
@@ -63,12 +75,12 @@ function Actor({ actor }: { actor: ProfileView | ProfileViewDetailed }) {
               <Text size="xs" truncate>
                 @{actor.handle}
               </Text>
-            </div>
+            </Stack>
           }
         >
           <Avatar src={actor.avatar} alt={`@${actor.handle}`} />
         </Tooltip>
-        <div style={{ flex: 1, minWidth: 0 }}>
+        <Stack gap={0} miw={0}>
           <Text size="sm" fw={500} truncate>
             {actor.displayName ? actor.displayName : actor.handle}{" "}
           </Text>
@@ -76,7 +88,7 @@ function Actor({ actor }: { actor: ProfileView | ProfileViewDetailed }) {
           <Text size="xs" truncate>
             @{actor.handle}
           </Text>
-        </div>
+        </Stack>
       </Group>
     </Anchor>
   );
@@ -193,7 +205,7 @@ function AttendeesList({
   }, [isSelfAttending, self, selfFollows, likes]);
 
   return (
-    <Box mt="sm">
+    <>
       {knownLikes.length > 0 ? (
         <SimpleGrid cols={{ base: 1, sm: 2, lg: 5 }} mt="xs">
           {knownLikes.map((actor) => (
@@ -219,7 +231,7 @@ function AttendeesList({
           </SimpleGrid>
         </>
       ) : null}
-    </Box>
+    </>
   );
 }
 
@@ -251,6 +263,9 @@ export default function Index() {
 
   const likeCountWithoutSelf =
     (post.likeCount || 0) - (post.viewer?.like != null ? 1 : 0);
+  const likeCount = isAttending
+    ? likeCountWithoutSelf + 1
+    : likeCountWithoutSelf;
 
   return (
     <Box p="sm">
@@ -262,24 +277,28 @@ export default function Index() {
           <Text size="sm" span>
             {isAttending ? (
               <Trans context="attendee count, including you">
-                {likeCountWithoutSelf + 1} including you
+                {likeCount} including you
               </Trans>
             ) : (
-              <Trans context="attendee count">{likeCountWithoutSelf}</Trans>
+              <Trans context="attendee count">{likeCount}</Trans>
             )}
           </Text>
         </Text>
-        <SimpleErrorBoundary>
-          <Suspense
-            fallback={
-              <Center p="lg">
-                <Loader />
-              </Center>
-            }
-          >
-            <AttendeesList con={con} isSelfAttending={isAttending} />
-          </Suspense>
-        </SimpleErrorBoundary>
+        <Box mt="sm">
+          <SimpleErrorBoundary>
+            <Suspense
+              fallback={
+                <SimpleGrid cols={{ base: 1, sm: 2, lg: 5 }} mt="xs">
+                  {range(likeCount).map((i) => (
+                    <ActorSkeleton key={i} />
+                  ))}
+                </SimpleGrid>
+              }
+            >
+              <AttendeesList con={con} isSelfAttending={isAttending} />
+            </Suspense>
+          </SimpleErrorBoundary>
+        </Box>
       </Box>
     </Box>
   );

@@ -152,8 +152,7 @@ function ConTableRow({ con, post }: { con: Con; post: PostView }) {
   );
 }
 
-// eslint-disable-next-line no-empty-pattern, @typescript-eslint/ban-types
-function ConsTable({}: {}) {
+function ConsTable() {
   const { data: cons } = useCons();
   const { data: conPosts } = useConPosts();
 
@@ -265,7 +264,7 @@ export default function Index() {
                 target="_blank"
                 rel="noreferrer"
               >
-                furrycons.com
+                FurryCons.com
               </Anchor>{" "}
               who provides all the data on conventions!
             </Text>

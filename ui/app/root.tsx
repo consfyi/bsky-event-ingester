@@ -11,6 +11,7 @@ import {
 } from "@atcute/oauth-browser-client";
 import { Trans, useLingui } from "@lingui/react/macro";
 import {
+  ActionIcon,
   Anchor,
   Avatar,
   Box,
@@ -252,6 +253,51 @@ function Header() {
   );
 }
 
+function Footer() {
+  return (
+    <Box
+      style={{
+        borderTop: "1px solid var(--mantine-color-default-border)",
+      }}
+      mt="sm"
+    >
+      <Container
+        size="lg"
+        p="xs"
+        display="flex"
+        style={{ justifyContent: "space-between", alignItems: "center" }}
+      >
+        <Text c="dimmed" size="sm">
+          All furry convention data courtesy of the volunteers at{" "}
+          <Anchor
+            href="https://furrycons.com"
+            target="_blank"
+            rel="noreferrer"
+            c="dimmed"
+          >
+            FurryCons.com
+          </Anchor>{" "}
+          – thank you!
+        </Text>
+        <Group gap={0} justify="flex-end" wrap="nowrap">
+          <ActionIcon
+            aria-label="Bluesky"
+            component="a"
+            href="https://bsky.app/profile/conlabels.furryli.st"
+            target="_blank"
+            rel="noreferrer"
+            size="md"
+            color="gray"
+            variant="subtle"
+          >
+            <IconBrandBluesky size={18} stroke={1.5} />
+          </ActionIcon>
+        </Group>
+      </Container>
+    </Box>
+  );
+}
+
 async function createClient() {
   if (typeof window == "undefined") {
     throw "cannot useClient in SSR context";
@@ -352,6 +398,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                             </Suspense>
                           </SimpleErrorBoundary>
                         </Container>
+                        <Footer />
                       </LocalAttendingContextProvider>
                     </LinguiProvider>
                   </Suspense>
