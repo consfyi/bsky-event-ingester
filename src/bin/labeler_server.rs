@@ -6,58 +6,34 @@ struct Config {
     postgres_url: String,
 }
 
-struct Subscriber {
-    sink: futures::prelude::stream::SplitSink<
-        axum::extract::ws::WebSocket,
-        axum::extract::ws::Message,
-    >,
-}
-
-impl Subscriber {
-    fn new(
-        sink: futures::prelude::stream::SplitSink<
-            axum::extract::ws::WebSocket,
-            axum::extract::ws::Message,
-        >,
-    ) -> Self {
-        Self { sink }
-    }
-
-    async fn send(
-        &mut self,
-        labels: &atrium_api::com::atproto::label::subscribe_labels::Labels,
-    ) -> Result<(), anyhow::Error> {
+fn encode_labels(
+    labels: &atrium_api::com::atproto::label::subscribe_labels::Labels,
+) -> Result<Vec<u8>, serde_ipld_dagcbor::EncodeError<std::collections::TryReserveError>> {
+    static HEADER: std::sync::LazyLock<Vec<u8>> = std::sync::LazyLock::new(|| {
         let mut buf = vec![];
 
-        static HEADER: std::sync::LazyLock<Vec<u8>> = std::sync::LazyLock::new(|| {
-            let mut buf = vec![];
+        #[derive(serde::Serialize)]
+        struct Header {
+            t: String,
+            op: i64,
+        }
 
-            #[derive(serde::Serialize)]
-            struct Header {
-                t: String,
-                op: i64,
-            }
+        buf.extend(
+            serde_ipld_dagcbor::to_vec(&Header {
+                t: "#labels".to_string(),
+                op: 1,
+            })
+            .unwrap(),
+        );
 
-            buf.extend(
-                serde_ipld_dagcbor::to_vec(&Header {
-                    t: "#labels".to_string(),
-                    op: 1,
-                })
-                .unwrap(),
-            );
+        buf
+    });
 
-            buf
-        });
+    let mut buf = vec![];
+    buf.extend(&*HEADER);
+    buf.extend(serde_ipld_dagcbor::to_vec(labels)?);
 
-        buf.extend(&*HEADER);
-        buf.extend(serde_ipld_dagcbor::to_vec(labels)?);
-
-        self.sink
-            .send(axum::extract::ws::Message::Binary(buf.into()))
-            .await?;
-
-        Ok(())
-    }
+    Ok(buf)
 }
 
 async fn subscribe_labels(
@@ -71,8 +47,7 @@ async fn subscribe_labels(
         log::info!("got websocket subscriber, cursor = {:?}", params.cursor);
         metrics::gauge!("num_subscriptions").increment(1);
 
-        let (sink, mut stream) = socket.split();
-        let mut subscriber = Subscriber::new(sink);
+        let (mut sink, mut stream) = socket.split();
 
         let mut notify_recv = app_state.notify_recv.clone();
         notify_recv.mark_changed();
@@ -119,17 +94,18 @@ async fn subscribe_labels(
                         while let Some(row) = rows.next().await {
                             let row = row?;
 
-                            subscriber
-                                .send(
+                            sink.send(axum::extract::ws::Message::Binary(
+                                encode_labels(
                                     &atrium_api::com::atproto::label::subscribe_labels::LabelsData {
                                         seq: row.seq,
-                                        labels: vec![serde_ipld_dagcbor::from_slice::<
-                                            atrium_api::com::atproto::label::defs::Label,
-                                        >(&row.payload)?],
+                                        labels: vec![serde_ipld_dagcbor::from_slice(&row.payload)?],
                                     }
                                     .into(),
-                                )
-                                .await?;
+                                )?
+                                .into(),
+                            ))
+                            .await?;
+
                             seq = row.seq;
                         }
                     }
