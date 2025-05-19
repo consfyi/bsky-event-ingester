@@ -1,15 +1,89 @@
 import type { PostView } from "@atcute/bluesky/types/app/feed/defs";
 import type { ResourceUri } from "@atcute/lexicons";
+import {
+  configureOAuth,
+  deleteStoredSession,
+  finalizeAuthorization,
+  getSession,
+  listStoredSessions,
+  Session,
+} from "@atcute/oauth-browser-client";
 import { parse as parseDate } from "date-fns";
 import { sortBy } from "lodash-es";
-import { useContext, useMemo } from "react";
+import { useMemo } from "react";
 import useSWR, { SWRConfiguration, SWRResponse } from "swr";
 import { LABELER_DID } from "~/config";
-import { ClientContext } from "./contexts";
+import clientMetadata from "../public/client-metadata.json";
+import { Client } from "./bluesky";
 
-export function useClient() {
-  return useContext(ClientContext)!;
+function hookifyPromise<T>(promise: Promise<T>) {
+  let status: "pending" | "success" | "error" = "pending";
+  let result: T;
+
+  const suspender = promise.then(
+    (r) => {
+      status = "success";
+      result = r;
+    },
+    (e) => {
+      status = "error";
+      result = e;
+    }
+  );
+
+  return () => {
+    if (status === "pending") {
+      throw suspender;
+    } else if (status === "error") {
+      throw result;
+    } else {
+      return result;
+    }
+  };
 }
+
+export const useClient = hookifyPromise(
+  (async () => {
+    if (typeof window == "undefined") {
+      return new Client();
+    }
+
+    const params = new URLSearchParams(window.location.hash.slice(1));
+    window.history.replaceState(
+      null,
+      "",
+      window.location.pathname + window.location.search
+    );
+
+    configureOAuth({
+      metadata: {
+        client_id: clientMetadata.client_id,
+        redirect_uri: clientMetadata.redirect_uris[0],
+      },
+    });
+
+    let session: Session | null = null;
+    if (params.size > 0) {
+      try {
+        session = await finalizeAuthorization(params);
+      } catch (e) {
+        // Do nothing.
+      }
+    } else {
+      const sessions = listStoredSessions();
+      if (sessions.length > 0) {
+        const did = sessions[0];
+        try {
+          session = await getSession(did, { allowStale: false });
+        } catch (e) {
+          deleteStoredSession(did);
+        }
+      }
+    }
+
+    return new Client(session);
+  })()
+);
 
 export function useConPosts(opts?: SWRConfiguration) {
   const client = useClient();

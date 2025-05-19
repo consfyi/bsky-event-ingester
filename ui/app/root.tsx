@@ -1,13 +1,8 @@
 import {
-  configureOAuth,
   createAuthorizationUrl,
   deleteStoredSession,
-  finalizeAuthorization,
-  getSession,
-  listStoredSessions,
   resolveFromIdentity,
   resolveFromService,
-  Session,
 } from "@atcute/oauth-browser-client";
 import { Trans, useLingui } from "@lingui/react/macro";
 import {
@@ -46,15 +41,13 @@ import {
   IconChevronDown,
   IconLogout2,
 } from "@tabler/icons-react";
-import { Suspense, useEffect, useRef, useState } from "react";
-import clientMetadata from "../public/client-metadata.json";
-import { Client } from "./bluesky";
-import LinguiProvider from "./components/LinguiProvider";
-import { ClientContext } from "./contexts";
-import { useClient, useSelf, useSelfFollows } from "./hooks";
-import LocalAttendingContextProvider from "./components/LocalAttendingContextProvider";
+import { Suspense, useState } from "react";
 import { SWRConfig } from "swr";
+import clientMetadata from "../public/client-metadata.json";
+import LinguiProvider from "./components/LinguiProvider";
+import LocalAttendingContextProvider from "./components/LocalAttendingContextProvider";
 import SimpleErrorBoundary from "./components/SimpleErrorBoundary";
+import { useClient, useSelf, useSelfFollows } from "./hooks";
 
 const theme = createTheme({});
 
@@ -256,51 +249,6 @@ function Header() {
 }
 
 export function Layout({ children }: { children: React.ReactNode }) {
-  const [client, setClient] = useState<Client | null>(null);
-
-  const ready = useRef(false);
-
-  useEffect(() => {
-    if (!ready.current) {
-      ready.current = true;
-      const params = new URLSearchParams(location.hash.slice(1));
-      window.history.replaceState(
-        null,
-        "",
-        location.pathname + location.search
-      );
-
-      configureOAuth({
-        metadata: {
-          client_id: clientMetadata.client_id,
-          redirect_uri: clientMetadata.redirect_uris[0],
-        },
-      });
-
-      (async () => {
-        let session: Session | null = null;
-        if (params.size > 0) {
-          try {
-            session = await finalizeAuthorization(params);
-          } catch (e) {
-            // Do nothing.
-          }
-        } else {
-          const sessions = listStoredSessions();
-          if (sessions.length > 0) {
-            const did = sessions[0];
-            try {
-              session = await getSession(did, { allowStale: false });
-            } catch (e) {
-              deleteStoredSession(did);
-            }
-          }
-        }
-        setClient(new Client(session));
-      })();
-    }
-  }, [setClient]);
-
   return (
     <html lang="en">
       <head>
@@ -327,30 +275,22 @@ export function Layout({ children }: { children: React.ReactNode }) {
               }
             >
               <LinguiProvider>
-                {client != null ? (
-                  <ClientContext.Provider value={client}>
-                    <LocalAttendingContextProvider>
-                      <Header />
-                      <Container size="lg" px={0}>
-                        <SimpleErrorBoundary>
-                          <Suspense
-                            fallback={
-                              <Center p="lg">
-                                <Loader />
-                              </Center>
-                            }
-                          >
-                            {children}
-                          </Suspense>
-                        </SimpleErrorBoundary>
-                      </Container>
-                    </LocalAttendingContextProvider>
-                  </ClientContext.Provider>
-                ) : (
-                  <Center p="lg">
-                    <Loader />
-                  </Center>
-                )}
+                <LocalAttendingContextProvider>
+                  <Header />
+                  <Container size="lg" px={0}>
+                    <SimpleErrorBoundary>
+                      <Suspense
+                        fallback={
+                          <Center p="lg">
+                            <Loader />
+                          </Center>
+                        }
+                      >
+                        {children}
+                      </Suspense>
+                    </SimpleErrorBoundary>
+                  </Container>
+                </LocalAttendingContextProvider>
               </LinguiProvider>
             </Suspense>
           </SWRConfig>
