@@ -23,6 +23,7 @@ import {
 } from "@tabler/icons-react";
 import {
   addMonths,
+  differenceInDays,
   format as formatDate,
   getDay,
   getYear,
@@ -35,6 +36,7 @@ import { useLocalAttending } from "~/components/LocalAttendingContextProvider";
 import SimpleErrorBoundary from "~/components/SimpleErrorBoundary";
 import { Con, useClient, useConPosts, useCons } from "~/hooks";
 import clientMetadata from "../../public/client-metadata.json";
+import { plural } from "@lingui/core/macro";
 
 function* monthRange(start: Date, end: Date): Generator<Date> {
   while (start < end) {
@@ -113,7 +115,7 @@ function ConTableRow({ con, post }: { con: Con; post: PostView }) {
               <IconUsers title={t`Attendees`} size={12} />{" "}
               {likeCountWithoutSelf + (isAttending ? 1 : 0)} •{" "}
               <IconCalendarWeek title={t`End date`} size={12} />{" "}
-              <Trans>
+              <Trans context="ends [date] ([duration] days)">
                 ends{" "}
                 {i18n.date(con.end, {
                   weekday: "short",
@@ -123,7 +125,13 @@ function ConTableRow({ con, post }: { con: Con; post: PostView }) {
                     getYear(con.start) != getYear(con.end)
                       ? "numeric"
                       : undefined,
+                })}{" "}
+                (
+                {plural(differenceInDays(con.end, con.start) + 1, {
+                  one: "# day",
+                  other: "# days",
                 })}
+                )
               </Trans>{" "}
               • <IconMapPin title={t`Location`} size={12} />{" "}
               <Anchor
