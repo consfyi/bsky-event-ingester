@@ -29,15 +29,27 @@ impl Subscriber {
     ) -> Result<(), anyhow::Error> {
         let mut buf = vec![];
 
-        #[derive(serde::Serialize)]
-        struct Header {
-            t: String,
-            op: i64,
-        }
-        buf.extend(serde_ipld_dagcbor::to_vec(&Header {
-            t: "#labels".to_string(),
-            op: 1,
-        })?);
+        static HEADER: std::sync::LazyLock<Vec<u8>> = std::sync::LazyLock::new(|| {
+            let mut buf = vec![];
+
+            #[derive(serde::Serialize)]
+            struct Header {
+                t: String,
+                op: i64,
+            }
+
+            buf.extend(
+                serde_ipld_dagcbor::to_vec(&Header {
+                    t: "#labels".to_string(),
+                    op: 1,
+                })
+                .unwrap(),
+            );
+
+            buf
+        });
+
+        buf.extend(&*HEADER);
         buf.extend(serde_ipld_dagcbor::to_vec(labels)?);
 
         self.sink
