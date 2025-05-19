@@ -227,7 +227,7 @@ function AttendeesList({
     return [knownLikes, unknownLikes];
   }, [isSelfAttending, self, selfFollows, likes]);
 
-  return (
+  return likes!.length > 0 ? (
     <>
       {knownLikes.length > 0 ? (
         <SimpleGrid cols={{ base: 1, sm: 2, lg: 5 }} mt="xs">
@@ -255,6 +255,12 @@ function AttendeesList({
         </>
       ) : null}
     </>
+  ) : (
+    <Box>
+      <Text c="dimmed" size="sm">
+        <Trans>No known attendees yet.</Trans>
+      </Text>
+    </Box>
   );
 }
 
@@ -307,12 +313,12 @@ export default function Index() {
             )}
           </Text>
         </Text>
-        <Box mt="sm">
+        <Box mt="xs">
           <SimpleErrorBoundary>
             <Suspense
               fallback={
                 <SimpleGrid cols={{ base: 1, sm: 2, lg: 5 }} mt="xs">
-                  {range(likeCount).map((i) => (
+                  {range(Math.max(likeCount, 1)).map((i) => (
                     <ActorSkeleton key={i} />
                   ))}
                 </SimpleGrid>
