@@ -3,6 +3,7 @@ import type {
   ProfileViewDetailed,
 } from "@atcute/bluesky/types/app/actor/defs";
 import type { PostView } from "@atcute/bluesky/types/app/feed/defs";
+import { plural } from "@lingui/core/macro";
 import { Trans, useLingui } from "@lingui/react/macro";
 import {
   Anchor,
@@ -23,6 +24,7 @@ import {
   IconLink,
   IconMapPin,
 } from "@tabler/icons-react";
+import { differenceInDays } from "date-fns";
 import { sortBy } from "lodash-es";
 import { Suspense, useEffect, useMemo } from "react";
 import LikeButton from "~/components/LikeButton";
@@ -116,7 +118,14 @@ function Header({ con, post }: { con: Con; post: PostView }) {
       <Box mt={4}>
         <Text size="sm" mb={5}>
           <IconCalendar title={t`Date`} size={12} />{" "}
-          {dateTimeFormat.formatRange(con.start, con.end)}
+          <Trans context="[start date]-[end date] ([duration] days)">
+            {dateTimeFormat.formatRange(con.start, con.end)} (
+            {plural(differenceInDays(con.end, con.start) + 1, {
+              one: "# day",
+              other: "# days",
+            })}
+            )
+          </Trans>
         </Text>
 
         <Text size="sm" mb={5}>
