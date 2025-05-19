@@ -19,6 +19,7 @@ import { Client } from "./bluesky";
 export function hookifyPromise<T>(promise: Promise<T>) {
   let status: "pending" | "success" | "error" = "pending";
   let result: T;
+  let error: unknown;
 
   const suspender = promise.then(
     (r) => {
@@ -27,18 +28,18 @@ export function hookifyPromise<T>(promise: Promise<T>) {
     },
     (e) => {
       status = "error";
-      result = e;
+      error = e;
     }
   );
 
   return () => {
-    if (status === "pending") {
+    if (status == "pending") {
       throw suspender;
-    } else if (status === "error") {
-      throw result;
-    } else {
-      return result;
     }
+    if (status == "error") {
+      throw error;
+    }
+    return result;
   };
 }
 
@@ -89,7 +90,7 @@ export function useConPosts(opts?: SWRConfiguration) {
   const client = useClient();
 
   return useSWR(
-    client != null ? ["conPosts"] : null,
+    ["conPosts"],
     async () => {
       const posts: Record<string, PostView> = {};
       for await (const postView of client.getAuthorPosts(LABELER_DID)) {
@@ -119,7 +120,7 @@ export function useCons(opts?: SWRConfiguration): SWRResponse<Con[] | null> {
   const client = useClient();
 
   const { data, ...rest } = useSWR(
-    client != null ? ["labelerView"] : null,
+    ["labelerView"],
     async () => {
       const data = await client.getLabelerView(LABELER_DID);
       if (data == null) {
@@ -157,7 +158,7 @@ export function useLikes(uri: ResourceUri | null, opts?: SWRConfiguration) {
   const client = useClient();
 
   return useSWR(
-    client != null && uri != null ? ["likes", uri] : null,
+    uri != null ? ["likes", uri] : null,
     async () => {
       const likes = [];
       for await (const like of client.getLikes(uri!)) {
@@ -173,7 +174,7 @@ export function useSelf(opts?: SWRConfiguration) {
   const client = useClient();
 
   return useSWR(
-    client != null && client.did != null ? ["self"] : null,
+    client.did != null ? ["self"] : null,
     () => client.getProfile(client.did!),
     opts
   );
@@ -183,7 +184,7 @@ export function useSelfFollows(opts?: SWRConfiguration) {
   const client = useClient();
 
   const { data, ...rest } = useSWR(
-    client != null && client.did != null ? ["selfFollows"] : null,
+    client.did != null ? ["selfFollows"] : null,
     async () => {
       const follows = [];
       for await (const follow of client.getFollows(client.did!)) {
