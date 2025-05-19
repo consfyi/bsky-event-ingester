@@ -533,6 +533,7 @@ async fn subscribe_labels(
 ) -> axum::response::Response {
     ws.on_upgrade(move |socket: axum::extract::ws::WebSocket| async move {
         log::info!("got websocket subscriber, cursor = {:?}", params.cursor);
+        metrics::gauge!("num_subscriptions").increment(1);
 
         let (sink, mut stream) = socket.split();
         let mut subscriber = Subscriber::new(sink);
@@ -610,6 +611,7 @@ async fn subscribe_labels(
         }
 
         log::info!("websocket subscriber disconnected");
+        metrics::gauge!("num_subscriptions").decrement(1);
     })
 }
 
