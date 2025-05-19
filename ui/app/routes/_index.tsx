@@ -29,12 +29,12 @@ import {
   setDate,
 } from "date-fns";
 import { groupBy } from "lodash-es";
-import { Fragment, useMemo } from "react";
+import { Fragment, Suspense, useMemo } from "react";
 import LikeButton from "~/components/LikeButton";
 import LoadErrorAlert from "~/components/LoadErrorAlert";
+import { useLocalAttending } from "~/components/LocalAttendingContextProvider";
 import { Con, useClient, useConPosts, useCons } from "~/hooks";
 import clientMetadata from "../../public/client-metadata.json";
-import { useLocalAttending } from "~/components/LocalAttendingContextProvider";
 
 function* monthRange(start: Date, end: Date): Generator<Date> {
   while (start < end) {
@@ -146,8 +146,8 @@ function ConTableRow({ con, post }: { con: Con; post: PostView }) {
 
 // eslint-disable-next-line no-empty-pattern, @typescript-eslint/ban-types
 function ConsTable({}: {}) {
-  const { data: cons, error, isLoading } = useCons();
-  const { data: conPosts, isLoading: conPostsIsLoading } = useConPosts();
+  const { data: cons } = useCons();
+  const { data: conPosts } = useConPosts();
 
   const { i18n } = useLingui();
 
@@ -160,18 +160,6 @@ function ConsTable({}: {}) {
       return formatDate(con.start, "yyyy-MM");
     });
   }, [cons]);
-
-  if (error != null) {
-    return <LoadErrorAlert error={error} />;
-  }
-
-  if (isLoading || conPostsIsLoading) {
-    return (
-      <Center p="lg">
-        <Loader />
-      </Center>
-    );
-  }
 
   if (cons == null || conPosts == null || consByMonth == null) {
     return <LoadErrorAlert error={null} />;
@@ -284,7 +272,15 @@ export default function Index() {
           </Trans>
         </Alert>
       ) : null}
-      <ConsTable />
+      <Suspense
+        fallback={
+          <Center p="lg">
+            <Loader />
+          </Center>
+        }
+      >
+        <ConsTable />
+      </Suspense>
     </>
   );
 }

@@ -46,13 +46,14 @@ import {
   IconChevronDown,
   IconLogout2,
 } from "@tabler/icons-react";
-import { useEffect, useRef, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import clientMetadata from "../public/client-metadata.json";
 import { Client } from "./bluesky";
-import { LinguiProvider } from "./components/LinguiProvider";
+import LinguiProvider from "./components/LinguiProvider";
 import { ClientContext } from "./contexts";
 import { useClient, useSelf, useSelfFollows } from "./hooks";
 import LocalAttendingContextProvider from "./components/LocalAttendingContextProvider";
+import { SWRConfig } from "swr";
 
 const theme = createTheme({});
 
@@ -310,28 +311,46 @@ export function Layout({ children }: { children: React.ReactNode }) {
       </head>
       <body>
         <MantineProvider theme={theme} defaultColorScheme="auto">
-          <LinguiProvider
-            loadingPlaceholder={
-              <Center p="lg">
-                <Loader />
-              </Center>
-            }
+          <SWRConfig
+            value={{
+              suspense: true,
+              revalidateOnFocus: false,
+              revalidateOnReconnect: false,
+            }}
           >
-            {client != null ? (
-              <ClientContext.Provider value={client}>
-                <LocalAttendingContextProvider>
-                  <Header />
-                  <Container size="lg" px={0}>
-                    {children}
-                  </Container>
-                </LocalAttendingContextProvider>
-              </ClientContext.Provider>
-            ) : (
-              <Center p="lg">
-                <Loader />
-              </Center>
-            )}
-          </LinguiProvider>
+            <Suspense
+              fallback={
+                <Center p="lg">
+                  <Loader />
+                </Center>
+              }
+            >
+              <LinguiProvider>
+                {client != null ? (
+                  <ClientContext.Provider value={client}>
+                    <LocalAttendingContextProvider>
+                      <Header />
+                      <Container size="lg" px={0}>
+                        <Suspense
+                          fallback={
+                            <Center p="lg">
+                              <Loader />
+                            </Center>
+                          }
+                        >
+                          {children}
+                        </Suspense>
+                      </Container>
+                    </LocalAttendingContextProvider>
+                  </ClientContext.Provider>
+                ) : (
+                  <Center p="lg">
+                    <Loader />
+                  </Center>
+                )}
+              </LinguiProvider>
+            </Suspense>
+          </SWRConfig>
         </MantineProvider>
 
         <ScrollRestoration />

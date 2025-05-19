@@ -2,8 +2,7 @@ import type {
   ProfileView,
   ProfileViewDetailed,
 } from "@atcute/bluesky/types/app/actor/defs";
-import type { ThreadViewPost } from "@atcute/bluesky/types/app/feed/defs";
-import type { Like } from "@atcute/bluesky/types/app/feed/getLikes";
+import type { PostView } from "@atcute/bluesky/types/app/feed/defs";
 import { Trans, useLingui } from "@lingui/react/macro";
 import {
   Anchor,
@@ -25,18 +24,17 @@ import {
   IconMapPin,
 } from "@tabler/icons-react";
 import { sortBy } from "lodash-es";
-import { useEffect, useMemo } from "react";
+import { Suspense, useEffect, useMemo } from "react";
 import LikeButton from "~/components/LikeButton";
-import LoadErrorAlert from "~/components/LoadErrorAlert";
 import { useLocalAttending } from "~/components/LocalAttendingContextProvider";
 import { LABELER_DID } from "~/config";
 import {
   Con,
+  useConPosts,
   useCons,
   useLikes,
   useSelf,
   useSelfFollows,
-  useThread,
 } from "~/hooks";
 
 function Actor({ actor }: { actor: ProfileView | ProfileViewDetailed }) {
@@ -81,7 +79,7 @@ function Actor({ actor }: { actor: ProfileView | ProfileViewDetailed }) {
   );
 }
 
-function Header({ con, thread }: { con: Con; thread: ThreadViewPost }) {
+function Header({ con, post }: { con: Con; post: PostView }) {
   const { i18n, t } = useLingui();
 
   const dateTimeFormat = useMemo(
@@ -98,7 +96,7 @@ function Header({ con, thread }: { con: Con; thread: ThreadViewPost }) {
   return (
     <Box mt="sm">
       <Group gap={7} wrap="nowrap">
-        {thread.post.viewer != null ? (
+        {post.viewer != null ? (
           <LikeButton size="sm" iconSize={24} conId={con.identifier} />
         ) : null}
         <Text size="lg" fw={500}>
@@ -145,28 +143,25 @@ function Header({ con, thread }: { con: Con; thread: ThreadViewPost }) {
   );
 }
 
-function Attendees({
+function AttendeesList({
   isSelfAttending,
-  thread,
-  likes,
+  con,
 }: {
   isSelfAttending: boolean;
-  thread: ThreadViewPost;
-  likes: Like[] | null;
+  con: Con;
 }) {
   const { data: self } = useSelf();
-  const { data: selfFollows, isLoading: selfFollowsIsLoading } =
-    useSelfFollows();
+  const { data: selfFollows } = useSelfFollows();
+
+  const { data: likes } = useLikes(
+    `at://${LABELER_DID}/app.bsky.feed.post/${con.rkey}`
+  );
 
   const [knownLikes, unknownLikes] = useMemo(() => {
-    if (likes == null) {
-      return [null, null];
-    }
-
     let knownLikes: (ProfileView | ProfileViewDetailed)[] = [];
     let unknownLikes: (ProfileView | ProfileViewDetailed)[] = [];
 
-    for (const like of likes) {
+    for (const like of likes!) {
       if (self != null && like.actor.did == self.did) {
         continue;
       }
@@ -187,64 +182,41 @@ function Attendees({
     return [knownLikes, unknownLikes];
   }, [isSelfAttending, self, selfFollows, likes]);
 
-  const likeCountWithoutSelf =
-    (thread.post.likeCount || 0) - (thread.post.viewer?.like != null ? 1 : 0);
-
   return (
     <Box mt="sm">
-      <Text size="md" fw={500}>
-        <Trans>Attendees</Trans>{" "}
-        {likes != null ? (
-          <Text size="sm" span>
-            {isSelfAttending ? (
-              <Trans context="attendee count, including you">
-                {likeCountWithoutSelf + 1} including you
-              </Trans>
-            ) : (
-              <Trans context="attendee count">{likeCountWithoutSelf}</Trans>
-            )}
-          </Text>
-        ) : null}
-      </Text>
-      {!selfFollowsIsLoading && knownLikes != null && unknownLikes != null ? (
+      {knownLikes.length > 0 ? (
+        <SimpleGrid cols={{ base: 1, sm: 2, lg: 5 }} mt="xs">
+          {knownLikes.map((actor) => (
+            <div key={actor.did}>
+              <Actor actor={actor} />
+            </div>
+          ))}
+        </SimpleGrid>
+      ) : null}
+      {unknownLikes.length > 0 ? (
         <>
-          {knownLikes.length > 0 ? (
-            <SimpleGrid cols={{ base: 1, sm: 2, lg: 5 }} mt="xs">
-              {knownLikes.map((actor) => (
-                <div key={actor.did}>
-                  <Actor actor={actor} />
-                </div>
-              ))}
-            </SimpleGrid>
-          ) : null}
-          {unknownLikes.length > 0 ? (
-            <>
-              <Divider
-                label={<Trans>People you don’t follow</Trans>}
-                labelPosition="left"
-                mt="xs"
-              />
-              <SimpleGrid cols={{ base: 1, sm: 2, lg: 5 }} mt="xs">
-                {unknownLikes.map((actor) => (
-                  <div key={actor.did}>
-                    <Actor actor={actor} />
-                  </div>
-                ))}
-              </SimpleGrid>
-            </>
-          ) : null}
+          <Divider
+            label={<Trans>People you don’t follow</Trans>}
+            labelPosition="left"
+            mt="xs"
+          />
+          <SimpleGrid cols={{ base: 1, sm: 2, lg: 5 }} mt="xs">
+            {unknownLikes.map((actor) => (
+              <div key={actor.did}>
+                <Actor actor={actor} />
+              </div>
+            ))}
+          </SimpleGrid>
         </>
-      ) : (
-        <Center p="lg">
-          <Loader />
-        </Center>
-      )}
+      ) : null}
     </Box>
   );
 }
 
 export default function Index() {
-  const { data: cons, error, isLoading } = useCons();
+  const { data: cons } = useCons();
+  const { data: conPosts } = useConPosts();
+
   const { identifier } = useParams();
 
   const con =
@@ -258,59 +230,45 @@ export default function Index() {
     document.title = con != null ? con.name : "";
   }, [con]);
 
-  const { data: thread, isLoading: threadIsLoading } = useThread(
-    con != null ? `at://${LABELER_DID}/app.bsky.feed.post/${con.rkey}` : null
-  );
-
-  const {
-    data: likes,
-    error: likesError,
-    isLoading: likesIsLoading,
-  } = useLikes(
-    con != null ? `at://${LABELER_DID}/app.bsky.feed.post/${con.rkey}` : null
-  );
-
-  if (error != null) {
-    return <LoadErrorAlert error={error} />;
-  }
-
-  if (isLoading || threadIsLoading) {
-    return (
-      <Center p="lg">
-        <Loader />
-      </Center>
-    );
-  }
-
-  if (cons == null) {
-    return <LoadErrorAlert error={null} />;
-  }
-
-  if (con == null || thread == null) {
+  if (con == null) {
     throw new Response(null, {
       status: 404,
       statusText: "Not Found",
     });
   }
 
+  const post = conPosts![con.rkey]!;
+
+  const likeCountWithoutSelf =
+    (post.likeCount || 0) - (post.viewer?.like != null ? 1 : 0);
+
   return (
     <Box px="sm">
-      <Header con={con} thread={thread} />
-      {likesError != null ? (
-        <LoadErrorAlert error={error} />
-      ) : likesIsLoading ? (
-        <Center p="lg">
-          <Loader />
-        </Center>
-      ) : likes == null ? (
-        <LoadErrorAlert error={null} />
-      ) : (
-        <Attendees
-          thread={thread}
-          likes={likes}
-          isSelfAttending={isAttending}
-        />
-      )}
+      <Header con={con} post={post} />
+
+      <Box mt="sm">
+        <Text size="md" fw={500}>
+          <Trans>Attendees</Trans>{" "}
+          <Text size="sm" span>
+            {isAttending ? (
+              <Trans context="attendee count, including you">
+                {likeCountWithoutSelf + 1} including you
+              </Trans>
+            ) : (
+              <Trans context="attendee count">{likeCountWithoutSelf}</Trans>
+            )}
+          </Text>
+        </Text>
+        <Suspense
+          fallback={
+            <Center p="lg">
+              <Loader />
+            </Center>
+          }
+        >
+          <AttendeesList con={con} isSelfAttending={isAttending} />
+        </Suspense>
+      </Box>
     </Box>
   );
 }

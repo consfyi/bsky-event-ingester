@@ -11,20 +11,6 @@ export function useClient() {
   return useContext(ClientContext)!;
 }
 
-export function useThread(uri: ResourceUri | null, opts?: SWRConfiguration) {
-  const client = useClient();
-
-  return useSWR(
-    client != null && uri != null ? ["thread", uri] : null,
-    () => client.getPostThread(uri!),
-    {
-      revalidateOnFocus: false,
-      revalidateOnReconnect: false,
-      ...opts,
-    }
-  );
-}
-
 export function useConPosts(opts?: SWRConfiguration) {
   const client = useClient();
 
@@ -41,11 +27,7 @@ export function useConPosts(opts?: SWRConfiguration) {
       }
       return posts;
     },
-    {
-      revalidateOnFocus: false,
-      revalidateOnReconnect: false,
-      ...opts,
-    }
+    opts
   );
 }
 
@@ -91,11 +73,7 @@ export function useCons(opts?: SWRConfiguration): SWRResponse<Con[] | null> {
 
       return sortBy(cons, (con) => con.start);
     },
-    {
-      revalidateOnFocus: false,
-      revalidateOnReconnect: false,
-      ...opts,
-    }
+    opts
   );
 
   return { data, ...rest };
@@ -123,11 +101,7 @@ export function useSelf(opts?: SWRConfiguration) {
   return useSWR(
     client != null && client.did != null ? ["self"] : null,
     () => client.getProfile(client.did!),
-    {
-      revalidateOnFocus: false,
-      revalidateOnReconnect: false,
-      ...opts,
-    }
+    opts
   );
 }
 
@@ -144,9 +118,8 @@ export function useSelfFollows(opts?: SWRConfiguration) {
       return follows;
     },
     {
-      revalidateOnFocus: false,
-      revalidateOnReconnect: false,
       revalidateIfStale: false,
+      suspense: false,
       ...opts,
     }
   );
