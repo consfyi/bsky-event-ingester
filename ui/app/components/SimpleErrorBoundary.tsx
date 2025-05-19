@@ -21,7 +21,7 @@ export default function SimpleErrorBoundary({
             <Trans>An error occurred while attempting to load this data.</Trans>
           </Text>
           <Code block p={0} bg="transparent">
-            {error}
+            {error.toString()}
           </Code>
         </Alert>
       )}

@@ -95,7 +95,7 @@ function Header({ con, post }: { con: Con; post: PostView }) {
   );
 
   return (
-    <Box mt="sm">
+    <Box>
       <Group gap={7} wrap="nowrap">
         {post.viewer != null ? (
           <LikeButton size="sm" iconSize={24} conId={con.identifier} />
@@ -244,7 +244,7 @@ export default function Index() {
     (post.likeCount || 0) - (post.viewer?.like != null ? 1 : 0);
 
   return (
-    <Box px="sm">
+    <Box p="sm">
       <Header con={con} post={post} />
 
       <Box mt="sm">

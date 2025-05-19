@@ -1,7 +1,8 @@
 import { negotiateLanguages } from "@fluent/langneg";
 import { i18n, Locale } from "@lingui/core";
 import { I18nProvider, I18nProviderProps } from "@lingui/react";
-import { createContext, lazy, useContext, useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useState } from "react";
+import { hookifyPromise } from "~/hooks";
 
 const AVAILABLE_LOCALES = Object.keys(
   import.meta.glob("../locales/*/messages.po")
@@ -26,34 +27,31 @@ async function loadAndActivate(locale: string) {
 
 const INITIAL_LOCALE = getNegotiatedBrowserLocale();
 
+const useInitialLoad = hookifyPromise(loadAndActivate(INITIAL_LOCALE));
+
 const LinguiContext = createContext({
   locale: INITIAL_LOCALE,
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   setLocale(locale: Locale) {},
 });
 
-export default lazy(async () => {
-  await loadAndActivate(INITIAL_LOCALE);
+export default function LinguiProvider(props: Omit<I18nProviderProps, "i18n">) {
+  useInitialLoad();
 
-  return {
-    __esModule: true,
-    default: function LinguiProvider(props: Omit<I18nProviderProps, "i18n">) {
-      const [locale, setLocale] = useState(INITIAL_LOCALE);
+  const [locale, setLocale] = useState(INITIAL_LOCALE);
 
-      useEffect(() => {
-        (async () => {
-          await loadAndActivate(locale);
-        })();
-      }, [locale]);
+  useEffect(() => {
+    (async () => {
+      await loadAndActivate(locale);
+    })();
+  }, [locale]);
 
-      return (
-        <LinguiContext.Provider value={{ locale, setLocale }}>
-          <I18nProvider i18n={i18n} {...props} />
-        </LinguiContext.Provider>
-      );
-    },
-  };
-});
+  return (
+    <LinguiContext.Provider value={{ locale, setLocale }}>
+      <I18nProvider i18n={i18n} {...props} />
+    </LinguiContext.Provider>
+  );
+}
 
 export function useSetLocale() {
   const { setLocale } = useContext(LinguiContext);

@@ -16,7 +16,7 @@ import { LABELER_DID } from "~/config";
 import clientMetadata from "../public/client-metadata.json";
 import { Client } from "./bluesky";
 
-function hookifyPromise<T>(promise: Promise<T>) {
+export function hookifyPromise<T>(promise: Promise<T>) {
   let status: "pending" | "success" | "error" = "pending";
   let result: T;
 
