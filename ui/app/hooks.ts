@@ -18,8 +18,7 @@ import { Client } from "./bluesky";
 
 export function hookifyPromise<T>(promise: Promise<T>) {
   let status: "pending" | "success" | "error" = "pending";
-  let result: T;
-  let error: unknown;
+  let result: T | unknown;
 
   const suspender = promise.then(
     (r) => {
@@ -28,7 +27,7 @@ export function hookifyPromise<T>(promise: Promise<T>) {
     },
     (e) => {
       status = "error";
-      error = e;
+      result = e;
     }
   );
 
@@ -37,7 +36,7 @@ export function hookifyPromise<T>(promise: Promise<T>) {
       throw suspender;
     }
     if (status == "error") {
-      throw error;
+      throw result;
     }
     return result;
   };
