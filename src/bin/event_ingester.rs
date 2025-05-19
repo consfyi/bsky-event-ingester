@@ -2,7 +2,7 @@ use furcons_bsky_labeler::*;
 
 use atrium_api::types::{Collection as _, TryFromUnknown as _, TryIntoUnknown as _};
 use futures::StreamExt as _;
-use icalendar::Component as _;
+use icalendar::{Component as _, EventLike};
 use sqlx::Acquire as _;
 
 #[derive(serde::Deserialize)]
@@ -21,7 +21,7 @@ struct Config {
 
 #[derive(Debug)]
 struct Event {
-    id: u64,
+    uid: String,
     url: String,
     summary: String,
     location: String,
@@ -29,51 +29,48 @@ struct Event {
     dtend: chrono::NaiveDate,
 }
 
+#[derive(thiserror::Error, Debug)]
+enum EventParseError {
+    #[error("invalid or missing field: {0}")]
+    InvalidOrMissingField(&'static str),
+}
+
 impl Event {
-    fn from_icalendar_event(event: &icalendar::Event) -> Option<Event> {
-        let mut id = None;
-        let mut url = None;
-        let mut summary = None;
-        let mut location = None;
-        let mut dtstart = None;
-        let mut dtend = None;
-
-        for (_, property) in event.properties() {
-            match property.key() {
-                "UID" => {
-                    id = property
-                        .value()
-                        .split_once("-")
-                        .and_then(|(x, _)| x.parse().ok());
-                }
-                "URL" => {
-                    url = Some(htmlize::unescape(property.value()).to_string());
-                }
-                "LOCATION" => {
-                    location = Some(htmlize::unescape(property.value()).to_string());
-                }
-                "DTSTART" => {
-                    dtstart = chrono::NaiveDate::parse_from_str(property.value(), "%Y%m%d").ok();
-                }
-                "DTEND" => {
-                    dtend = chrono::NaiveDate::parse_from_str(property.value(), "%Y%m%d").ok();
-                }
-                "SUMMARY" => {
-                    summary = Some(htmlize::unescape(property.value()).to_string());
-                }
-                _ => continue,
-            }
-        }
-
-        Some(Event {
-            id: id?,
-            url: url?,
-            summary: summary?,
-            location: location?,
-            dtstart: dtstart?,
-            dtend: dtend?,
+    fn from_icalendar_event(event: &icalendar::Event) -> Result<Event, EventParseError> {
+        Ok(Event {
+            uid: event
+                .get_uid()
+                .ok_or(EventParseError::InvalidOrMissingField("UID"))?
+                .to_string(),
+            url: event
+                .get_uid()
+                .ok_or(EventParseError::InvalidOrMissingField("URL"))?
+                .to_string(),
+            summary: event
+                .get_summary()
+                .ok_or(EventParseError::InvalidOrMissingField("SUMMARY"))?
+                .to_string(),
+            location: event
+                .get_location()
+                .ok_or(EventParseError::InvalidOrMissingField("LOCATION"))?
+                .to_string(),
+            dtstart: event
+                .get_start()
+                .ok_or(EventParseError::InvalidOrMissingField("DTSTART"))?
+                .date_naive(),
+            dtend: event
+                .get_end()
+                .ok_or(EventParseError::InvalidOrMissingField("DTEND"))?
+                .date_naive(),
         })
     }
+}
+
+fn fixup_event(mut event: Event) -> Event {
+    event.url = htmlize::unescape(event.url).to_string();
+    event.location = htmlize::unescape(event.location).to_string();
+    event.summary = htmlize::unescape(event.summary).to_string();
+    event
 }
 
 async fn sync_labels(
@@ -111,16 +108,37 @@ async fn sync_labels(
     let mut events = calendar
         .components
         .iter()
-        .flat_map(|component| Some(Event::from_icalendar_event(component.as_event()?)?))
+        .flat_map(|component| {
+            let event = component.as_event()?;
+
+            match Event::from_icalendar_event(event) {
+                Ok(event) => Some(event),
+                Err(e) => {
+                    log::error!("failed to parse {:?}, skipping: {}", event, e);
+                    None
+                }
+            }
+        })
         .filter(|e| e.dtend >= today)
         // .filter(|_| false)
-        .collect::<Vec<_>>();
+        .map(|event| {
+            Ok::<_, anyhow::Error>((
+                event
+                    .uid
+                    .split_once("-")
+                    .ok_or(anyhow::anyhow!("malformed event uid"))?
+                    .0
+                    .parse()?,
+                fixup_event(event),
+            ))
+        })
+        .collect::<Result<Vec<_>, _>>()?;
 
-    events.sort_by_key(|event| event.dtstart);
+    events.sort_by_key(|(_, event)| event.dtstart);
 
     let next_events = events
         .iter()
-        .map(|event| (event.id, event))
+        .map(|(id, event)| (id, event))
         .collect::<std::collections::HashMap<_, _>>();
 
     let original_record = match agent
@@ -226,8 +244,8 @@ async fn sync_labels(
     let mut now = chrono::Utc::now();
 
     // Create new events.
-    for event in events.iter() {
-        if current_events.contains_key(&event.id) {
+    for (id, event) in events.iter() {
+        if current_events.contains_key(id) {
             continue;
         }
 
@@ -258,7 +276,7 @@ async fn sync_labels(
                                         uri: format!(
                                             "{}/cons/{}",
                                             ui_endpoint,
-                                            base26::encode(event.id)
+                                            base26::encode(*id)
                                         ),
                                     }
                                     .into(),
@@ -331,7 +349,7 @@ async fn sync_labels(
             )
             .await?;
 
-        current_events.insert(event.id, rkey);
+        current_events.insert(*id, rkey);
 
         // https://github.com/bluesky-social/atproto/issues/2468#issuecomment-2100947405
         now += chrono::Duration::milliseconds(1);
@@ -343,11 +361,11 @@ async fn sync_labels(
                 created_at: atrium_api::types::string::Datetime::now(),
                 labels: None,
                 policies: atrium_api::app::bsky::labeler::defs::LabelerPoliciesData {
-                    label_values: events.iter().map(|event| base26::encode(event.id)).collect(),
+                    label_values: events.iter().map(|(id, _)| base26::encode(*id)).collect(),
                     label_value_definitions: Some(
                         events
                             .iter()
-                            .map(|event| {
+                            .map(|(id, event)| {
                                 // The "DTEND" property for a "VEVENT" calendar component specifies the non-inclusive end of the event.
                                 let end_date = event.dtend - chrono::Days::new(1);
 
@@ -355,7 +373,7 @@ async fn sync_labels(
                                     adult_only: Some(false),
                                     blurs: "none".to_string(),
                                     default_setting: Some("warn".to_string()),
-                                    identifier: base26::encode(event.id),
+                                    identifier: base26::encode(*id),
                                     locales: vec![atrium_api::com::atproto::label::defs::LabelValueDefinitionStringsData {
                                         lang: atrium_api::types::string::Language::new(
                                             "en".to_string(),
@@ -381,7 +399,7 @@ async fn sync_labels(
                                     EXTRA_DATA_POST_RKEY.to_string(),
                                     ipld_core::ipld::Ipld::String(
                                         current_events
-                                            .get(&event.id)
+                                            .get(id)
                                             .cloned()
                                             .unwrap()
                                             .to_string(),
@@ -436,7 +454,7 @@ async fn sync_labels(
 
     log::info!("applying writes:\n{writes:#?}");
 
-    events_state.events = events.into_iter().map(|event| (event.id, event)).collect();
+    events_state.events = events.into_iter().collect();
 
     events_state.rkeys_to_ids = current_events
         .into_iter()
@@ -589,7 +607,7 @@ async fn service_jetstream_once(
                             cid: None,
                             neg: None,
                             uri: info.did.to_string(),
-                            val: base26::encode(event.id),
+                            val: base26::encode(id),
                             sig: None,
                             ver: Some(1),
                         }
