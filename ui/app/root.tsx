@@ -1,8 +1,13 @@
 import {
+  configureOAuth,
   createAuthorizationUrl,
   deleteStoredSession,
+  finalizeAuthorization,
+  getSession,
+  listStoredSessions,
   resolveFromIdentity,
   resolveFromService,
+  Session,
 } from "@atcute/oauth-browser-client";
 import { Trans, useLingui } from "@lingui/react/macro";
 import {
@@ -41,13 +46,14 @@ import {
   IconChevronDown,
   IconLogout2,
 } from "@tabler/icons-react";
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { SWRConfig } from "swr";
 import clientMetadata from "../public/client-metadata.json";
 import LinguiProvider from "./components/LinguiProvider";
 import LocalAttendingContextProvider from "./components/LocalAttendingContextProvider";
 import SimpleErrorBoundary from "./components/SimpleErrorBoundary";
-import { useClient, useSelf, useSelfFollows } from "./hooks";
+import { ClientContext, useClient, useSelf, useSelfFollows } from "./hooks";
+import { Client } from "./bluesky";
 
 const theme = createTheme({});
 
@@ -76,7 +82,7 @@ function Header() {
 
   const { t } = useLingui();
   const client = useClient();
-  const { data: self, isLoading: selfIsLoading } = useSelf();
+  const { data: self } = useSelf();
   const { isLoading: selfFollowsIsLoading } = useSelfFollows();
 
   return (
@@ -108,147 +114,200 @@ function Header() {
               </Text>
             </Group>
           </Anchor>
-          {!selfIsLoading ? (
-            self != null ? (
-              <Menu
-                position="bottom-end"
-                withArrow
-                opened={menuOpen}
-                onChange={(value) => {
-                  if (!value && pending) {
-                    return;
-                  }
-                  setMenuOpen(value);
-                }}
-              >
-                <Menu.Target>
-                  <UnstyledButton aria-label={`@${self.handle}`}>
-                    <Group gap={7} wrap="nowrap">
-                      <Box pos="relative">
-                        <LoadingOverlay
-                          visible={selfFollowsIsLoading}
-                          loaderProps={{ size: "sm" }}
-                        />
-                        <Avatar
-                          src={self.avatar}
-                          alt={`@${self.handle}`}
-                          size="sm"
-                        />
-                      </Box>
-                      <Text fw={500} size="sm" lh={1} mr={3} visibleFrom="xs">
-                        @{self.handle}
-                      </Text>
-                      <IconChevronDown size={14} />
-                    </Group>
-                  </UnstyledButton>
-                </Menu.Target>
-                <Menu.Dropdown>
-                  <Button
-                    fullWidth
-                    loading={pending}
-                    color="red"
-                    variant="subtle"
-                    leftSection={<IconLogout2 size={18} />}
-                    onClick={() => {
-                      setIsPending(true);
-                      setMenuOpen(true);
-
-                      (async () => {
-                        try {
-                          await client.signOut();
-                        } catch (e) {
-                          if (client.did != null) {
-                            deleteStoredSession(client.did);
-                          }
-                        }
-                        window.location.replace(window.location.toString());
-                      })();
-                    }}
-                  >
-                    Log out
-                  </Button>
-                </Menu.Dropdown>
-              </Menu>
-            ) : (
-              <form
-                onSubmit={(evt) => {
-                  evt.preventDefault();
-
-                  setIsPending(true);
-
-                  (async () => {
-                    let identity = undefined;
-                    let metadata;
-
-                    if (handle != "") {
-                      const resp = await resolveFromIdentity(handle);
-                      identity = resp.identity;
-                      metadata = resp.metadata;
-                    } else {
-                      const resp = await resolveFromService(
-                        "https://bsky.social"
-                      );
-                      metadata = resp.metadata;
-                    }
-                    const authUrl = await createAuthorizationUrl({
-                      identity,
-                      metadata,
-                      scope: "atproto transition:generic",
-                    });
-                    window.location.assign(authUrl);
-                  })();
-                }}
-              >
-                <Button.Group my={-2}>
-                  <Button
-                    loading={pending}
-                    type="submit"
-                    size="xs"
-                    leftSection={<IconBrandBluesky size={18} />}
-                  >
-                    <Trans>Log in</Trans>
-                  </Button>
-                  <Menu
-                    position="bottom-end"
-                    withArrow
-                    withinPortal={false}
-                    opened={menuOpen}
-                    onChange={(value) => {
-                      if (!value && pending) {
-                        return;
-                      }
-                      setMenuOpen(value);
-                    }}
-                  >
-                    <Menu.Target>
-                      <Button size="xs" px={4} title={t`More log in options`}>
-                        <IconChevronDown size={14} />
-                      </Button>
-                    </Menu.Target>
-                    <Menu.Dropdown>
-                      <TextInput
-                        name="username"
-                        disabled={pending}
-                        leftSection={<IconAt size={16} />}
-                        placeholder="handle.bsky.social"
-                        value={handle}
-                        onChange={(e) => {
-                          setHandle(e.target.value);
-                        }}
+          {self != null ? (
+            <Menu
+              position="bottom-end"
+              withArrow
+              opened={menuOpen}
+              onChange={(value) => {
+                if (!value && pending) {
+                  return;
+                }
+                setMenuOpen(value);
+              }}
+            >
+              <Menu.Target>
+                <UnstyledButton aria-label={`@${self.handle}`}>
+                  <Group gap={7} wrap="nowrap">
+                    <Box pos="relative">
+                      <LoadingOverlay
+                        visible={selfFollowsIsLoading}
+                        loaderProps={{ size: "sm" }}
                       />
-                    </Menu.Dropdown>
-                  </Menu>
-                </Button.Group>
-              </form>
-            )
-          ) : null}
+                      <Avatar
+                        src={self.avatar}
+                        alt={`@${self.handle}`}
+                        size="sm"
+                      />
+                    </Box>
+                    <Text fw={500} size="sm" lh={1} mr={3} visibleFrom="xs">
+                      @{self.handle}
+                    </Text>
+                    <IconChevronDown size={14} />
+                  </Group>
+                </UnstyledButton>
+              </Menu.Target>
+              <Menu.Dropdown>
+                <Button
+                  fullWidth
+                  loading={pending}
+                  color="red"
+                  variant="subtle"
+                  leftSection={<IconLogout2 size={18} />}
+                  onClick={() => {
+                    setIsPending(true);
+                    setMenuOpen(true);
+
+                    (async () => {
+                      try {
+                        await client.signOut();
+                      } catch (e) {
+                        if (client.did != null) {
+                          deleteStoredSession(client.did);
+                        }
+                      }
+                      window.location.replace(window.location.toString());
+                    })();
+                  }}
+                >
+                  Log out
+                </Button>
+              </Menu.Dropdown>
+            </Menu>
+          ) : (
+            <form
+              onSubmit={(evt) => {
+                evt.preventDefault();
+
+                setIsPending(true);
+
+                (async () => {
+                  let identity = undefined;
+                  let metadata;
+
+                  if (handle != "") {
+                    const resp = await resolveFromIdentity(handle);
+                    identity = resp.identity;
+                    metadata = resp.metadata;
+                  } else {
+                    const resp = await resolveFromService(
+                      "https://bsky.social"
+                    );
+                    metadata = resp.metadata;
+                  }
+                  const authUrl = await createAuthorizationUrl({
+                    identity,
+                    metadata,
+                    scope: "atproto transition:generic",
+                  });
+                  window.location.assign(authUrl);
+                })();
+              }}
+            >
+              <Button.Group my={-2}>
+                <Button
+                  loading={pending}
+                  type="submit"
+                  size="xs"
+                  leftSection={<IconBrandBluesky size={18} />}
+                >
+                  <Trans>Log in</Trans>
+                </Button>
+                <Menu
+                  position="bottom-end"
+                  withArrow
+                  withinPortal={false}
+                  opened={menuOpen}
+                  onChange={(value) => {
+                    if (!value && pending) {
+                      return;
+                    }
+                    setMenuOpen(value);
+                  }}
+                >
+                  <Menu.Target>
+                    <Button size="xs" px={4} title={t`More log in options`}>
+                      <IconChevronDown size={14} />
+                    </Button>
+                  </Menu.Target>
+                  <Menu.Dropdown>
+                    <TextInput
+                      name="username"
+                      disabled={pending}
+                      leftSection={<IconAt size={16} />}
+                      placeholder="handle.bsky.social"
+                      value={handle}
+                      onChange={(e) => {
+                        setHandle(e.target.value);
+                      }}
+                    />
+                  </Menu.Dropdown>
+                </Menu>
+              </Button.Group>
+            </form>
+          )}
         </Group>
       </Container>
     </Box>
   );
 }
 
+async function createClient() {
+  if (typeof window == "undefined") {
+    throw "cannot useClient in SSR context";
+  }
+
+  const params = new URLSearchParams(window.location.hash.slice(1));
+  window.history.replaceState(
+    null,
+    "",
+    window.location.pathname + window.location.search
+  );
+
+  configureOAuth({
+    metadata: {
+      client_id: clientMetadata.client_id,
+      redirect_uri: clientMetadata.redirect_uris[0],
+    },
+  });
+
+  let session: Session | null = null;
+  if (params.size > 0) {
+    try {
+      session = await finalizeAuthorization(params);
+    } catch (e) {
+      // Do nothing.
+    }
+  } else {
+    const sessions = listStoredSessions();
+    if (sessions.length > 0) {
+      const did = sessions[0];
+      try {
+        session = await getSession(did, { allowStale: false });
+      } catch (e) {
+        deleteStoredSession(did);
+      }
+    }
+  }
+
+  return new Client(session);
+}
+
 export function Layout({ children }: { children: React.ReactNode }) {
+  const [client, setClient] = useState<Client | null>(null);
+  const ready = useRef(false);
+
+  useEffect(() => {
+    if (ready.current) {
+      return;
+    }
+
+    ready.current = true;
+    (async () => {
+      setClient(await createClient());
+    })();
+  }, [setClient]);
+
   return (
     <html lang="en">
       <head>
@@ -267,32 +326,42 @@ export function Layout({ children }: { children: React.ReactNode }) {
               revalidateOnReconnect: false,
             }}
           >
-            <Suspense
-              fallback={
-                <Center p="lg">
-                  <Loader />
-                </Center>
-              }
-            >
-              <LinguiProvider>
-                <LocalAttendingContextProvider>
-                  <Header />
-                  <Container size="lg" px={0}>
-                    <SimpleErrorBoundary>
-                      <Suspense
-                        fallback={
-                          <Center p="lg">
-                            <Loader />
-                          </Center>
-                        }
-                      >
-                        {children}
-                      </Suspense>
-                    </SimpleErrorBoundary>
-                  </Container>
-                </LocalAttendingContextProvider>
-              </LinguiProvider>
-            </Suspense>
+            {client != null ? (
+              <ClientContext.Provider value={client}>
+                <SimpleErrorBoundary>
+                  <Suspense
+                    fallback={
+                      <Center p="lg">
+                        <Loader />
+                      </Center>
+                    }
+                  >
+                    <LinguiProvider>
+                      <LocalAttendingContextProvider>
+                        <Header />
+                        <Container size="lg" px={0}>
+                          <SimpleErrorBoundary>
+                            <Suspense
+                              fallback={
+                                <Center p="lg">
+                                  <Loader />
+                                </Center>
+                              }
+                            >
+                              {children}
+                            </Suspense>
+                          </SimpleErrorBoundary>
+                        </Container>
+                      </LocalAttendingContextProvider>
+                    </LinguiProvider>
+                  </Suspense>
+                </SimpleErrorBoundary>
+              </ClientContext.Provider>
+            ) : (
+              <Center p="lg">
+                <Loader />
+              </Center>
+            )}
           </SWRConfig>
         </MantineProvider>
 

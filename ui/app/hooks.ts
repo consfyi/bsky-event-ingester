@@ -1,24 +1,16 @@
 import type { PostView } from "@atcute/bluesky/types/app/feed/defs";
 import type { ResourceUri } from "@atcute/lexicons";
-import {
-  configureOAuth,
-  deleteStoredSession,
-  finalizeAuthorization,
-  getSession,
-  listStoredSessions,
-  Session,
-} from "@atcute/oauth-browser-client";
 import { parse as parseDate } from "date-fns";
 import { sortBy } from "lodash-es";
-import { useMemo } from "react";
-import useSWR, { SWRConfiguration, SWRResponse } from "swr";
+import { createContext, useContext, useMemo } from "react";
+import useSWR, { SWRConfiguration } from "swr";
 import { LABELER_DID } from "~/config";
-import clientMetadata from "../public/client-metadata.json";
 import { Client } from "./bluesky";
 
 export function hookifyPromise<T>(promise: Promise<T>) {
   let status: "pending" | "success" | "error" = "pending";
-  let result: T | unknown;
+  let result: T;
+  let error: unknown;
 
   const suspender = promise.then(
     (r) => {
@@ -27,7 +19,7 @@ export function hookifyPromise<T>(promise: Promise<T>) {
     },
     (e) => {
       status = "error";
-      result = e;
+      error = e;
     }
   );
 
@@ -36,54 +28,17 @@ export function hookifyPromise<T>(promise: Promise<T>) {
       throw suspender;
     }
     if (status == "error") {
-      throw result;
+      throw error;
     }
     return result;
   };
 }
 
-export const useClient = hookifyPromise(
-  (async () => {
-    if (typeof window == "undefined") {
-      return new Client();
-    }
+export const ClientContext = createContext<Client | null>(null);
 
-    const params = new URLSearchParams(window.location.hash.slice(1));
-    window.history.replaceState(
-      null,
-      "",
-      window.location.pathname + window.location.search
-    );
-
-    configureOAuth({
-      metadata: {
-        client_id: clientMetadata.client_id,
-        redirect_uri: clientMetadata.redirect_uris[0],
-      },
-    });
-
-    let session: Session | null = null;
-    if (params.size > 0) {
-      try {
-        session = await finalizeAuthorization(params);
-      } catch (e) {
-        // Do nothing.
-      }
-    } else {
-      const sessions = listStoredSessions();
-      if (sessions.length > 0) {
-        const did = sessions[0];
-        try {
-          session = await getSession(did, { allowStale: false });
-        } catch (e) {
-          deleteStoredSession(did);
-        }
-      }
-    }
-
-    return new Client(session);
-  })()
-);
+export function useClient(): Client {
+  return useContext(ClientContext)!;
+}
 
 export function useConPosts(opts?: SWRConfiguration) {
   const client = useClient();
@@ -115,10 +70,10 @@ export interface Con {
   url: string;
 }
 
-export function useCons(opts?: SWRConfiguration): SWRResponse<Con[] | null> {
+export function useCons(opts?: SWRConfiguration) {
   const client = useClient();
 
-  const { data, ...rest } = useSWR(
+  return useSWR(
     ["labelerView"],
     async () => {
       const data = await client.getLabelerView(LABELER_DID);
@@ -149,8 +104,6 @@ export function useCons(opts?: SWRConfiguration): SWRResponse<Con[] | null> {
     },
     opts
   );
-
-  return { data, ...rest };
 }
 
 export function useLikes(uri: ResourceUri | null, opts?: SWRConfiguration) {
@@ -165,7 +118,7 @@ export function useLikes(uri: ResourceUri | null, opts?: SWRConfiguration) {
       }
       return likes;
     },
-    { revalidateOnFocus: false, revalidateOnReconnect: false, ...opts }
+    opts
   );
 }
 
@@ -174,7 +127,9 @@ export function useSelf(opts?: SWRConfiguration) {
 
   return useSWR(
     client.did != null ? ["self"] : null,
-    () => client.getProfile(client.did!),
+    async () => {
+      return await client.getProfile(client.did!);
+    },
     opts
   );
 }

@@ -34,8 +34,8 @@ export default function LocalAttendingContextProvider({
     Record<string, ResourceUri | typeof PENDING | null>
   >({});
 
-  const { data: cons } = useCons();
-  const { data: conPosts } = useConPosts();
+  const { data: cons } = useCons({ suspense: false });
+  const { data: conPosts } = useConPosts({ suspense: false });
 
   useEffect(() => {
     if (cons == null || conPosts == null) {
