@@ -23,7 +23,6 @@ import {
   Group,
   Image,
   Loader,
-  LoadingOverlay,
   MantineProvider,
   Menu,
   Text,
@@ -50,11 +49,11 @@ import {
 import { Suspense, useEffect, useRef, useState } from "react";
 import { SWRConfig } from "swr";
 import clientMetadata from "../public/client-metadata.json";
+import { Client } from "./bluesky";
 import LinguiProvider from "./components/LinguiProvider";
 import LocalAttendingContextProvider from "./components/LocalAttendingContextProvider";
 import SimpleErrorBoundary from "./components/SimpleErrorBoundary";
 import { ClientContext, useClient, useSelf, useSelfFollows } from "./hooks";
-import { Client } from "./bluesky";
 
 const theme = createTheme({});
 
