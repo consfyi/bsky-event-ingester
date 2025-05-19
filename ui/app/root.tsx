@@ -54,6 +54,7 @@ import { ClientContext } from "./contexts";
 import { useClient, useSelf, useSelfFollows } from "./hooks";
 import LocalAttendingContextProvider from "./components/LocalAttendingContextProvider";
 import { SWRConfig } from "swr";
+import SimpleErrorBoundary from "./components/SimpleErrorBoundary";
 
 const theme = createTheme({});
 
@@ -331,15 +332,17 @@ export function Layout({ children }: { children: React.ReactNode }) {
                     <LocalAttendingContextProvider>
                       <Header />
                       <Container size="lg" px={0}>
-                        <Suspense
-                          fallback={
-                            <Center p="lg">
-                              <Loader />
-                            </Center>
-                          }
-                        >
-                          {children}
-                        </Suspense>
+                        <SimpleErrorBoundary>
+                          <Suspense
+                            fallback={
+                              <Center p="lg">
+                                <Loader />
+                              </Center>
+                            }
+                          >
+                            {children}
+                          </Suspense>
+                        </SimpleErrorBoundary>
                       </Container>
                     </LocalAttendingContextProvider>
                   </ClientContext.Provider>

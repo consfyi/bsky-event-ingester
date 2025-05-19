@@ -31,8 +31,8 @@ import {
 import { groupBy } from "lodash-es";
 import { Fragment, Suspense, useMemo } from "react";
 import LikeButton from "~/components/LikeButton";
-import LoadErrorAlert from "~/components/LoadErrorAlert";
 import { useLocalAttending } from "~/components/LocalAttendingContextProvider";
+import SimpleErrorBoundary from "~/components/SimpleErrorBoundary";
 import { Con, useClient, useConPosts, useCons } from "~/hooks";
 import clientMetadata from "../../public/client-metadata.json";
 
@@ -152,27 +152,19 @@ function ConsTable({}: {}) {
   const { i18n } = useLingui();
 
   const consByMonth = useMemo(() => {
-    if (cons == null) {
-      return null;
-    }
-
     return groupBy(cons, (con) => {
       return formatDate(con.start, "yyyy-MM");
     });
   }, [cons]);
 
-  if (cons == null || conPosts == null || consByMonth == null) {
-    return <LoadErrorAlert error={null} />;
-  }
-
   return (
     <Table>
       <Table.Tbody>
-        {cons.length > 0
+        {cons!.length > 0
           ? Array.from(
               monthRange(
-                setDate(cons[0].start, 1),
-                addMonths(setDate(cons[cons.length - 1].start, 1), 1)
+                setDate(cons![0].start, 1),
+                addMonths(setDate(cons![cons!.length - 1].start, 1), 1)
               )
             ).map((date) => {
               const groupKey = formatDate(date, "yyyy-MM");
@@ -208,7 +200,7 @@ function ConsTable({}: {}) {
                     <ConTableRow
                       key={con.identifier}
                       con={con}
-                      post={conPosts[con.rkey]}
+                      post={conPosts![con.rkey]}
                     />
                   ))}
                 </Fragment>
@@ -272,15 +264,17 @@ export default function Index() {
           </Trans>
         </Alert>
       ) : null}
-      <Suspense
-        fallback={
-          <Center p="lg">
-            <Loader />
-          </Center>
-        }
-      >
-        <ConsTable />
-      </Suspense>
+      <SimpleErrorBoundary>
+        <Suspense
+          fallback={
+            <Center p="lg">
+              <Loader />
+            </Center>
+          }
+        >
+          <ConsTable />
+        </Suspense>
+      </SimpleErrorBoundary>
     </>
   );
 }

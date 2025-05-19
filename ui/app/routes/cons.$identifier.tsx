@@ -27,6 +27,7 @@ import { sortBy } from "lodash-es";
 import { Suspense, useEffect, useMemo } from "react";
 import LikeButton from "~/components/LikeButton";
 import { useLocalAttending } from "~/components/LocalAttendingContextProvider";
+import SimpleErrorBoundary from "~/components/SimpleErrorBoundary";
 import { LABELER_DID } from "~/config";
 import {
   Con,
@@ -259,15 +260,17 @@ export default function Index() {
             )}
           </Text>
         </Text>
-        <Suspense
-          fallback={
-            <Center p="lg">
-              <Loader />
-            </Center>
-          }
-        >
-          <AttendeesList con={con} isSelfAttending={isAttending} />
-        </Suspense>
+        <SimpleErrorBoundary>
+          <Suspense
+            fallback={
+              <Center p="lg">
+                <Loader />
+              </Center>
+            }
+          >
+            <AttendeesList con={con} isSelfAttending={isAttending} />
+          </Suspense>
+        </SimpleErrorBoundary>
       </Box>
     </Box>
   );
