@@ -12,26 +12,26 @@ msgstr ""
 "Plural-Forms: \n"
 
 #. placeholder {0}: likeCountWithoutSelf + 1
-#: app/routes/cons.$identifier.tsx:200
+#: app/routes/cons.$identifier.tsx:255
 msgctxt "attendee count, including you"
 msgid "{0} including you"
 msgstr "{0} including you"
 
-#: app/routes/cons.$identifier.tsx:204
+#: app/routes/cons.$identifier.tsx:259
 msgctxt "attendee count"
 msgid "{likeCountWithoutSelf}"
 msgstr "{likeCountWithoutSelf}"
 
-#: app/routes/_index.tsx:245
+#: app/routes/_index.tsx:226
 msgid "<0>This the website for the <1><2/> @conlabels.furryli.st</1> service. For the full experience, please log in. You’ll be able to:</0><3><4>Tell people which cons you’re going to (you can also do this by liking the con post on Bluesky).</4><5>See who you follow is going to a con.</5></3><6>A huge thank you to <7>furrycons.com</7> who provides all the data on conventions!</6>"
 msgstr "<0>This the website for the <1><2/> @conlabels.furryli.st</1> service. For the full experience, please log in. You’ll be able to:</0><3><4>Tell people which cons you’re going to (you can also do this by liking the con post on Bluesky).</4><5>See who you follow is going to a con.</5></3><6>A huge thank you to <7>furrycons.com</7> who provides all the data on conventions!</6>"
 
-#: app/components/LoadErrorAlert.tsx:14
+#: app/components/SimpleErrorBoundary.tsx:21
 msgid "An error occurred while attempting to load this data."
 msgstr "An error occurred while attempting to load this data."
 
-#: app/routes/cons.$identifier.tsx:196
-#: app/routes/_index.tsx:112
+#: app/routes/cons.$identifier.tsx:252
+#: app/routes/_index.tsx:113
 msgid "Attendees"
 msgstr "Attendees"
 
@@ -39,37 +39,37 @@ msgstr "Attendees"
 msgid "Attending"
 msgstr "Attending"
 
-#: app/routes/cons.$identifier.tsx:119
+#: app/routes/cons.$identifier.tsx:118
 msgid "Date"
 msgstr "Date"
 
-#: app/routes/_index.tsx:114
+#: app/routes/_index.tsx:115
 msgid "End date"
 msgstr "End date"
 
 #. placeholder {0}: i18n.date(con.end, { weekday: "short", day: "numeric", month: "short", year: getYear(con.start) != getYear(con.end) ? "numeric" : undefined, })
-#: app/routes/_index.tsx:115
+#: app/routes/_index.tsx:116
 msgid "ends {0}"
 msgstr "ends {0}"
 
-#: app/components/LoadErrorAlert.tsx:10
+#: app/components/SimpleErrorBoundary.tsx:17
 msgid "Error"
 msgstr "Error"
 
-#: app/routes/cons.$identifier.tsx:138
+#: app/routes/cons.$identifier.tsx:137
 msgid "Link"
 msgstr "Link"
 
-#: app/routes/cons.$identifier.tsx:124
-#: app/routes/_index.tsx:127
+#: app/routes/cons.$identifier.tsx:123
+#: app/routes/_index.tsx:128
 msgid "Location"
 msgstr "Location"
 
-#: app/root.tsx:205
+#: app/root.tsx:216
 msgid "Log in"
 msgstr "Log in"
 
-#: app/root.tsx:220
+#: app/root.tsx:231
 msgid "More log in options"
 msgstr "More log in options"
 
@@ -77,7 +77,7 @@ msgstr "More log in options"
 msgid "Not attending"
 msgstr "Not attending"
 
-#: app/routes/cons.$identifier.tsx:223
+#: app/routes/cons.$identifier.tsx:200
 msgid "People you don’t follow"
 msgstr "People you don’t follow"
 
@@ -85,11 +85,11 @@ msgstr "People you don’t follow"
 msgid "Toggle attending"
 msgstr "Toggle attending"
 
+#: app/routes/cons.$identifier.tsx:112
 #: app/routes/cons.$identifier.tsx:113
-#: app/routes/cons.$identifier.tsx:114
 msgid "View Bluesky Post"
 msgstr "View Bluesky Post"
 
-#: app/routes/_index.tsx:243
+#: app/routes/_index.tsx:224
 msgid "Welcome!"
 msgstr "Welcome!"
