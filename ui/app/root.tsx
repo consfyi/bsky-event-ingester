@@ -263,21 +263,33 @@ function Footer() {
     >
       <Container
         size="lg"
-        p="xs"
         display="flex"
-        style={{ justifyContent: "space-between", alignItems: "center" }}
+        style={{
+          justifyContent: "space-between",
+          alignItems: "center",
+          flexDirection: "column",
+        }}
+        p="sm"
       >
-        <Text c="dimmed" size="sm">
-          All furry convention data courtesy of the volunteers at{" "}
-          <Anchor
-            href="https://furrycons.com"
-            target="_blank"
-            rel="noreferrer"
-            c="dimmed"
-          >
-            FurryCons.com
-          </Anchor>{" "}
-          – thank you!
+        <Text c="dimmed" size="sm" mb="sm">
+          <Trans>
+            All furry convention data courtesy of the volunteers at{" "}
+            <Anchor
+              href="https://furrycons.com"
+              target="_blank"
+              rel="noreferrer"
+            >
+              FurryCons.com
+            </Anchor>{" "}
+            – thank you! Convention missing?{" "}
+            <Anchor
+              href="https://furrycons.com"
+              target="_blank"
+              rel="noreferrer"
+            >
+              Submit it here!
+            </Anchor>
+          </Trans>
         </Text>
         <Group gap={0} justify="flex-end" wrap="nowrap">
           <ActionIcon
