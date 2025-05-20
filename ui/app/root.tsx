@@ -47,7 +47,7 @@ import clientMetadata from "../public/client-metadata.json";
 import LinguiProvider from "./components/LinguiProvider";
 import LocalAttendingContextProvider from "./components/LocalAttendingContextProvider";
 import SimpleErrorBoundary from "./components/SimpleErrorBoundary";
-import { useClient, useHydrated, useSelf, useSelfFollows } from "./hooks";
+import { useClient, useHydrated, useSelf } from "./hooks";
 
 const theme = createTheme({});
 
@@ -77,7 +77,6 @@ function Header() {
   const { t } = useLingui();
   const client = useClient();
   const { data: self } = useSelf();
-  const { isLoading: selfFollowsIsLoading } = useSelfFollows();
 
   return (
     <Box
@@ -128,17 +127,7 @@ function Header() {
                         src={self.avatar}
                         alt={`@${self.handle}`}
                         size="sm"
-                        opacity={selfFollowsIsLoading ? 0.5 : 1.0}
                       />
-                      {selfFollowsIsLoading ? (
-                        <Loader
-                          size={26}
-                          pos="absolute"
-                          top={0}
-                          left={0}
-                          display="block"
-                        />
-                      ) : null}
                     </Box>
                     <Text fw={500} size="sm" lh={1} mr={3} visibleFrom="xs">
                       @{self.handle}

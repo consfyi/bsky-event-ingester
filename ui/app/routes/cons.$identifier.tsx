@@ -11,6 +11,7 @@ import {
   Box,
   Divider,
   Group,
+  Loader,
   SimpleGrid,
   Skeleton,
   Stack,
@@ -289,6 +290,7 @@ export default function Index() {
   }
 
   const post = conPosts![con.rkey]!;
+  const { isLoading: selfFollowsIsLoading } = useSelfFollows();
 
   const likeCountWithoutSelf =
     (post.likeCount || 0) - (post.viewer?.like != null ? 1 : 0);
@@ -310,7 +312,8 @@ export default function Index() {
               </Trans>
             ) : (
               <Trans context="attendee count">{likeCount}</Trans>
-            )}
+            )}{" "}
+            {selfFollowsIsLoading ? <Loader size={10} color="dimmed" /> : null}
           </Text>
         </Text>
         <Box mt="xs">
