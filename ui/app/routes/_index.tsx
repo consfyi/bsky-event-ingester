@@ -24,8 +24,8 @@ import {
 import {
   addMonths,
   differenceInDays,
-  format as formatDate,
   getDay,
+  getMonth,
   getYear,
   setDate,
 } from "date-fns";
@@ -152,6 +152,10 @@ function ConTableRow({ con, post }: { con: Con; post: PostView }) {
   );
 }
 
+function yearMonthKey(d: Date) {
+  return getYear(d) * 12 + getMonth(d);
+}
+
 function ConsTable() {
   const { data: cons } = useCons();
   const { data: conPosts } = useConPosts();
@@ -160,7 +164,7 @@ function ConsTable() {
 
   const consByMonth = useMemo(() => {
     return groupBy(cons, (con) => {
-      return formatDate(con.start, "yyyy-MM");
+      return yearMonthKey(con.start);
     });
   }, [cons]);
 
@@ -174,7 +178,7 @@ function ConsTable() {
                 addMonths(setDate(cons![cons!.length - 1].start, 1), 1)
               )
             ).map((date) => {
-              const groupKey = formatDate(date, "yyyy-MM");
+              const groupKey = yearMonthKey(date);
               return (
                 <Fragment key={groupKey}>
                   <Table.Tr
