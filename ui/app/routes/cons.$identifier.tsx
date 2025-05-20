@@ -46,8 +46,8 @@ function ActorSkeleton() {
       <Skeleton circle height={38} />
 
       <Stack gap={8} miw={0} flex="1 0">
-        <Skeleton height={14} width="100%" />
-        <Skeleton height={12} />
+        <Skeleton height={14} width="80%" />
+        <Skeleton height={12} width="70%" />
       </Stack>
     </Group>
   );
