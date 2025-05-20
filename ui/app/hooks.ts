@@ -2,10 +2,10 @@ import type { PostView } from "@atcute/bluesky/types/app/feed/defs";
 import type { ResourceUri } from "@atcute/lexicons";
 import { parse as parseDate } from "date-fns";
 import { sortBy } from "lodash-es";
-import { createContext, useContext, useMemo } from "react";
+import { useMemo, useSyncExternalStore } from "react";
 import useSWR, { SWRConfiguration } from "swr";
 import { LABELER_DID } from "~/config";
-import { Client } from "./bluesky";
+import { Client, createClient } from "./bluesky";
 
 export function hookifyPromise<T>(promise: Promise<T>) {
   let status: "pending" | "success" | "error" = "pending";
@@ -34,11 +34,25 @@ export function hookifyPromise<T>(promise: Promise<T>) {
   };
 }
 
-export const ClientContext = createContext<Client | null>(null);
+export const useHydrated = (() => {
+  const subscribe = () => () => {};
+  return () =>
+    useSyncExternalStore(
+      subscribe,
+      () => true,
+      () => false
+    );
+})();
 
-export function useClient(): Client {
-  return useContext(ClientContext)!;
-}
+export const useClient = (() => {
+  let useClientInternal: (() => Client) | null = null;
+  return () => {
+    if (useClientInternal == null) {
+      useClientInternal = hookifyPromise(createClient());
+    }
+    return useClientInternal();
+  };
+})();
 
 export function useConPosts(opts?: SWRConfiguration) {
   const client = useClient();

@@ -1,13 +1,8 @@
 import {
-  configureOAuth,
   createAuthorizationUrl,
   deleteStoredSession,
-  finalizeAuthorization,
-  getSession,
-  listStoredSessions,
   resolveFromIdentity,
   resolveFromService,
-  Session,
 } from "@atcute/oauth-browser-client";
 import { Trans, useLingui } from "@lingui/react/macro";
 import {
@@ -46,14 +41,13 @@ import {
   IconChevronDown,
   IconLogout2,
 } from "@tabler/icons-react";
-import { Suspense, useEffect, useRef, useState } from "react";
+import { Suspense, useState } from "react";
 import { SWRConfig } from "swr";
 import clientMetadata from "../public/client-metadata.json";
-import { Client } from "./bluesky";
 import LinguiProvider from "./components/LinguiProvider";
 import LocalAttendingContextProvider from "./components/LocalAttendingContextProvider";
 import SimpleErrorBoundary from "./components/SimpleErrorBoundary";
-import { ClientContext, useClient, useSelf, useSelfFollows } from "./hooks";
+import { useClient, useHydrated, useSelf, useSelfFollows } from "./hooks";
 
 const theme = createTheme({});
 
@@ -315,61 +309,8 @@ function Footer() {
   );
 }
 
-async function createClient() {
-  if (typeof window == "undefined") {
-    throw "cannot useClient in SSR context";
-  }
-
-  const params = new URLSearchParams(window.location.hash.slice(1));
-  window.history.replaceState(
-    null,
-    "",
-    window.location.pathname + window.location.search
-  );
-
-  configureOAuth({
-    metadata: {
-      client_id: clientMetadata.client_id,
-      redirect_uri: clientMetadata.redirect_uris[0],
-    },
-  });
-
-  let session: Session | null = null;
-  if (params.size > 0) {
-    try {
-      session = await finalizeAuthorization(params);
-    } catch (e) {
-      // Do nothing.
-    }
-  } else {
-    const sessions = listStoredSessions();
-    if (sessions.length > 0) {
-      const did = sessions[0];
-      try {
-        session = await getSession(did, { allowStale: false });
-      } catch (e) {
-        deleteStoredSession(did);
-      }
-    }
-  }
-
-  return new Client(session);
-}
-
 export function Layout({ children }: { children: React.ReactNode }) {
-  const [client, setClient] = useState<Client | null>(null);
-  const ready = useRef(false);
-
-  useEffect(() => {
-    if (ready.current) {
-      return;
-    }
-
-    ready.current = true;
-    (async () => {
-      setClient(await createClient());
-    })();
-  }, [setClient]);
+  const hydrated = useHydrated();
 
   return (
     <html lang="en">
@@ -382,51 +323,45 @@ export function Layout({ children }: { children: React.ReactNode }) {
       </head>
       <body>
         <MantineProvider theme={theme} defaultColorScheme="auto">
-          <SWRConfig
-            value={{
-              suspense: true,
-              revalidateOnFocus: false,
-              revalidateOnReconnect: false,
-            }}
-          >
-            {client != null ? (
-              <ClientContext.Provider value={client}>
-                <SimpleErrorBoundary>
-                  <Suspense
-                    fallback={
-                      <Center p="lg">
-                        <Loader />
-                      </Center>
-                    }
-                  >
-                    <LinguiProvider>
-                      <LocalAttendingContextProvider>
-                        <Header />
-                        <Container size="lg" px={0}>
-                          <SimpleErrorBoundary>
-                            <Suspense
-                              fallback={
-                                <Center p="lg">
-                                  <Loader />
-                                </Center>
-                              }
-                            >
-                              {children}
-                            </Suspense>
-                          </SimpleErrorBoundary>
-                        </Container>
-                        <Footer />
-                      </LocalAttendingContextProvider>
-                    </LinguiProvider>
-                  </Suspense>
-                </SimpleErrorBoundary>
-              </ClientContext.Provider>
-            ) : (
-              <Center p="lg">
-                <Loader />
-              </Center>
-            )}
-          </SWRConfig>
+          {hydrated ? (
+            <SimpleErrorBoundary>
+              <Suspense
+                fallback={
+                  <Center p="lg">
+                    <Loader />
+                  </Center>
+                }
+              >
+                <SWRConfig
+                  value={{
+                    suspense: true,
+                    revalidateOnFocus: false,
+                    revalidateOnReconnect: false,
+                  }}
+                >
+                  <LinguiProvider>
+                    <LocalAttendingContextProvider>
+                      <Header />
+                      <Container size="lg" px={0}>
+                        <SimpleErrorBoundary>
+                          <Suspense
+                            fallback={
+                              <Center p="lg">
+                                <Loader />
+                              </Center>
+                            }
+                          >
+                            {children}
+                          </Suspense>
+                        </SimpleErrorBoundary>
+                      </Container>
+                      <Footer />
+                    </LocalAttendingContextProvider>
+                  </LinguiProvider>
+                </SWRConfig>
+              </Suspense>
+            </SimpleErrorBoundary>
+          ) : null}
         </MantineProvider>
 
         <ScrollRestoration />

@@ -22,7 +22,16 @@ import type {
   Nsid,
   ResourceUri,
 } from "@atcute/lexicons";
-import { OAuthUserAgent, Session } from "@atcute/oauth-browser-client";
+import {
+  configureOAuth,
+  deleteStoredSession,
+  finalizeAuthorization,
+  getSession,
+  listStoredSessions,
+  OAuthUserAgent,
+  Session,
+} from "@atcute/oauth-browser-client";
+import clientMetadata from "../public/client-metadata.json";
 import { LABELER_DID } from "./config";
 
 export class Client {
@@ -218,4 +227,41 @@ export class Client {
 
     return data.uri;
   }
+}
+
+export async function createClient() {
+  const params = new URLSearchParams(window.location.hash.slice(1));
+  window.history.replaceState(
+    null,
+    "",
+    window.location.pathname + window.location.search
+  );
+
+  configureOAuth({
+    metadata: {
+      client_id: clientMetadata.client_id,
+      redirect_uri: clientMetadata.redirect_uris[0],
+    },
+  });
+
+  let session: Session | null = null;
+  if (params.size > 0) {
+    try {
+      session = await finalizeAuthorization(params);
+    } catch (e) {
+      // Do nothing.
+    }
+  } else {
+    const sessions = listStoredSessions();
+    if (sessions.length > 0) {
+      const did = sessions[0];
+      try {
+        session = await getSession(did, { allowStale: false });
+      } catch (e) {
+        deleteStoredSession(did);
+      }
+    }
+  }
+
+  return new Client(session);
 }
