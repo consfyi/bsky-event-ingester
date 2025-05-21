@@ -7,6 +7,7 @@ import {
 import { Trans, useLingui } from "@lingui/react/macro";
 import {
   ActionIcon,
+  Alert,
   Anchor,
   Avatar,
   Box,
@@ -27,6 +28,7 @@ import {
 import "@mantine/core/styles.css";
 import { LinksFunction } from "@remix-run/node";
 import {
+  isRouteErrorResponse,
   Link,
   Links,
   Meta,
@@ -39,9 +41,11 @@ import {
   IconAt,
   IconBrandBluesky,
   IconChevronDown,
+  IconExclamationCircle,
   IconLogout2,
 } from "@tabler/icons-react";
 import { Suspense, useState } from "react";
+import { ErrorBoundary } from "react-error-boundary";
 import { SWRConfig } from "swr";
 import clientMetadata from "../public/client-metadata.json";
 import LinguiProvider from "./components/LinguiProvider";
@@ -298,6 +302,36 @@ function Footer() {
   );
 }
 
+export function RootErrorBoundary({ children }: { children: React.ReactNode }) {
+  return (
+    <ErrorBoundary
+      fallbackRender={({ error }) => {
+        if (!(error instanceof Response)) {
+          console.log(error);
+          throw error;
+        }
+
+        if (error.status != 404) {
+          throw error;
+        }
+
+        return (
+          <Box p={50} ta="center">
+            <Text size="xl" fw={500}>
+              <Trans>Not found</Trans>
+            </Text>
+            <Text mt="sm">
+              <Trans>The page you requested could not be found.</Trans>
+            </Text>
+          </Box>
+        );
+      }}
+    >
+      {children}
+    </ErrorBoundary>
+  );
+}
+
 export function Layout({ children }: { children: React.ReactNode }) {
   const hydrated = useHydrated();
 
@@ -332,7 +366,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                     <LocalAttendingContextProvider>
                       <Header />
                       <Container size="lg" px={0}>
-                        <SimpleErrorBoundary>
+                        <RootErrorBoundary>
                           <Suspense
                             fallback={
                               <Center p="lg">
@@ -342,7 +376,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                           >
                             {children}
                           </Suspense>
-                        </SimpleErrorBoundary>
+                        </RootErrorBoundary>
                       </Container>
                       <Footer />
                     </LocalAttendingContextProvider>
