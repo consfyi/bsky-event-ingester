@@ -64,11 +64,6 @@ msgctxt "ends [date] ([duration] days)"
 msgid "ends {0} ({1, plural, one {# day} other {# days}})"
 msgstr "ends {0} ({1, plural, one {# day} other {# days}})"
 
-#: app/routes/_index.tsx:118
-#~ msgctxt "ends [date] ([duration] days)"
-#~ msgid "ends {0} ({1})"
-#~ msgstr "ends {0} ({1})"
-
 #: app/components/SimpleErrorBoundary.tsx:16
 msgid "Error"
 msgstr "Error"
