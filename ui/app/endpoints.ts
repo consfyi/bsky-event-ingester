@@ -28,6 +28,10 @@ export class Profile {
   pk() {
     return this.did;
   }
+
+  public static Entity = schema.Entity(Profile, {
+    key: this.name,
+  });
 }
 
 export class Post {
@@ -46,6 +50,10 @@ export class Post {
   pk() {
     return this.uri;
   }
+
+  public static Entity = schema.Entity(this, {
+    key: this.name,
+  });
 }
 
 export class Like {
@@ -58,6 +66,10 @@ export class Like {
   pk() {
     return this.actor.did;
   }
+
+  public static Entity = schema.Entity(this, {
+    key: this.name,
+  });
 }
 
 export class LabelerView {
@@ -72,23 +84,11 @@ export class LabelerView {
   pk() {
     return this.uri;
   }
+
+  public static Entity = schema.Entity(this, {
+    key: this.name,
+  });
 }
-
-export const PostEntity = schema.Entity(Post, {
-  key: "Post",
-});
-
-export const ProfileEntity = schema.Entity(Profile, {
-  key: "Profile",
-});
-
-export const LikeEntity = schema.Entity(Like, {
-  key: "Like",
-});
-
-export const LabelerViewEntity = schema.Entity(LabelerView, {
-  key: "LabelerView",
-});
 
 export function useGetAuthorPosts() {
   const client = useClient();
@@ -102,7 +102,7 @@ export function useGetAuthorPosts() {
       return posts;
     },
     {
-      schema: new schema.Collection([PostEntity]),
+      schema: new schema.Collection([Post.Entity]),
     }
   );
 }
@@ -115,7 +115,7 @@ export function useGetProfile() {
       return new Profile(await client.getProfile(did));
     },
     {
-      schema: ProfileEntity,
+      schema: Profile.Entity,
     }
   );
 }
@@ -132,7 +132,7 @@ export function useGetLikes() {
       return likes;
     },
     {
-      schema: new schema.Collection([LikeEntity]),
+      schema: new schema.Collection([Like.Entity]),
     }
   );
 }
@@ -149,7 +149,7 @@ export function useGetFollows() {
       return follows;
     },
     {
-      schema: new schema.Collection([ProfileEntity]),
+      schema: new schema.Collection([Profile.Entity]),
     }
   );
 }
@@ -162,7 +162,7 @@ export function useGetLabelerView() {
       return new LabelerView(await client.getLabelerView(did));
     },
     {
-      schema: LabelerViewEntity,
+      schema: LabelerView.Entity,
     }
   );
 }
