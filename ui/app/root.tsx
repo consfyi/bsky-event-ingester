@@ -7,7 +7,6 @@ import {
 import { Trans, useLingui } from "@lingui/react/macro";
 import {
   ActionIcon,
-  Alert,
   Anchor,
   Avatar,
   Box,
@@ -28,7 +27,6 @@ import {
 import "@mantine/core/styles.css";
 import { LinksFunction } from "@remix-run/node";
 import {
-  isRouteErrorResponse,
   Link,
   Links,
   Meta,
@@ -36,21 +34,19 @@ import {
   Outlet,
   Scripts,
   ScrollRestoration,
+  useRouteError,
 } from "@remix-run/react";
 import {
   IconAt,
   IconBrandBluesky,
   IconChevronDown,
-  IconExclamationCircle,
   IconLogout2,
 } from "@tabler/icons-react";
-import { Suspense, useState } from "react";
-import { ErrorBoundary } from "react-error-boundary";
+import { Suspense, useEffect, useState } from "react";
 import { SWRConfig } from "swr";
 import clientMetadata from "../public/client-metadata.json";
 import LinguiProvider from "./components/LinguiProvider";
 import LocalAttendingContextProvider from "./components/LocalAttendingContextProvider";
-import SimpleErrorBoundary from "./components/SimpleErrorBoundary";
 import { useClient, useHydrated, useSelf } from "./hooks";
 
 const theme = createTheme({});
@@ -302,33 +298,31 @@ function Footer() {
   );
 }
 
-export function RootErrorBoundary({ children }: { children: React.ReactNode }) {
+export function ErrorBoundary() {
+  const error = useRouteError();
+  const { t } = useLingui();
+
+  if (!(error instanceof Response)) {
+    throw error;
+  }
+
+  if (error.status != 404) {
+    throw error;
+  }
+
+  useEffect(() => {
+    document.title = t`Not found`;
+  }, [t]);
+
   return (
-    <ErrorBoundary
-      fallbackRender={({ error }) => {
-        if (!(error instanceof Response)) {
-          console.log(error);
-          throw error;
-        }
-
-        if (error.status != 404) {
-          throw error;
-        }
-
-        return (
-          <Box p={50} ta="center">
-            <Text size="xl" fw={500}>
-              <Trans>Not found</Trans>
-            </Text>
-            <Text mt="sm">
-              <Trans>The page you requested could not be found.</Trans>
-            </Text>
-          </Box>
-        );
-      }}
-    >
-      {children}
-    </ErrorBoundary>
+    <Box p={50} ta="center">
+      <Text size="xl" fw={500}>
+        <Trans>Not found</Trans>
+      </Text>
+      <Text mt="sm">
+        <Trans>The page you requested could not be found.</Trans>
+      </Text>
+    </Box>
   );
 }
 
@@ -347,43 +341,39 @@ export function Layout({ children }: { children: React.ReactNode }) {
       <body>
         <MantineProvider theme={theme} defaultColorScheme="auto">
           {hydrated ? (
-            <SimpleErrorBoundary>
-              <Suspense
-                fallback={
-                  <Center p="lg">
-                    <Loader />
-                  </Center>
-                }
+            <Suspense
+              fallback={
+                <Center p="lg">
+                  <Loader />
+                </Center>
+              }
+            >
+              <SWRConfig
+                value={{
+                  suspense: true,
+                  revalidateOnFocus: false,
+                  revalidateOnReconnect: false,
+                }}
               >
-                <SWRConfig
-                  value={{
-                    suspense: true,
-                    revalidateOnFocus: false,
-                    revalidateOnReconnect: false,
-                  }}
-                >
-                  <LinguiProvider>
-                    <LocalAttendingContextProvider>
-                      <Header />
-                      <Container size="lg" px={0}>
-                        <RootErrorBoundary>
-                          <Suspense
-                            fallback={
-                              <Center p="lg">
-                                <Loader />
-                              </Center>
-                            }
-                          >
-                            {children}
-                          </Suspense>
-                        </RootErrorBoundary>
-                      </Container>
-                      <Footer />
-                    </LocalAttendingContextProvider>
-                  </LinguiProvider>
-                </SWRConfig>
-              </Suspense>
-            </SimpleErrorBoundary>
+                <LinguiProvider>
+                  <LocalAttendingContextProvider>
+                    <Header />
+                    <Container size="lg" px={0}>
+                      <Suspense
+                        fallback={
+                          <Center p="lg">
+                            <Loader />
+                          </Center>
+                        }
+                      >
+                        {children}
+                      </Suspense>
+                    </Container>
+                    <Footer />
+                  </LocalAttendingContextProvider>
+                </LinguiProvider>
+              </SWRConfig>
+            </Suspense>
           ) : null}
         </MantineProvider>
 
