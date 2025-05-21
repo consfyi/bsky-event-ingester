@@ -5,7 +5,7 @@ import type {
 import type { Like as OriginalLike } from "@atcute/bluesky/types/app/feed/getLikes";
 import type { PostView } from "@atcute/bluesky/types/app/feed/defs";
 import type { ActorIdentifier, Did, ResourceUri } from "@atcute/lexicons";
-import { Endpoint, schema } from "@rest-hooks/endpoint";
+import { Endpoint, schema } from "@data-client/endpoint";
 import { Client } from "./bluesky";
 import {
   LabelerPolicies,

@@ -1,5 +1,5 @@
 import type { ResourceUri } from "@atcute/lexicons";
-import { useDLE, useSuspense } from "@rest-hooks/react";
+import { useDLE, useSuspense } from "@data-client/react";
 import { parse as parseDate } from "date-fns";
 import { sortBy } from "lodash-es";
 import { useMemo, useSyncExternalStore } from "react";

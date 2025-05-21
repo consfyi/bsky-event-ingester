@@ -42,7 +42,7 @@ import { startLogin } from "./bluesky";
 import LinguiProvider from "./components/LinguiProvider";
 import LocalAttendingContextProvider from "./components/LocalAttendingContextProvider";
 import { useClient, useHydrated, useSelf } from "./hooks";
-import { CacheProvider } from "@rest-hooks/react";
+import { CacheProvider } from "@data-client/react";
 
 const theme = createTheme({});
 
