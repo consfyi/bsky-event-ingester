@@ -29,7 +29,7 @@ export class Profile {
     return this.did;
   }
 
-  public static Entity = schema.Entity(Profile, {
+  public static Entity = schema.Entity(this, {
     key: this.name,
   });
 }
