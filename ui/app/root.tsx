@@ -42,7 +42,7 @@ import { startLogin } from "./bluesky";
 import LinguiProvider from "./components/LinguiProvider";
 import LocalAttendingContextProvider from "./components/LocalAttendingContextProvider";
 import { useClient, useHydrated, useSelf } from "./hooks";
-import { CacheProvider } from "@data-client/react";
+import { DataProvider } from "@data-client/react";
 
 const theme = createTheme({});
 
@@ -308,7 +308,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
       <body>
         <MantineProvider theme={theme} defaultColorScheme="auto">
           {hydrated ? (
-            <CacheProvider>
+            <DataProvider>
               <Suspense
                 fallback={
                   <Center p="lg">
@@ -334,7 +334,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                   </LocalAttendingContextProvider>
                 </LinguiProvider>
               </Suspense>
-            </CacheProvider>
+            </DataProvider>
           ) : null}
         </MantineProvider>
 

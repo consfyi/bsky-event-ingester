@@ -105,7 +105,7 @@ export const getAuthorPosts = new Endpoint(
     return posts;
   },
   {
-    schema: [PostEntity],
+    schema: new schema.Collection([PostEntity]),
   }
 );
 
@@ -133,7 +133,7 @@ export const getLikes = new Endpoint(
     return likes;
   },
   {
-    schema: [LikeEntity],
+    schema: new schema.Collection([LikeEntity]),
   }
 );
 
@@ -152,7 +152,7 @@ export const getFollows = new Endpoint(
     return follows;
   },
   {
-    schema: [ProfileEntity],
+    schema: new schema.Collection([ProfileEntity]),
   }
 );
 
