@@ -2,15 +2,15 @@ import type {
   ProfileView,
   ProfileViewDetailed,
 } from "@atcute/bluesky/types/app/actor/defs";
-import type { Like as OriginalLike } from "@atcute/bluesky/types/app/feed/getLikes";
 import type { PostView } from "@atcute/bluesky/types/app/feed/defs";
-import type { ActorIdentifier, Did, ResourceUri } from "@atcute/lexicons";
-import { Endpoint, schema } from "@data-client/endpoint";
-import { Client } from "./bluesky";
+import type { Like as OriginalLike } from "@atcute/bluesky/types/app/feed/getLikes";
 import {
   LabelerPolicies,
   LabelerViewDetailed,
 } from "@atcute/bluesky/types/app/labeler/defs";
+import type { ActorIdentifier, Did, ResourceUri } from "@atcute/lexicons";
+import { Endpoint, schema } from "@data-client/endpoint";
+import { useClient } from "./hooks";
 
 export class Profile {
   public did: Did;
@@ -90,77 +90,79 @@ export const LabelerViewEntity = schema.Entity(LabelerView, {
   key: "LabelerView",
 });
 
-export const getAuthorPosts = new Endpoint(
-  async function getAuthorPosts({
-    client,
-    actor,
-  }: {
-    client: Client;
-    actor: ActorIdentifier;
-  }) {
-    const posts = [];
-    for await (const postView of client.getAuthorPosts(actor)) {
-      posts.push(new Post(postView));
+export function useGetAuthorPosts() {
+  const client = useClient();
+
+  return new Endpoint(
+    async function getAuthorPosts({ actor }: { actor: ActorIdentifier }) {
+      const posts = [];
+      for await (const postView of client.getAuthorPosts(actor)) {
+        posts.push(new Post(postView));
+      }
+      return posts;
+    },
+    {
+      schema: new schema.Collection([PostEntity]),
     }
-    return posts;
-  },
-  {
-    schema: new schema.Collection([PostEntity]),
-  }
-);
+  );
+}
 
-export const getProfile = new Endpoint(
-  async function getProfile({ client, did }: { client: Client; did: Did }) {
-    return new Profile(await client.getProfile(did));
-  },
-  {
-    schema: ProfileEntity,
-  }
-);
+export function useGetProfile() {
+  const client = useClient();
 
-export const getLikes = new Endpoint(
-  async function getLikes({
-    client,
-    uri,
-  }: {
-    client: Client;
-    uri: ResourceUri;
-  }) {
-    const likes = [];
-    for await (const like of client.getLikes(uri)) {
-      likes.push(new Like(like));
+  return new Endpoint(
+    async function getProfile({ did }: { did: Did }) {
+      return new Profile(await client.getProfile(did));
+    },
+    {
+      schema: ProfileEntity,
     }
-    return likes;
-  },
-  {
-    schema: new schema.Collection([LikeEntity]),
-  }
-);
+  );
+}
 
-export const getFollows = new Endpoint(
-  async function getFollows({
-    client,
-    actor,
-  }: {
-    client: Client;
-    actor: ActorIdentifier;
-  }) {
-    const follows = [];
-    for await (const follow of client.getFollows(actor)) {
-      follows.push(new Profile(follow));
+export function useGetLikes() {
+  const client = useClient();
+
+  return new Endpoint(
+    async function getLikes({ uri }: { uri: ResourceUri }) {
+      const likes = [];
+      for await (const like of client.getLikes(uri)) {
+        likes.push(new Like(like));
+      }
+      return likes;
+    },
+    {
+      schema: new schema.Collection([LikeEntity]),
     }
-    return follows;
-  },
-  {
-    schema: new schema.Collection([ProfileEntity]),
-  }
-);
+  );
+}
 
-export const getLabelerView = new Endpoint(
-  async function getLabelerView({ client, did }: { client: Client; did: Did }) {
-    return new LabelerView(await client.getLabelerView(did));
-  },
-  {
-    schema: LabelerViewEntity,
-  }
-);
+export function useGetFollows() {
+  const client = useClient();
+
+  return new Endpoint(
+    async function getFollows({ actor }: { actor: ActorIdentifier }) {
+      const follows = [];
+      for await (const follow of client.getFollows(actor)) {
+        follows.push(new Profile(follow));
+      }
+      return follows;
+    },
+    {
+      schema: new schema.Collection([ProfileEntity]),
+    }
+  );
+}
+
+export function useGetLabelerView() {
+  const client = useClient();
+
+  return new Endpoint(
+    async function getLabelerView({ did }: { did: Did }) {
+      return new LabelerView(await client.getLabelerView(did));
+    },
+    {
+      schema: LabelerViewEntity,
+    }
+  );
+}

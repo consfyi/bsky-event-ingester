@@ -6,11 +6,11 @@ import { useMemo, useSyncExternalStore } from "react";
 import { LABELER_DID } from "~/config";
 import { Client, createClient } from "./bluesky";
 import {
-  getAuthorPosts,
-  getFollows,
-  getLabelerView,
-  getLikes,
-  getProfile,
+  useGetAuthorPosts,
+  useGetFollows,
+  useGetLabelerView,
+  useGetLikes,
+  useGetProfile,
   LabelerView,
   Post,
 } from "./endpoints";
@@ -75,16 +75,13 @@ function postprocessConPosts(posts: Post[]): Record<string, Post> {
 }
 
 export function useConPosts() {
-  const client = useClient();
-  const resp = useSuspense(getAuthorPosts, { client, actor: LABELER_DID });
+  const resp = useSuspense(useGetAuthorPosts(), { actor: LABELER_DID });
   const posts = useMemo(() => postprocessConPosts(resp), [resp]);
   return posts;
 }
 
 export function useConPostsDLE() {
-  const client = useClient();
-  const { data, loading, error } = useDLE(getAuthorPosts, {
-    client,
+  const { data, loading, error } = useDLE(useGetAuthorPosts(), {
     actor: LABELER_DID,
   });
 
@@ -130,16 +127,13 @@ function postprocessCon(labelerView: LabelerView) {
 }
 
 export function useCons() {
-  const client = useClient();
-  const labelerView = useSuspense(getLabelerView, { client, did: LABELER_DID });
+  const labelerView = useSuspense(useGetLabelerView(), { did: LABELER_DID });
   const cons = useMemo(() => postprocessCon(labelerView), [labelerView]);
   return cons;
 }
 
 export function useConsDLE() {
-  const client = useClient();
-  const { data, loading, error } = useDLE(getLabelerView, {
-    client,
+  const { data, loading, error } = useDLE(useGetLabelerView(), {
     did: LABELER_DID,
   });
   const cons = useMemo(
@@ -150,17 +144,15 @@ export function useConsDLE() {
 }
 
 export function useLikes(uri: ResourceUri) {
-  const client = useClient();
-  const resp = useSuspense(getLikes, { client, uri });
+  const resp = useSuspense(useGetLikes(), { uri });
   return resp;
 }
 
 export function useSelf() {
   const client = useClient();
-
   const resp = useSuspense(
-    getProfile,
-    client.did != null ? { client, did: client.did } : null
+    useGetProfile(),
+    client.did != null ? { did: client.did } : null
   );
   return resp;
 }
@@ -168,8 +160,8 @@ export function useSelf() {
 export function useSelfFollowsDLE() {
   const client = useClient();
   const { data, loading, error } = useDLE(
-    getFollows,
-    client.did != null ? { client, actor: client.did } : null
+    useGetFollows(),
+    client.did != null ? { actor: client.did } : null
   );
 
   const follows = useMemo(() => {
