@@ -3,7 +3,6 @@ import { Alert, Code, Text } from "@mantine/core";
 import { IconExclamationCircle } from "@tabler/icons-react";
 import { ErrorBoundary } from "react-error-boundary";
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export default function SimpleErrorBoundary({
   children,
 }: {

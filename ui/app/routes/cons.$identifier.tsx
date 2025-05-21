@@ -285,7 +285,6 @@ export default function Index() {
   if (con == null) {
     throw new Response(null, {
       status: 404,
-      statusText: "Not Found",
     });
   }
 
