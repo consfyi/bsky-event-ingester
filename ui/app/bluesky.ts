@@ -1,5 +1,5 @@
 import type {} from "@atcute/atproto";
-import { AppBskyFeedLike } from "@atcute/bluesky";
+import type { AppBskyFeedLike } from "@atcute/bluesky";
 import type {
   ProfileView,
   ProfileViewDetailed,
@@ -24,15 +24,39 @@ import type {
 } from "@atcute/lexicons";
 import {
   configureOAuth,
+  createAuthorizationUrl,
   deleteStoredSession,
   finalizeAuthorization,
   getSession,
   listStoredSessions,
   OAuthUserAgent,
+  resolveFromIdentity,
+  resolveFromService,
   Session,
 } from "@atcute/oauth-browser-client";
 import clientMetadata from "../public/client-metadata.json";
 import { LABELER_DID } from "./config";
+
+export async function startLogin(handle: string | null) {
+  let identity = undefined;
+  let metadata;
+
+  if (handle != null) {
+    const resp = await resolveFromIdentity(handle);
+    identity = resp.identity;
+    metadata = resp.metadata;
+  } else {
+    const resp = await resolveFromService("https://bsky.social");
+    metadata = resp.metadata;
+  }
+
+  const authUrl = await createAuthorizationUrl({
+    identity,
+    metadata,
+    scope: "atproto transition:generic",
+  });
+  window.location.assign(authUrl);
+}
 
 export class Client {
   private oauthUserAgent: OAuthUserAgent | null;
@@ -56,7 +80,7 @@ export class Client {
       : null;
   }
 
-  async signOut() {
+  async logout() {
     if (this.oauthUserAgent == null) {
       return;
     }

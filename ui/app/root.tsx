@@ -1,8 +1,3 @@
-import {
-  createAuthorizationUrl,
-  resolveFromIdentity,
-  resolveFromService,
-} from "@atcute/oauth-browser-client";
 import { Trans, useLingui } from "@lingui/react/macro";
 import {
   ActionIcon,
@@ -44,6 +39,7 @@ import {
 import { Suspense, useEffect, useState } from "react";
 import { SWRConfig } from "swr";
 import clientMetadata from "../public/client-metadata.json";
+import { startLogin } from "./bluesky";
 import LinguiProvider from "./components/LinguiProvider";
 import LocalAttendingContextProvider from "./components/LocalAttendingContextProvider";
 import { useClient, useHydrated, useSelf } from "./hooks";
@@ -160,30 +156,8 @@ function Header() {
             <form
               onSubmit={(evt) => {
                 evt.preventDefault();
-
                 setIsPending(true);
-
-                (async () => {
-                  let identity = undefined;
-                  let metadata;
-
-                  if (handle != "") {
-                    const resp = await resolveFromIdentity(handle);
-                    identity = resp.identity;
-                    metadata = resp.metadata;
-                  } else {
-                    const resp = await resolveFromService(
-                      "https://bsky.social"
-                    );
-                    metadata = resp.metadata;
-                  }
-                  const authUrl = await createAuthorizationUrl({
-                    identity,
-                    metadata,
-                    scope: "atproto transition:generic",
-                  });
-                  window.location.assign(authUrl);
-                })();
+                startLogin(handle != "" ? handle : null);
               }}
             >
               <Button.Group my={-2}>
