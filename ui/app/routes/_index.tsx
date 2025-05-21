@@ -1,5 +1,5 @@
 import type { PostView } from "@atcute/bluesky/types/app/feed/defs";
-import { Trans, useLingui } from "@lingui/react/macro";
+import { Plural, Trans, useLingui } from "@lingui/react/macro";
 import {
   Alert,
   Anchor,
@@ -36,7 +36,6 @@ import { useLocalAttending } from "~/components/LocalAttendingContextProvider";
 import SimpleErrorBoundary from "~/components/SimpleErrorBoundary";
 import { Con, useClient, useConPosts, useCons } from "~/hooks";
 import clientMetadata from "../../public/client-metadata.json";
-import { plural } from "@lingui/core/macro";
 
 function* monthRange(start: Date, end: Date): Generator<Date> {
   while (start < end) {
@@ -127,10 +126,11 @@ function ConTableRow({ con, post }: { con: Con; post: PostView }) {
                       : undefined,
                 })}{" "}
                 (
-                {plural(differenceInDays(con.end, con.start) + 1, {
-                  one: "# day",
-                  other: "# days",
-                })}
+                <Plural
+                  value={differenceInDays(con.end, con.start) + 1}
+                  one="# day"
+                  other="# days"
+                />
                 )
               </Trans>{" "}
               • <IconMapPin title={t`Location`} size={12} />{" "}

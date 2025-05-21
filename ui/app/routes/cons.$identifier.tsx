@@ -3,8 +3,7 @@ import type {
   ProfileViewDetailed,
 } from "@atcute/bluesky/types/app/actor/defs";
 import type { PostView } from "@atcute/bluesky/types/app/feed/defs";
-import { plural } from "@lingui/core/macro";
-import { Trans, useLingui } from "@lingui/react/macro";
+import { Plural, Trans, useLingui } from "@lingui/react/macro";
 import {
   Anchor,
   Avatar,
@@ -142,10 +141,11 @@ function Header({ con, post }: { con: Con; post: PostView }) {
           <Text size="sm" mb={5}>
             <Trans context="[start date]-[end date] ([duration] days)">
               {dateTimeFormat.formatRange(con.start, con.end)} (
-              {plural(differenceInDays(con.end, con.start) + 1, {
-                one: "# day",
-                other: "# days",
-              })}
+              <Plural
+                value={differenceInDays(con.end, con.start) + 1}
+                one="# day"
+                other="# days"
+              />
               )
             </Trans>
           </Text>
