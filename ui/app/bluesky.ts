@@ -37,7 +37,6 @@ import { LABELER_DID } from "./config";
 export class Client {
   private oauthUserAgent: OAuthUserAgent | null;
   private rpc: AtcuteClient;
-  public readonly did: Did | null;
 
   constructor(session: Session | null = null) {
     this.oauthUserAgent = session != null ? new OAuthUserAgent(session) : null;
@@ -49,14 +48,23 @@ export class Client {
               service: "https://public.api.bsky.app",
             }),
     });
-    this.did = session != null ? session.info.sub : null;
+  }
+
+  get did() {
+    return this.oauthUserAgent != null
+      ? this.oauthUserAgent.session.info.sub
+      : null;
   }
 
   async signOut() {
     if (this.oauthUserAgent == null) {
       return;
     }
-    await this.oauthUserAgent.signOut();
+    try {
+      await this.oauthUserAgent.signOut();
+    } catch (e) {
+      deleteStoredSession(this.oauthUserAgent.session.info.sub);
+    }
   }
 
   async *getAuthorPosts(actor: ActorIdentifier): AsyncGenerator<PostView> {

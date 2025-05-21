@@ -1,6 +1,5 @@
 import {
   createAuthorizationUrl,
-  deleteStoredSession,
   resolveFromIdentity,
   resolveFromService,
 } from "@atcute/oauth-browser-client";
@@ -148,13 +147,7 @@ function Header() {
                     setMenuOpen(true);
 
                     (async () => {
-                      try {
-                        await client.signOut();
-                      } catch (e) {
-                        if (client.did != null) {
-                          deleteStoredSession(client.did);
-                        }
-                      }
+                      await client.logout();
                       window.location.replace(window.location.toString());
                     })();
                   }}
