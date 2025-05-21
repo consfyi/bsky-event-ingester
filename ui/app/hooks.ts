@@ -6,13 +6,13 @@ import { useMemo, useSyncExternalStore } from "react";
 import { LABELER_DID } from "~/config";
 import { Client, createClient } from "./bluesky";
 import {
+  LabelerView,
+  Post,
   useGetAuthorPosts,
   useGetFollows,
   useGetLabelerView,
   useGetLikes,
   useGetProfile,
-  LabelerView,
-  Post,
 } from "./endpoints";
 
 export function hookifyPromise<T>(promise: Promise<T>) {
