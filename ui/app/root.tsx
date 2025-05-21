@@ -37,12 +37,12 @@ import {
   IconLogout2,
 } from "@tabler/icons-react";
 import { Suspense, useEffect, useState } from "react";
-import { SWRConfig } from "swr";
 import clientMetadata from "../public/client-metadata.json";
 import { startLogin } from "./bluesky";
 import LinguiProvider from "./components/LinguiProvider";
 import LocalAttendingContextProvider from "./components/LocalAttendingContextProvider";
 import { useClient, useHydrated, useSelf } from "./hooks";
+import { CacheProvider } from "@rest-hooks/react";
 
 const theme = createTheme({});
 
@@ -71,7 +71,7 @@ function Header() {
 
   const { t } = useLingui();
   const client = useClient();
-  const { data: self } = useSelf();
+  const self = useSelf();
 
   return (
     <Box
@@ -308,19 +308,13 @@ export function Layout({ children }: { children: React.ReactNode }) {
       <body>
         <MantineProvider theme={theme} defaultColorScheme="auto">
           {hydrated ? (
-            <Suspense
-              fallback={
-                <Center p="lg">
-                  <Loader />
-                </Center>
-              }
-            >
-              <SWRConfig
-                value={{
-                  suspense: true,
-                  revalidateOnFocus: false,
-                  revalidateOnReconnect: false,
-                }}
+            <CacheProvider>
+              <Suspense
+                fallback={
+                  <Center p="lg">
+                    <Loader />
+                  </Center>
+                }
               >
                 <LinguiProvider>
                   <LocalAttendingContextProvider>
@@ -339,8 +333,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
                     <Footer />
                   </LocalAttendingContextProvider>
                 </LinguiProvider>
-              </SWRConfig>
-            </Suspense>
+              </Suspense>
+            </CacheProvider>
           ) : null}
         </MantineProvider>
 

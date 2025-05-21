@@ -1,8 +1,3 @@
-import type {
-  ProfileView,
-  ProfileViewDetailed,
-} from "@atcute/bluesky/types/app/actor/defs";
-import type { PostView } from "@atcute/bluesky/types/app/feed/defs";
 import { Plural, Trans, useLingui } from "@lingui/react/macro";
 import {
   Anchor,
@@ -31,13 +26,14 @@ import LikeButton from "~/components/LikeButton";
 import { useLocalAttending } from "~/components/LocalAttendingContextProvider";
 import SimpleErrorBoundary from "~/components/SimpleErrorBoundary";
 import { LABELER_DID } from "~/config";
+import { Post, Profile } from "~/endpoints";
 import {
   Con,
   useConPosts,
   useCons,
-  useLikes,
+  useLikes as useLikes,
   useSelf,
-  useSelfFollows,
+  useSelfFollowsDLE,
 } from "~/hooks";
 
 function ActorSkeleton() {
@@ -52,7 +48,7 @@ function ActorSkeleton() {
     </Group>
   );
 }
-function Actor({ actor }: { actor: ProfileView | ProfileViewDetailed }) {
+function Actor({ actor }: { actor: Profile }) {
   return (
     <Anchor
       href={`https://bsky.app/profile/${actor.handle}`}
@@ -94,7 +90,7 @@ function Actor({ actor }: { actor: ProfileView | ProfileViewDetailed }) {
   );
 }
 
-function Header({ con, post }: { con: Con; post: PostView }) {
+function Header({ con, post }: { con: Con; post: Post }) {
   const { i18n, t } = useLingui();
 
   const dateTimeFormat = useMemo(
@@ -196,18 +192,16 @@ function AttendeesList({
   isSelfAttending: boolean;
   con: Con;
 }) {
-  const { data: self } = useSelf();
-  const { data: selfFollows } = useSelfFollows();
+  const self = useSelf();
+  const { data: selfFollows } = useSelfFollowsDLE();
 
-  const { data: likes } = useLikes(
-    `at://${LABELER_DID}/app.bsky.feed.post/${con.rkey}`
-  );
+  const likes = useLikes(`at://${LABELER_DID}/app.bsky.feed.post/${con.rkey}`);
 
   const [knownLikes, unknownLikes] = useMemo(() => {
-    let knownLikes: (ProfileView | ProfileViewDetailed)[] = [];
-    let unknownLikes: (ProfileView | ProfileViewDetailed)[] = [];
+    let knownLikes: Profile[] = [];
+    let unknownLikes: Profile[] = [];
 
-    for (const like of likes!) {
+    for (const like of likes) {
       if (self != null && like.actor.did == self.did) {
         continue;
       }
@@ -266,8 +260,8 @@ function AttendeesList({
 }
 
 export default function Index() {
-  const { data: cons } = useCons();
-  const { data: conPosts } = useConPosts();
+  const cons = useCons();
+  const conPosts = useConPosts();
 
   const { identifier } = useParams();
 
@@ -289,7 +283,7 @@ export default function Index() {
   }
 
   const post = conPosts![con.rkey]!;
-  const { isLoading: selfFollowsIsLoading } = useSelfFollows();
+  const { loading: selfFollowsIsLoading } = useSelfFollowsDLE();
 
   const likeCountWithoutSelf =
     (post.likeCount || 0) - (post.viewer?.like != null ? 1 : 0);

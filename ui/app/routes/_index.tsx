@@ -1,4 +1,3 @@
-import type { PostView } from "@atcute/bluesky/types/app/feed/defs";
 import { Plural, Trans, useLingui } from "@lingui/react/macro";
 import {
   Alert,
@@ -34,6 +33,7 @@ import { Fragment, Suspense, useMemo } from "react";
 import LikeButton from "~/components/LikeButton";
 import { useLocalAttending } from "~/components/LocalAttendingContextProvider";
 import SimpleErrorBoundary from "~/components/SimpleErrorBoundary";
+import { Post } from "~/endpoints";
 import { Con, useClient, useConPosts, useCons } from "~/hooks";
 import clientMetadata from "../../public/client-metadata.json";
 
@@ -49,7 +49,7 @@ export const meta: MetaFunction = ({ matches }) => [
   { title: clientMetadata.client_name },
 ];
 
-function ConTableRow({ con, post }: { con: Con; post: PostView }) {
+function ConTableRow({ con, post }: { con: Con; post: Post }) {
   const { isAttending } = useLocalAttending(con.identifier);
 
   const likeCountWithoutSelf =
@@ -157,8 +157,8 @@ function yearMonthKey(d: Date) {
 }
 
 function ConsTable() {
-  const { data: cons } = useCons();
-  const { data: conPosts } = useConPosts();
+  const cons = useCons();
+  const conPosts = useConPosts();
 
   const { i18n } = useLingui();
 

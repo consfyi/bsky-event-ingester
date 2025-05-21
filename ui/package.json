@@ -27,14 +27,15 @@
     "@remix-run/node": "^2.16.6",
     "@remix-run/react": "^2.16.6",
     "@remix-run/serve": "^2.16.6",
+    "@rest-hooks/endpoint": "^4.0.8",
+    "@rest-hooks/react": "^8.2.2",
     "@tabler/icons-react": "^3.31.0",
     "date-fns": "^4.1.0",
     "isbot": "^4.1.0",
     "lodash-es": "^4.17.21",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "react-error-boundary": "^6.0.0",
-    "swr": "^2.3.3"
+    "react-error-boundary": "^6.0.0"
   },
   "devDependencies": {
     "@lingui/cli": "^5.3.1",

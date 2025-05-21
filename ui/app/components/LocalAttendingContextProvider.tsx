@@ -6,7 +6,7 @@ import {
   useEffect,
   useState,
 } from "react";
-import { useClient, useConPosts, useCons } from "~/hooks";
+import { useClient, useConPostsDLE, useConsDLE } from "~/hooks";
 
 const LocalAttendingContext = createContext({
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -34,8 +34,8 @@ export default function LocalAttendingContextProvider({
     Record<string, ResourceUri | typeof PENDING | null>
   >({});
 
-  const { data: cons } = useCons({ suspense: false });
-  const { data: conPosts } = useConPosts({ suspense: false });
+  const { data: cons } = useConsDLE();
+  const { data: conPosts } = useConPostsDLE();
 
   useEffect(() => {
     if (cons == null || conPosts == null) {
