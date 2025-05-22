@@ -76,48 +76,6 @@ export class Like {
   });
 }
 
-export class Likes {
-  public uri: ResourceUri;
-  public likes: Like[];
-
-  constructor(uri: ResourceUri, likes: Like[]) {
-    this.uri = uri;
-    this.likes = likes;
-  }
-
-  pk() {
-    return this.uri;
-  }
-
-  public static Entity = schema.Entity(this, {
-    key: this.name,
-    schema: {
-      likes: new schema.Collection([Like.Entity]),
-    },
-  });
-}
-
-export class AuthorPosts {
-  public actor: ActorIdentifier;
-  public posts: Post[];
-
-  constructor(actor: ActorIdentifier, posts: Post[]) {
-    this.actor = actor;
-    this.posts = posts;
-  }
-
-  pk() {
-    return this.actor;
-  }
-
-  public static Entity = schema.Entity(this, {
-    key: this.name,
-    schema: {
-      posts: new schema.Collection([Post.Entity]),
-    },
-  });
-}
-
 export class LabelerView {
   public uri: ResourceUri;
   public policies: LabelerPolicies;
@@ -140,15 +98,16 @@ export function useGetAuthorPosts() {
   const client = useClient();
 
   return new Endpoint(
-    async function getAuthorPosts({ actor }: { actor: ActorIdentifier }) {
+    async ({ actor }: { actor: ActorIdentifier }) => {
       const posts = [];
       for await (const postView of client.getAuthorPosts(actor)) {
         posts.push(new Post(postView));
       }
-      return new AuthorPosts(actor, posts);
+      return posts;
     },
     {
-      schema: AuthorPosts.Entity,
+      name: "getAuthorPosts",
+      schema: new schema.Collection([Post.Entity]),
     }
   );
 }
@@ -157,10 +116,11 @@ export function useGetProfile() {
   const client = useClient();
 
   return new Endpoint(
-    async function getProfile({ did }: { did: Did }) {
+    async ({ did }: { did: Did }) => {
       return new Profile(await client.getProfile(did));
     },
     {
+      name: "getProfile",
       schema: Profile.Entity,
     }
   );
@@ -170,15 +130,16 @@ export function useGetLikes() {
   const client = useClient();
 
   return new Endpoint(
-    async function getLikes({ uri }: { uri: ResourceUri }) {
+    async ({ uri }: { uri: ResourceUri }) => {
       const likes = [];
       for await (const like of client.getLikes(uri)) {
         likes.push(new Like(like));
       }
-      return new Likes(uri, likes);
+      return likes;
     },
     {
-      schema: Likes.Entity,
+      name: "getLikes",
+      schema: new schema.Collection([Like.Entity]),
     }
   );
 }
@@ -187,7 +148,7 @@ export function useGetFollows() {
   const client = useClient();
 
   return new Endpoint(
-    async function getFollows({ actor }: { actor: ActorIdentifier }) {
+    async ({ actor }: { actor: ActorIdentifier }) => {
       const follows = [];
       for await (const follow of client.getFollows(actor)) {
         follows.push(new Profile(follow));
@@ -195,6 +156,7 @@ export function useGetFollows() {
       return follows;
     },
     {
+      name: "getFollows",
       schema: new schema.Collection([Profile.Entity]),
     }
   );
@@ -204,10 +166,11 @@ export function useGetLabelerView() {
   const client = useClient();
 
   return new Endpoint(
-    async function getLabelerView({ did }: { did: Did }) {
+    async ({ did }: { did: Did }) => {
       return new LabelerView(await client.getLabelerView(did));
     },
     {
+      name: "getLabelerView",
       schema: LabelerView.Entity,
     }
   );
@@ -218,7 +181,7 @@ export function useLikePost() {
   const controller = useController();
 
   return new Endpoint(
-    async function likePost({ uri }: { uri: ResourceUri }) {
+    async ({ uri }: { uri: ResourceUri }) => {
       const post = controller.get(Post.Entity, { uri }, controller.getState());
       if (post == null) {
         throw "post not found";
@@ -234,6 +197,7 @@ export function useLikePost() {
       return post;
     },
     {
+      name: "likePost",
       sideEffect: true,
       schema: Post.Entity,
     }
@@ -245,7 +209,7 @@ export function useUnlikePost() {
   const controller = useController();
 
   return new Endpoint(
-    async function unlikePost({ uri }: { uri: ResourceUri }) {
+    async ({ uri }: { uri: ResourceUri }) => {
       const post = controller.get(Post.Entity, { uri }, controller.getState());
       if (post == null) {
         throw "post not found";
@@ -263,6 +227,7 @@ export function useUnlikePost() {
       return post;
     },
     {
+      name: "unlikePost",
       sideEffect: true,
       schema: Post.Entity,
     }

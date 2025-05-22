@@ -76,7 +76,7 @@ function postprocessConPosts(posts: Post[]): Record<string, Post> {
 
 export function useConPosts() {
   const resp = useSuspense(useGetAuthorPosts(), { actor: LABELER_DID });
-  const posts = useMemo(() => postprocessConPosts(resp.posts), [resp]);
+  const posts = useMemo(() => postprocessConPosts(resp), [resp]);
   return posts;
 }
 
@@ -86,7 +86,7 @@ export function useConPostsDLE() {
   });
 
   const posts = useMemo(
-    () => (data != null ? postprocessConPosts(data.posts) : null),
+    () => (data != null ? postprocessConPosts(data) : null),
     [data]
   );
 
@@ -145,7 +145,7 @@ export function useConsDLE() {
 
 export function useLikes(uri: ResourceUri) {
   const resp = useSuspense(useGetLikes(), { uri });
-  return resp.likes;
+  return resp;
 }
 
 export function useSelf() {
