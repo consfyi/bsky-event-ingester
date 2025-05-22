@@ -177,3 +177,8 @@ export function useSelfFollowsDLE() {
 
   return { data: follows, loading, error };
 }
+
+export function useIsLoggedIn() {
+  const client = useClient();
+  return client.did != null;
+}

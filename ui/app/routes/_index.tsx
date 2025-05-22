@@ -7,6 +7,7 @@ import {
   Group,
   Loader,
   Stack,
+  Switch,
   Table,
   Text,
   ThemeIcon,
@@ -16,6 +17,8 @@ import { Link } from "@remix-run/react";
 import {
   IconBrandBluesky,
   IconCalendarWeek,
+  IconHeart,
+  IconHeartFilled,
   IconMapPin,
   IconPaw,
   IconUsers,
@@ -29,11 +32,11 @@ import {
   setDate,
 } from "date-fns";
 import { groupBy } from "lodash-es";
-import { Fragment, Suspense, useMemo } from "react";
+import { Fragment, Suspense, useMemo, useState } from "react";
 import LikeButton from "~/components/LikeButton";
 import SimpleErrorBoundary from "~/components/SimpleErrorBoundary";
 import { Post } from "~/endpoints";
-import { Con, useClient, useConPosts, useCons } from "~/hooks";
+import { Con, useConPosts, useCons, useIsLoggedIn } from "~/hooks";
 import clientMetadata from "../../public/client-metadata.json";
 
 function* monthRange(start: Date, end: Date): Generator<Date> {
@@ -166,67 +169,100 @@ function ConsTable() {
     });
   }, [cons]);
 
+  const isLoggedIn = useIsLoggedIn();
+  const [showOnlyAttending, setShowOnlyAttending] = useState(false);
+
   return (
-    <Table>
-      <Table.Tbody>
-        {cons!.length > 0
-          ? Array.from(
-              monthRange(
-                setDate(cons![0].start, 1),
-                addMonths(setDate(cons![cons!.length - 1].start, 1), 1)
+    <>
+      <Box my="xs">
+        {isLoggedIn ? (
+          <Switch
+            mx="xs"
+            color="red"
+            thumbIcon={
+              showOnlyAttending ? (
+                <IconHeartFilled size={10} color="var(--switch-bg)" />
+              ) : (
+                <IconHeart size={10} color="var(--switch-bg)" />
               )
-            ).map((date) => {
-              const groupKey = yearMonthKey(date);
-              return (
-                <Fragment key={groupKey}>
-                  <Table.Tr
-                    bg="var(--mantine-color-default-hover)"
-                    pos="sticky"
-                    top={51}
-                    style={{
-                      zIndex: 3,
-                      borderBottom: "none",
-                    }}
-                  >
-                    <Table.Th p={0}>
-                      <Box
-                        p="var(--table-vertical-spacing) var(--table-horizontal-spacing, var(--mantine-spacing-xs))"
-                        style={{
-                          borderBottom:
-                            "calc(0.0625rem * var(--mantine-scale)) solid var(--table-border-color)",
-                        }}
-                      >
-                        <Text fw={500} size="md">
-                          {i18n.date(date, {
-                            month: "long",
-                            year: "numeric",
-                          })}
-                        </Text>
-                      </Box>
-                    </Table.Th>
-                  </Table.Tr>
-                  {(consByMonth[groupKey] ?? []).map((con) => (
-                    <ConTableRow
-                      key={con.identifier}
-                      con={con}
-                      post={conPosts![con.rkey]}
-                    />
-                  ))}
-                </Fragment>
-              );
-            })
-          : null}
-      </Table.Tbody>
-    </Table>
+            }
+            checked={showOnlyAttending}
+            onChange={(e) => {
+              setShowOnlyAttending(e.target.checked);
+            }}
+            label={<Trans>Show only cons I’m attending</Trans>}
+          />
+        ) : null}
+      </Box>
+      <Table>
+        <Table.Tbody>
+          {cons!.length > 0
+            ? Array.from(
+                monthRange(
+                  setDate(cons![0].start, 1),
+                  addMonths(setDate(cons![cons!.length - 1].start, 1), 1)
+                )
+              ).map((date) => {
+                const groupKey = yearMonthKey(date);
+                return (
+                  <Fragment key={groupKey}>
+                    <Table.Tr
+                      bg="var(--mantine-color-default-hover)"
+                      pos="sticky"
+                      top={51}
+                      style={{
+                        zIndex: 3,
+                        borderBottom: "none",
+                      }}
+                    >
+                      <Table.Th p={0}>
+                        <Box
+                          p="var(--table-vertical-spacing) var(--table-horizontal-spacing, var(--mantine-spacing-xs))"
+                          style={{
+                            borderBottom:
+                              "calc(0.0625rem * var(--mantine-scale)) solid var(--table-border-color)",
+                          }}
+                        >
+                          <Text fw={500} size="md">
+                            {i18n.date(date, {
+                              month: "long",
+                              year: "numeric",
+                            })}
+                          </Text>
+                        </Box>
+                      </Table.Th>
+                    </Table.Tr>
+                    {(consByMonth[groupKey] ?? []).map((con) => {
+                      const post = conPosts![con.rkey];
+
+                      if (showOnlyAttending && post.viewer?.like == null) {
+                        return null;
+                      }
+
+                      return (
+                        <ConTableRow
+                          key={con.identifier}
+                          con={con}
+                          post={post}
+                        />
+                      );
+                    })}
+                  </Fragment>
+                );
+              })
+            : null}
+        </Table.Tbody>
+      </Table>
+    </>
   );
 }
 
 export default function Index() {
-  const client = useClient();
+  const isLoggedIn = useIsLoggedIn();
 
   return (
     <>
-      {client.did == null ? (
+      {!isLoggedIn ? (
         <Alert
           my={{ lg: "xs" }}
           icon={<IconPaw />}
