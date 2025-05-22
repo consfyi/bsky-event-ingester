@@ -12,6 +12,7 @@ import {
   Text,
   ThemeIcon,
 } from "@mantine/core";
+import { useLocalStorage } from "@mantine/hooks";
 import type { MetaFunction } from "@remix-run/node";
 import { Link } from "@remix-run/react";
 import {
@@ -32,7 +33,7 @@ import {
   setDate,
 } from "date-fns";
 import { groupBy } from "lodash-es";
-import { Fragment, Suspense, useMemo, useState } from "react";
+import { Fragment, Suspense, useMemo } from "react";
 import LikeButton from "~/components/LikeButton";
 import SimpleErrorBoundary from "~/components/SimpleErrorBoundary";
 import { Post } from "~/endpoints";
@@ -170,7 +171,10 @@ function ConsTable() {
   }, [cons]);
 
   const isLoggedIn = useIsLoggedIn();
-  const [showOnlyAttending, setShowOnlyAttending] = useState(false);
+  const [showOnlyAttending, setShowOnlyAttending] = useLocalStorage({
+    key: "fbl:_index:showOnlyAttending",
+    defaultValue: false,
+  });
 
   return (
     <>
@@ -235,7 +239,11 @@ function ConsTable() {
                     {(consByMonth[groupKey] ?? []).map((con) => {
                       const post = conPosts![con.rkey];
 
-                      if (showOnlyAttending && post.viewer?.like == null) {
+                      if (
+                        isLoggedIn &&
+                        showOnlyAttending &&
+                        post.viewer?.like == null
+                      ) {
                         return null;
                       }
 
