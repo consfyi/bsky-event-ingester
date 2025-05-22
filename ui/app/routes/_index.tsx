@@ -302,6 +302,7 @@ function ConsTable() {
   const isLoggedIn = useIsLoggedIn();
   const [viewOptions, setViewOptions] = useLocalStorage<TableViewOptions>({
     key: "fbl:_index:viewOptions",
+    getInitialValueInEffect: false,
     defaultValue: {
       showOnlyAttending: false,
       sortBy: SortBy.Date,
