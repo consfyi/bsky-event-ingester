@@ -10,6 +10,7 @@ import {
 } from "@atcute/bluesky/types/app/labeler/defs";
 import type { ActorIdentifier, Did, ResourceUri } from "@atcute/lexicons";
 import { Endpoint, schema } from "@data-client/endpoint";
+import { useController } from "@data-client/react";
 import { useClient } from "./hooks";
 
 export class Profile {
@@ -163,6 +164,62 @@ export function useGetLabelerView() {
     },
     {
       schema: LabelerView.Entity,
+    }
+  );
+}
+
+export function useLikePost() {
+  const client = useClient();
+  const controller = useController();
+
+  return new Endpoint(
+    async function likePost({ uri }: { uri: ResourceUri }) {
+      const post = controller.get(Post.Entity, { uri }, controller.getState());
+      if (post == null) {
+        throw "post not found";
+      }
+
+      if (post.viewer == null || post.viewer.like != null) {
+        return;
+      }
+
+      post.viewer.like = await client.like(uri, post.cid);
+      post.likeCount = (post.likeCount ?? 0) + 1;
+
+      return post;
+    },
+    {
+      sideEffect: true,
+      schema: Post.Entity,
+    }
+  );
+}
+
+export function useUnlikePost() {
+  const client = useClient();
+  const controller = useController();
+
+  return new Endpoint(
+    async function unlikePost({ uri }: { uri: ResourceUri }) {
+      const post = controller.get(Post.Entity, { uri }, controller.getState());
+      if (post == null) {
+        throw "post not found";
+      }
+
+      if (post.viewer == null || post.viewer.like == null) {
+        return;
+      }
+
+      await client.deleteRecord(post.viewer.like);
+
+      post.viewer.like = undefined;
+      post.likeCount = (post.likeCount ?? 0) - 1;
+
+      return post;
+    },
+    {
+      sideEffect: true,
+      schema: Post.Entity,
     }
   );
 }

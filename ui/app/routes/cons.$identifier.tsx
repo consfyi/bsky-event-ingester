@@ -23,7 +23,6 @@ import { differenceInDays } from "date-fns";
 import { range, sortBy } from "lodash-es";
 import { Suspense, useEffect, useMemo } from "react";
 import LikeButton from "~/components/LikeButton";
-import { useLocalAttending } from "~/components/LocalAttendingContextProvider";
 import SimpleErrorBoundary from "~/components/SimpleErrorBoundary";
 import { LABELER_DID } from "~/config";
 import { Post, Profile } from "~/endpoints";
@@ -109,7 +108,7 @@ function Header({ con, post }: { con: Con; post: Post }) {
       <Group gap={7} wrap="nowrap" align="top">
         {post.viewer != null ? (
           <Box mt={2} mb={-2}>
-            <LikeButton size="sm" iconSize={24} conId={con.identifier} />
+            <LikeButton size="sm" iconSize={24} post={post} />
           </Box>
         ) : null}
         <Text size="lg" fw={500}>
@@ -268,9 +267,7 @@ export default function Index() {
   const con =
     cons != null ? cons.find((con) => con.identifier == identifier) : null;
 
-  const { isAttending } = useLocalAttending(
-    con != null ? con.identifier : null
-  );
+  const { loading: selfFollowsIsLoading } = useSelfFollowsDLE();
 
   useEffect(() => {
     document.title = con != null ? con.name : "";
@@ -283,10 +280,10 @@ export default function Index() {
   }
 
   const post = conPosts![con.rkey]!;
-  const { loading: selfFollowsIsLoading } = useSelfFollowsDLE();
 
-  const likeCountWithoutSelf =
-    (post.likeCount || 0) - (post.viewer?.like != null ? 1 : 0);
+  const isAttending = post.viewer?.like != null;
+
+  const likeCountWithoutSelf = (post.likeCount || 0) - (isAttending ? 1 : 0);
   const likeCount = isAttending
     ? likeCountWithoutSelf + 1
     : likeCountWithoutSelf;

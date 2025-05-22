@@ -31,7 +31,6 @@ import {
 import { groupBy } from "lodash-es";
 import { Fragment, Suspense, useMemo } from "react";
 import LikeButton from "~/components/LikeButton";
-import { useLocalAttending } from "~/components/LocalAttendingContextProvider";
 import SimpleErrorBoundary from "~/components/SimpleErrorBoundary";
 import { Post } from "~/endpoints";
 import { Con, useClient, useConPosts, useCons } from "~/hooks";
@@ -50,10 +49,9 @@ export const meta: MetaFunction = ({ matches }) => [
 ];
 
 function ConTableRow({ con, post }: { con: Con; post: Post }) {
-  const { isAttending } = useLocalAttending(con.identifier);
+  const isAttending = post.viewer?.like != null;
 
-  const likeCountWithoutSelf =
-    (post.likeCount || 0) - (post.viewer?.like != null ? 1 : 0);
+  const likeCountWithoutSelf = (post.likeCount || 0) - (isAttending ? 1 : 0);
 
   const { i18n, t } = useLingui();
 
@@ -97,7 +95,7 @@ function ConTableRow({ con, post }: { con: Con; post: Post }) {
           <Box style={{ minWidth: 0 }}>
             <Group gap={7} wrap="nowrap">
               {post.viewer != null ? (
-                <LikeButton size="xs" conId={con.identifier} />
+                <LikeButton size="xs" post={post} />
               ) : null}
 
               <Text size="sm" truncate>

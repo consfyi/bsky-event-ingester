@@ -1,3 +1,4 @@
+import { DataProvider } from "@data-client/react";
 import { Trans, useLingui } from "@lingui/react/macro";
 import {
   ActionIcon,
@@ -40,9 +41,7 @@ import { Suspense, useEffect, useState } from "react";
 import clientMetadata from "../public/client-metadata.json";
 import { startLogin } from "./bluesky";
 import LinguiProvider from "./components/LinguiProvider";
-import LocalAttendingContextProvider from "./components/LocalAttendingContextProvider";
 import { useClient, useHydrated, useSelf } from "./hooks";
-import { DataProvider } from "@data-client/react";
 
 const theme = createTheme({});
 
@@ -317,21 +316,19 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 }
               >
                 <LinguiProvider>
-                  <LocalAttendingContextProvider>
-                    <Header />
-                    <Container size="lg" px={0}>
-                      <Suspense
-                        fallback={
-                          <Center p="lg">
-                            <Loader />
-                          </Center>
-                        }
-                      >
-                        {children}
-                      </Suspense>
-                    </Container>
-                    <Footer />
-                  </LocalAttendingContextProvider>
+                  <Header />
+                  <Container size="lg" px={0}>
+                    <Suspense
+                      fallback={
+                        <Center p="lg">
+                          <Loader />
+                        </Center>
+                      }
+                    >
+                      {children}
+                    </Suspense>
+                  </Container>
+                  <Footer />
                 </LinguiProvider>
               </Suspense>
             </DataProvider>
