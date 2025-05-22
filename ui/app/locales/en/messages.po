@@ -28,11 +28,11 @@ msgctxt "attendee count, including you"
 msgid "{likeCount} including you"
 msgstr "{likeCount} including you"
 
-#: app/routes/_index.tsx:486
+#: app/routes/_index.tsx:485
 msgid "<0>This the website for the <1><2/> @conlabels.furryli.st</1> service. For the full experience, please log in. You’ll be able to:</0><3><4>Tell people which cons you’re going to (you can also do this by liking the con post on Bluesky).</4><5>See who you follow is going to a con.</5></3><6>A huge thank you to <7>FurryCons.com</7> who provides all the data on conventions!</6>"
 msgstr "<0>This the website for the <1><2/> @conlabels.furryli.st</1> service. For the full experience, please log in. You’ll be able to:</0><3><4>Tell people which cons you’re going to (you can also do this by liking the con post on Bluesky).</4><5>See who you follow is going to a con.</5></3><6>A huge thank you to <7>FurryCons.com</7> who provides all the data on conventions!</6>"
 
-#: app/root.tsx:229
+#: app/root.tsx:228
 msgid "All furry convention data courtesy of the volunteers at <0>FurryCons.com</0> – thank you! Convention missing? <1>Submit it here!</1>"
 msgstr "All furry convention data courtesy of the volunteers at <0>FurryCons.com</0> – thank you! Convention missing? <1>Submit it here!</1>"
 
@@ -40,16 +40,16 @@ msgstr "All furry convention data courtesy of the volunteers at <0>FurryCons.com
 msgid "An error occurred while attempting to load this data."
 msgstr "An error occurred while attempting to load this data."
 
-#: app/routes/_index.tsx:369
+#: app/routes/_index.tsx:368
 msgid "Ascending"
 msgstr "Ascending"
 
 #: app/routes/cons.$identifier.tsx:297
 #: app/routes/_index.tsx:122
+#: app/routes/_index.tsx:314
 msgid "Attendees"
 msgstr "Attendees"
 
-#: app/routes/_index.tsx:314
 #: app/components/LikeButton.tsx:32
 msgid "Attending"
 msgstr "Attending"
@@ -74,11 +74,11 @@ msgstr "ends {0} ({1, plural, one {# day} other {# days}})"
 msgid "Error"
 msgstr "Error"
 
-#: app/routes/_index.tsx:429
+#: app/routes/_index.tsx:428
 msgid "Fewest"
 msgstr "Fewest"
 
-#: app/routes/_index.tsx:448
+#: app/routes/_index.tsx:447
 msgid "Latest"
 msgstr "Latest"
 
@@ -99,7 +99,7 @@ msgstr "Log in"
 msgid "More log in options"
 msgstr "More log in options"
 
-#: app/routes/_index.tsx:450
+#: app/routes/_index.tsx:449
 msgid "Most"
 msgstr "Most"
 
@@ -111,12 +111,12 @@ msgstr "No known attendees yet."
 msgid "Not attending"
 msgstr "Not attending"
 
-#: app/root.tsx:280
-#: app/root.tsx:286
+#: app/root.tsx:279
+#: app/root.tsx:285
 msgid "Not found"
 msgstr "Not found"
 
-#: app/routes/_index.tsx:409
+#: app/routes/_index.tsx:408
 msgid "Order"
 msgstr "Order"
 
@@ -124,19 +124,19 @@ msgstr "Order"
 msgid "People you don’t follow"
 msgstr "People you don’t follow"
 
-#: app/routes/_index.tsx:354
+#: app/routes/_index.tsx:353
 msgid "Show only cons I’m attending"
 msgstr "Show only cons I’m attending"
 
-#: app/routes/_index.tsx:427
+#: app/routes/_index.tsx:426
 msgid "Soonest"
 msgstr "Soonest"
 
-#: app/routes/_index.tsx:381
+#: app/routes/_index.tsx:380
 msgid "Sort by"
 msgstr "Sort by"
 
-#: app/root.tsx:289
+#: app/root.tsx:288
 msgid "The page you requested could not be found."
 msgstr "The page you requested could not be found."
 
@@ -149,6 +149,6 @@ msgstr "Toggle attending"
 msgid "View Bluesky Post"
 msgstr "View Bluesky Post"
 
-#: app/routes/_index.tsx:484
+#: app/routes/_index.tsx:483
 msgid "Welcome!"
 msgstr "Welcome!"

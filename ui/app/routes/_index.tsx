@@ -249,7 +249,7 @@ function ConsByDate({
   );
 }
 
-function ConsByAttending({
+function ConsByAttendees({
   cons,
   conPosts,
   sortDesc,
@@ -279,12 +279,12 @@ function ConsByAttending({
 
 enum SortBy {
   Date = "date",
-  Attending = "attending",
+  Attendees = "attendees",
 }
 
 const DEFAULT_SORT_DESC_OPTIONS = {
   [SortBy.Date]: false,
-  [SortBy.Attending]: true,
+  [SortBy.Attendees]: true,
 };
 
 interface TableViewOptions {
@@ -310,8 +310,8 @@ function ConsTable() {
   });
 
   const sortByNames: Record<SortBy, string> = {
-    date: t`Date`,
-    attending: t`Attending`,
+    [SortBy.Date]: t`Date`,
+    [SortBy.Attendees]: t`Attendees`,
   };
 
   const filteredCons = cons.filter(
@@ -453,8 +453,8 @@ function ConsTable() {
         </Menu>
       </Group>
       <Table>
-        {viewOptions.sortBy == SortBy.Attending ? (
-          <ConsByAttending
+        {viewOptions.sortBy == SortBy.Attendees ? (
+          <ConsByAttendees
             cons={filteredCons}
             conPosts={conPosts}
             sortDesc={viewOptions.sortDesc}
