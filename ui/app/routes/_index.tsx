@@ -211,7 +211,7 @@ function ConsByDate({
                 <Table.Tr
                   bg="var(--mantine-color-default-hover)"
                   pos="sticky"
-                  top={51 + 50}
+                  top={51 + 40}
                   style={{
                     zIndex: 3,
                     borderBottom: "none",
@@ -323,135 +323,157 @@ function ConsTable() {
 
   return (
     <>
-      <Group
-        p="xs"
-        wrap="nowrap"
-        justify="space-between"
-        pos="sticky"
-        top={51}
-        h={50}
+      <Table
         bg="var(--mantine-color-default-hover)"
-        style={{ zIndex: 4 }}
+        top={51}
+        h={40}
+        pos="sticky"
+        style={{
+          zIndex: 4,
+          borderBottom:
+            viewOptions.sortBy != SortBy.Date
+              ? "calc(0.0625rem * var(--mantine-scale)) solid var(--table-border-color)"
+              : "",
+        }}
       >
-        {isLoggedIn ? (
-          <Switch
-            color="red"
-            thumbIcon={
-              viewOptions.showOnlyAttending ? (
-                <IconHeartFilled size={10} color="var(--switch-bg)" />
-              ) : (
-                <IconHeart size={10} color="var(--switch-bg)" />
-              )
-            }
-            checked={viewOptions.showOnlyAttending}
-            onChange={(e) => {
-              setViewOptions((vo) => ({
-                ...vo,
-                showOnlyAttending: e.target.checked,
-              }));
-            }}
-            label={<Trans>Show only cons I’m attending</Trans>}
-          />
-        ) : (
-          <div></div>
-        )}
-        <Menu position="bottom-end" withArrow withinPortal={false}>
-          <Menu.Target>
-            <Button
-              variant="subtle"
-              size="xs"
-              style={{ alignSelf: "flex-end" }}
-              leftSection={
-                viewOptions.sortDesc ? (
-                  <IconSortDescending title={`Descending`} size={14} />
+        <Table.Tbody>
+          <Table.Tr>
+            <Table.Td p={0}>
+              <Group wrap="nowrap" justify="space-between">
+                {isLoggedIn ? (
+                  <Switch
+                    color="red"
+                    thumbIcon={
+                      viewOptions.showOnlyAttending ? (
+                        <IconHeartFilled size={10} color="var(--switch-bg)" />
+                      ) : (
+                        <IconHeart size={10} color="var(--switch-bg)" />
+                      )
+                    }
+                    checked={viewOptions.showOnlyAttending}
+                    onChange={(e) => {
+                      setViewOptions((vo) => ({
+                        ...vo,
+                        showOnlyAttending: e.target.checked,
+                      }));
+                    }}
+                    label={<Trans>Show only cons I’m attending</Trans>}
+                  />
                 ) : (
-                  <IconSortAscending title={t`Ascending`} size={14} />
-                )
-              }
-              rightSection={<IconChevronDown size={14} />}
-              color="gray"
-            >
-              {sortByNames[viewOptions.sortBy]}
-            </Button>
-          </Menu.Target>
+                  <div></div>
+                )}
+                <Menu position="bottom-end" withArrow withinPortal={false}>
+                  <Menu.Target>
+                    <Button
+                      variant="subtle"
+                      size="sm"
+                      leftSection={
+                        viewOptions.sortDesc ? (
+                          <IconSortDescending title={`Descending`} size={14} />
+                        ) : (
+                          <IconSortAscending title={t`Ascending`} size={14} />
+                        )
+                      }
+                      rightSection={<IconChevronDown size={14} />}
+                      color="gray"
+                    >
+                      {sortByNames[viewOptions.sortBy]}
+                    </Button>
+                  </Menu.Target>
 
-          <Menu.Dropdown>
-            <Menu.Label>
-              <Trans>Sort by</Trans>
-            </Menu.Label>
-            {Object.keys(SortBy).map((k) => {
-              const sortBy = SortBy[k as keyof typeof SortBy];
+                  <Menu.Dropdown>
+                    <Menu.Label>
+                      <Trans>Sort by</Trans>
+                    </Menu.Label>
+                    {Object.keys(SortBy).map((k) => {
+                      const sortBy = SortBy[k as keyof typeof SortBy];
 
-              return (
-                <Menu.Item
-                  onClick={() => {
-                    setViewOptions((vo) => ({
-                      ...vo,
-                      sortBy,
-                      sortDesc: DEFAULT_SORT_DESC_OPTIONS[sortBy],
-                    }));
-                  }}
-                  key={k}
-                  leftSection={
-                    viewOptions.sortBy == sortBy ? (
-                      <IconCheck size={14} />
-                    ) : (
-                      <EmptyIcon size={14} />
-                    )
-                  }
-                >
-                  {sortByNames[sortBy]}
-                </Menu.Item>
-              );
-            })}
-            <Menu.Label>
-              <Trans>Order</Trans>
-            </Menu.Label>
-            <Menu.Item
-              onClick={() => {
-                setViewOptions((vo) => ({ ...vo, sortDesc: false }));
-              }}
-              leftSection={
-                <>
-                  {!viewOptions.sortDesc ? (
-                    <IconCheck size={14} style={{ marginRight: "6px" }} />
-                  ) : (
-                    <EmptyIcon size={14} style={{ marginRight: "6px" }} />
-                  )}
-                  <IconSortAscending size={14} />
-                </>
-              }
-            >
-              {viewOptions.sortBy == SortBy.Date ? (
-                <Trans>Soonest</Trans>
-              ) : (
-                <Trans>Fewest</Trans>
-              )}
-            </Menu.Item>
-            <Menu.Item
-              onClick={() => {
-                setViewOptions((vo) => ({ ...vo, sortDesc: true }));
-              }}
-              leftSection={
-                <>
-                  {viewOptions.sortDesc ? (
-                    <IconCheck size={14} style={{ marginRight: "6px" }} />
-                  ) : (
-                    <EmptyIcon size={14} style={{ marginRight: "6px" }} />
-                  )}
-                  <IconSortDescending size={14} />
-                </>
-              }
-            >
-              {viewOptions.sortBy == SortBy.Date ? (
-                <Trans>Latest</Trans>
-              ) : (
-                <Trans>Most</Trans>
-              )}
-            </Menu.Item>
-          </Menu.Dropdown>
-        </Menu>
-      </Group>
+                      return (
+                        <Menu.Item
+                          onClick={() => {
+                            setViewOptions((vo) => ({
+                              ...vo,
+                              sortBy,
+                              sortDesc: DEFAULT_SORT_DESC_OPTIONS[sortBy],
+                            }));
+                          }}
+                          key={k}
+                          leftSection={
+                            viewOptions.sortBy == sortBy ? (
+                              <IconCheck size={14} />
+                            ) : (
+                              <EmptyIcon size={14} />
+                            )
+                          }
+                        >
+                          {sortByNames[sortBy]}
+                        </Menu.Item>
+                      );
+                    })}
+                    <Menu.Label>
+                      <Trans>Order</Trans>
+                    </Menu.Label>
+                    <Menu.Item
+                      onClick={() => {
+                        setViewOptions((vo) => ({ ...vo, sortDesc: false }));
+                      }}
+                      leftSection={
+                        <>
+                          {!viewOptions.sortDesc ? (
+                            <IconCheck
+                              size={14}
+                              style={{ marginRight: "6px" }}
+                            />
+                          ) : (
+                            <EmptyIcon
+                              size={14}
+                              style={{ marginRight: "6px" }}
+                            />
+                          )}
+                          <IconSortAscending size={14} />
+                        </>
+                      }
+                    >
+                      {viewOptions.sortBy == SortBy.Date ? (
+                        <Trans>Soonest</Trans>
+                      ) : (
+                        <Trans>Fewest</Trans>
+                      )}
+                    </Menu.Item>
+                    <Menu.Item
+                      onClick={() => {
+                        setViewOptions((vo) => ({ ...vo, sortDesc: true }));
+                      }}
+                      leftSection={
+                        <>
+                          {viewOptions.sortDesc ? (
+                            <IconCheck
+                              size={14}
+                              style={{ marginRight: "6px" }}
+                            />
+                          ) : (
+                            <EmptyIcon
+                              size={14}
+                              style={{ marginRight: "6px" }}
+                            />
+                          )}
+                          <IconSortDescending size={14} />
+                        </>
+                      }
+                    >
+                      {viewOptions.sortBy == SortBy.Date ? (
+                        <Trans>Latest</Trans>
+                      ) : (
+                        <Trans>Most</Trans>
+                      )}
+                    </Menu.Item>
+                  </Menu.Dropdown>
+                </Menu>
+              </Group>
+            </Table.Td>
+          </Table.Tr>
+        </Table.Tbody>
+      </Table>
       <Table>
         {viewOptions.sortBy == SortBy.Attendees ? (
           <ConsByAttendees
