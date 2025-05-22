@@ -1,97 +1,58 @@
-import type {
-  ProfileView,
-  ProfileViewDetailed,
-} from "@atcute/bluesky/types/app/actor/defs";
-import type { PostView } from "@atcute/bluesky/types/app/feed/defs";
-import type { Like as OriginalLike } from "@atcute/bluesky/types/app/feed/getLikes";
-import {
-  LabelerPolicies,
-  LabelerViewDetailed,
-} from "@atcute/bluesky/types/app/labeler/defs";
+import { LabelerPolicies } from "@atcute/bluesky/types/app/labeler/defs";
 import type { ActorIdentifier, Did, ResourceUri } from "@atcute/lexicons";
-import { Endpoint, schema } from "@data-client/endpoint";
+import { Endpoint, Entity, schema } from "@data-client/endpoint";
 import { useController } from "@data-client/react";
 import { useClient } from "./hooks";
 
-export class Profile {
-  public did: Did;
-  public handle: string;
+export class Profile extends Entity {
+  static key = "Profile";
+
+  public did: Did | undefined;
+  public handle: string | undefined;
   public displayName: string | undefined;
   public avatar: string | undefined;
-
-  constructor(profileView: ProfileView | ProfileViewDetailed) {
-    this.did = profileView.did;
-    this.handle = profileView.handle;
-    this.displayName = profileView.displayName;
-    this.avatar = profileView.avatar;
-  }
 
   pk() {
     return this.did;
   }
-
-  public static Entity = schema.Entity(this, {
-    key: this.name,
-  });
 }
 
-export class Post {
-  public uri: ResourceUri;
-  public cid: string;
+export class Post extends Entity {
+  static key = "Post";
+
+  public uri: ResourceUri | undefined;
+  public cid: string | undefined;
   public likeCount: number | undefined;
   public viewer: { like?: ResourceUri | undefined } | undefined;
 
-  constructor(postView: PostView) {
-    this.uri = postView.uri;
-    this.cid = postView.cid;
-    this.likeCount = postView.likeCount;
-    this.viewer = postView.viewer;
+  pk() {
+    return this.uri;
   }
+}
+
+export class Like extends Entity {
+  static key = "Like";
+
+  public actor: Profile | undefined;
+
+  pk() {
+    return this.actor?.did;
+  }
+
+  static schema = {
+    actor: Profile,
+  };
+}
+
+export class LabelerView extends Entity {
+  static key = "LabelerView";
+
+  public uri: ResourceUri | undefined;
+  public policies: LabelerPolicies | undefined;
 
   pk() {
     return this.uri;
   }
-
-  public static Entity = schema.Entity(this, {
-    key: this.name,
-  });
-}
-
-export class Like {
-  public actor: Profile;
-
-  constructor(like: OriginalLike) {
-    this.actor = new Profile(like.actor);
-  }
-
-  pk() {
-    return this.actor.did;
-  }
-
-  public static Entity = schema.Entity(this, {
-    key: this.name,
-    schema: {
-      actor: Profile.Entity,
-    },
-  });
-}
-
-export class LabelerView {
-  public uri: ResourceUri;
-  public policies: LabelerPolicies;
-
-  constructor(labelerViewDetailed: LabelerViewDetailed) {
-    this.uri = labelerViewDetailed.uri;
-    this.policies = labelerViewDetailed.policies;
-  }
-
-  pk() {
-    return this.uri;
-  }
-
-  public static Entity = schema.Entity(this, {
-    key: this.name,
-  });
 }
 
 export function useGetAuthorPosts() {
@@ -101,13 +62,13 @@ export function useGetAuthorPosts() {
     async ({ actor }: { actor: ActorIdentifier }) => {
       const posts = [];
       for await (const postView of client.getAuthorPosts(actor)) {
-        posts.push(new Post(postView));
+        posts.push(Post.fromJS(postView));
       }
       return posts;
     },
     {
       name: "getAuthorPosts",
-      schema: new schema.Collection([Post.Entity]),
+      schema: new schema.Collection([Post]),
     }
   );
 }
@@ -117,11 +78,11 @@ export function useGetProfile() {
 
   return new Endpoint(
     async ({ did }: { did: Did }) => {
-      return new Profile(await client.getProfile(did));
+      return Profile.fromJS(await client.getProfile(did));
     },
     {
       name: "getProfile",
-      schema: Profile.Entity,
+      schema: Profile,
     }
   );
 }
@@ -133,13 +94,13 @@ export function useGetLikes() {
     async ({ uri }: { uri: ResourceUri }) => {
       const likes = [];
       for await (const like of client.getLikes(uri)) {
-        likes.push(new Like(like));
+        likes.push(Like.fromJS({ ...like, actor: Profile.fromJS(like.actor) }));
       }
       return likes;
     },
     {
       name: "getLikes",
-      schema: new schema.Collection([Like.Entity]),
+      schema: new schema.Collection([Like]),
     }
   );
 }
@@ -151,13 +112,13 @@ export function useGetFollows() {
     async ({ actor }: { actor: ActorIdentifier }) => {
       const follows = [];
       for await (const follow of client.getFollows(actor)) {
-        follows.push(new Profile(follow));
+        follows.push(Profile.fromJS(follow));
       }
       return follows;
     },
     {
       name: "getFollows",
-      schema: new schema.Collection([Profile.Entity]),
+      schema: new schema.Collection([Profile]),
     }
   );
 }
@@ -167,11 +128,11 @@ export function useGetLabelerView() {
 
   return new Endpoint(
     async ({ did }: { did: Did }) => {
-      return new LabelerView(await client.getLabelerView(did));
+      return LabelerView.fromJS(await client.getLabelerView(did));
     },
     {
       name: "getLabelerView",
-      schema: LabelerView.Entity,
+      schema: LabelerView,
     }
   );
 }
@@ -182,7 +143,7 @@ export function useLikePost() {
 
   return new Endpoint(
     async ({ uri }: { uri: ResourceUri }) => {
-      const post = controller.get(Post.Entity, { uri }, controller.getState());
+      const post = controller.get(Post, { uri }, controller.getState());
       if (post == null) {
         throw "post not found";
       }
@@ -191,7 +152,7 @@ export function useLikePost() {
         return;
       }
 
-      post.viewer.like = await client.like(uri, post.cid);
+      post.viewer.like = await client.like(uri, post.cid!);
       post.likeCount = (post.likeCount ?? 0) + 1;
 
       return post;
@@ -199,7 +160,7 @@ export function useLikePost() {
     {
       name: "likePost",
       sideEffect: true,
-      schema: Post.Entity,
+      schema: Post,
     }
   );
 }
@@ -210,7 +171,7 @@ export function useUnlikePost() {
 
   return new Endpoint(
     async ({ uri }: { uri: ResourceUri }) => {
-      const post = controller.get(Post.Entity, { uri }, controller.getState());
+      const post = controller.get(Post, { uri }, controller.getState());
       if (post == null) {
         throw "post not found";
       }
@@ -229,7 +190,7 @@ export function useUnlikePost() {
     {
       name: "unlikePost",
       sideEffect: true,
-      schema: Post.Entity,
+      schema: Post,
     }
   );
 }

@@ -25,9 +25,9 @@ export default function LikeButton({
 
   const [handleToggleLike, loading] = useLoading(async () => {
     if (isLiked) {
-      await ctrl.fetch(unlikePost, { uri: post.uri });
+      await ctrl.fetch(unlikePost, { uri: post.uri! });
     } else {
-      await ctrl.fetch(likePost, { uri: post.uri });
+      await ctrl.fetch(likePost, { uri: post.uri! });
     }
   }, [ctrl, post, isLiked]);
 

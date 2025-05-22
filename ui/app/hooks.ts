@@ -66,8 +66,8 @@ function postprocessConPosts(posts: Post[]): Record<string, Post> {
   const postsMap: Record<string, Post> = {};
   for (const post of posts) {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const [_did, _collection, rkey] = post.uri
-      .replace(/^at:\/\//, "")
+    const [_did, _collection, rkey] = post
+      .uri!.replace(/^at:\/\//, "")
       .split("/");
     postsMap[rkey] = post;
   }
@@ -170,7 +170,7 @@ export function useSelfFollowsDLE() {
     }
     const follows = new Set<string>();
     for (const follow of data) {
-      follows.add(follow.did);
+      follows.add(follow.did!);
     }
     return follows;
   }, [data]);

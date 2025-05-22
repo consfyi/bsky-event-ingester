@@ -201,14 +201,14 @@ function AttendeesList({
     let unknownLikes: Profile[] = [];
 
     for (const like of likes) {
-      if (self != null && like.actor.did == self.did) {
+      if (self != null && like.actor!.did == self.did) {
         continue;
       }
       const out =
-        selfFollows == null || selfFollows.has(like.actor.did)
+        selfFollows == null || selfFollows.has(like.actor!.did!)
           ? knownLikes
           : unknownLikes;
-      out.push(like.actor);
+      out.push(like.actor!);
     }
 
     knownLikes = sortBy(knownLikes, (actor) => actor.handle);
