@@ -35,7 +35,6 @@ import {
   Session,
 } from "@atcute/oauth-browser-client";
 import clientMetadata from "../public/client-metadata.json";
-import { LABELER_DID } from "./config";
 
 export async function startLogin(handle: string | null) {
   let identity = undefined;
@@ -193,33 +192,7 @@ export class Client {
     }
   }
 
-  async *getLabels(did: Did): AsyncGenerator<string> {
-    const LIMIT = 250;
-    let cursor = "";
-    while (true) {
-      const { ok, data } = await this.rpc.get("com.atproto.label.queryLabels", {
-        params: {
-          sources: [LABELER_DID],
-          uriPatterns: [did],
-          limit: LIMIT,
-          cursor,
-        },
-      });
-      if (!ok) {
-        throw data.error;
-      }
-
-      for (const label of data.labels) {
-        yield label.val;
-      }
-      if (!data.cursor) {
-        break;
-      }
-      cursor = data.cursor;
-    }
-  }
-
-  async unlike(uri: ResourceUri) {
+  async deleteRecord(uri: ResourceUri) {
     const [repo, collection, rkey] = uri.replace(/^at:\/\//, "").split("/");
 
     const { ok, data } = await this.rpc.post("com.atproto.repo.deleteRecord", {

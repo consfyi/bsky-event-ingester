@@ -97,7 +97,7 @@ export default function LocalAttendingContextProvider({
           }));
 
           try {
-            await client.unlike(likeUri);
+            await client.deleteRecord(likeUri);
             setLikeUris((likeUris) => ({
               ...likeUris,
               [id]: null,
