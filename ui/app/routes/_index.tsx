@@ -508,11 +508,11 @@ export default function Index() {
             <Text size="sm" mb="xs">
               This the website for the{" "}
               <Anchor
-                href="https://bsky.app/profile/conlabels.furryli.st"
+                href="https://bsky.app/profile/cons.furryli.st"
                 target="_blank"
                 rel="noreferrer"
               >
-                <IconBrandBluesky size={12} /> @conlabels.furryli.st
+                <IconBrandBluesky size={12} /> @cons.furryli.st
               </Anchor>{" "}
               service. For the full experience, please log in. You’ll be able
               to:

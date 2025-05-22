@@ -248,7 +248,7 @@ function Footer() {
           <ActionIcon
             aria-label="Bluesky"
             component="a"
-            href="https://bsky.app/profile/conlabels.furryli.st"
+            href="https://bsky.app/profile/cons.furryli.st"
             target="_blank"
             rel="noreferrer"
             size="md"
