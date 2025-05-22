@@ -178,8 +178,15 @@ function ConsTable() {
 
   return (
     <>
-      <Box my="xs">
-        {isLoggedIn ? (
+      {isLoggedIn ? (
+        <Box
+          py="xs"
+          pos="sticky"
+          top={51}
+          h={40}
+          bg="var(--mantine-color-default-hover)"
+          style={{ zIndex: 3 }}
+        >
           <Switch
             mx="xs"
             color="red"
@@ -196,8 +203,9 @@ function ConsTable() {
             }}
             label={<Trans>Show only cons I’m attending</Trans>}
           />
-        ) : null}
-      </Box>
+          )
+        </Box>
+      ) : null}
       <Table>
         <Table.Tbody>
           {cons!.length > 0
@@ -213,7 +221,7 @@ function ConsTable() {
                     <Table.Tr
                       bg="var(--mantine-color-default-hover)"
                       pos="sticky"
-                      top={51}
+                      top={51 + (isLoggedIn ? 40 : 0)}
                       style={{
                         zIndex: 3,
                         borderBottom: "none",
