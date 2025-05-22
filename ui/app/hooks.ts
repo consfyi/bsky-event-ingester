@@ -145,7 +145,7 @@ export function useConsDLE() {
 
 export function useLikes(uri: ResourceUri) {
   const resp = useSuspense(useGetLikes(), { uri });
-  return resp;
+  return resp.likes;
 }
 
 export function useSelf() {

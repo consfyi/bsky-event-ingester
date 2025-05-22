@@ -57,6 +57,24 @@ export class Post {
   });
 }
 
+export class Likes {
+  public uri: ResourceUri;
+  public likes: Like[];
+
+  constructor(uri: ResourceUri, likes: Like[]) {
+    this.uri = uri;
+    this.likes = likes;
+  }
+
+  pk() {
+    return this.uri;
+  }
+
+  public static Entity = schema.Entity(this, {
+    key: this.name,
+  });
+}
+
 export class Like {
   public actor: Profile;
 
@@ -130,10 +148,10 @@ export function useGetLikes() {
       for await (const like of client.getLikes(uri)) {
         likes.push(new Like(like));
       }
-      return likes;
+      return new Likes(uri, likes);
     },
     {
-      schema: new schema.Collection([Like.Entity]),
+      schema: Likes.Entity,
     }
   );
 }
