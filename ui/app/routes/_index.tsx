@@ -335,7 +335,6 @@ function ConsTable() {
       >
         {isLoggedIn ? (
           <Switch
-            mx="xs"
             color="red"
             thumbIcon={
               viewOptions.showOnlyAttending ? (
