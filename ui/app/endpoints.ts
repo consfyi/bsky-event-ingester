@@ -57,6 +57,25 @@ export class Post {
   });
 }
 
+export class Like {
+  public actor: Profile;
+
+  constructor(like: OriginalLike) {
+    this.actor = new Profile(like.actor);
+  }
+
+  pk() {
+    return this.actor.did;
+  }
+
+  public static Entity = schema.Entity(this, {
+    key: this.name,
+    schema: {
+      actor: Profile.Entity,
+    },
+  });
+}
+
 export class Likes {
   public uri: ResourceUri;
   public likes: Like[];
@@ -72,22 +91,30 @@ export class Likes {
 
   public static Entity = schema.Entity(this, {
     key: this.name,
+    schema: {
+      likes: new schema.Collection([Like.Entity]),
+    },
   });
 }
 
-export class Like {
-  public actor: Profile;
+export class AuthorPosts {
+  public actor: ActorIdentifier;
+  public posts: Post[];
 
-  constructor(like: OriginalLike) {
-    this.actor = new Profile(like.actor);
+  constructor(actor: ActorIdentifier, posts: Post[]) {
+    this.actor = actor;
+    this.posts = posts;
   }
 
   pk() {
-    return this.actor.did;
+    return this.actor;
   }
 
   public static Entity = schema.Entity(this, {
     key: this.name,
+    schema: {
+      posts: new schema.Collection([Post.Entity]),
+    },
   });
 }
 
@@ -118,10 +145,10 @@ export function useGetAuthorPosts() {
       for await (const postView of client.getAuthorPosts(actor)) {
         posts.push(new Post(postView));
       }
-      return posts;
+      return new AuthorPosts(actor, posts);
     },
     {
-      schema: new schema.Collection([Post.Entity]),
+      schema: AuthorPosts.Entity,
     }
   );
 }
