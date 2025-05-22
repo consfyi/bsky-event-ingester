@@ -44,7 +44,9 @@ async fn main() -> Result<(), anyhow::Error> {
         .request_plc_operation_signature()
         .await?;
 
-    write!(std::io::stdout(), "PLC token: ")?;
+    println!("Updating PLC for {}.", config.bsky_username);
+
+    write!(std::io::stdout(), "PLC token (check your email): ")?;
     std::io::stdout().flush()?;
 
     let mut plc_token = String::new();
@@ -116,6 +118,11 @@ async fn main() -> Result<(), anyhow::Error> {
         .identity
         .sign_plc_operation(operation)
         .await?;
+
+    println!("");
+    println!("{}", serde_json::to_string_pretty(&plc_op)?);
+    println!("Press ENTER to submit this PLC operation, Ctrl+C to cancel.");
+    std::io::stdin().read_line(&mut String::new())?;
 
     agent
         .api
