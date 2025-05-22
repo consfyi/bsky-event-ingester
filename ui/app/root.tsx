@@ -213,7 +213,6 @@ function Footer() {
       style={{
         borderTop: "1px solid var(--mantine-color-default-border)",
       }}
-      mt="sm"
     >
       <Container
         size="lg"
