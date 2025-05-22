@@ -426,7 +426,7 @@ function ConsTable() {
               {viewOptions.sortBy == SortBy.Date ? (
                 <Trans>Soonest</Trans>
               ) : (
-                <Trans>Least</Trans>
+                <Trans>Fewest</Trans>
               )}
             </Menu.Item>
             <Menu.Item

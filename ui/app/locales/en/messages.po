@@ -74,13 +74,13 @@ msgstr "ends {0} ({1, plural, one {# day} other {# days}})"
 msgid "Error"
 msgstr "Error"
 
+#: app/routes/_index.tsx:429
+msgid "Fewest"
+msgstr "Fewest"
+
 #: app/routes/_index.tsx:448
 msgid "Latest"
 msgstr "Latest"
-
-#: app/routes/_index.tsx:429
-msgid "Least"
-msgstr "Least"
 
 #: app/routes/cons.$identifier.tsx:169
 msgid "Link"
