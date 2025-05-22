@@ -139,11 +139,11 @@ export function useGetLabelerView() {
 
 export function useLikePost() {
   const client = useClient();
-  const controller = useController();
+  const ctrl = useController();
 
   return new Endpoint(
     async ({ uri }: { uri: ResourceUri }) => {
-      const post = controller.get(Post, { uri }, controller.getState());
+      const post = ctrl.get(Post, { uri }, ctrl.getState());
       if (post == null) {
         throw "post not found";
       }
@@ -155,23 +155,22 @@ export function useLikePost() {
       post.viewer.like = await client.like(uri, post.cid!);
       post.likeCount = (post.likeCount ?? 0) + 1;
 
-      return post;
+      ctrl.set(Post, { uri }, post);
     },
     {
       name: "likePost",
       sideEffect: true,
-      schema: Post,
     }
   );
 }
 
 export function useUnlikePost() {
   const client = useClient();
-  const controller = useController();
+  const ctrl = useController();
 
   return new Endpoint(
     async ({ uri }: { uri: ResourceUri }) => {
-      const post = controller.get(Post, { uri }, controller.getState());
+      const post = ctrl.get(Post, { uri }, ctrl.getState());
       if (post == null) {
         throw "post not found";
       }
@@ -185,12 +184,11 @@ export function useUnlikePost() {
       post.viewer.like = undefined;
       post.likeCount = (post.likeCount ?? 0) - 1;
 
-      return post;
+      ctrl.set(Post, { uri }, post);
     },
     {
       name: "unlikePost",
       sideEffect: true,
-      schema: Post,
     }
   );
 }
