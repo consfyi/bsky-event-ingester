@@ -339,7 +339,7 @@ function ConsTable() {
         <Table.Tbody>
           <Table.Tr>
             <Table.Td p={0}>
-              <Group wrap="nowrap" justify="space-between">
+              <Group wrap="nowrap" justify="space-between" px="xs">
                 {isLoggedIn ? (
                   <Switch
                     color="red"
