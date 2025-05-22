@@ -3,9 +3,11 @@ import {
   Alert,
   Anchor,
   Box,
+  Button,
   Center,
   Group,
   Loader,
+  Menu,
   Stack,
   Switch,
   Table,
@@ -18,10 +20,14 @@ import { Link } from "@remix-run/react";
 import {
   IconBrandBluesky,
   IconCalendarWeek,
+  IconCheck,
+  IconChevronDown,
   IconHeart,
   IconHeartFilled,
   IconMapPin,
   IconPaw,
+  IconSortAscending,
+  IconSortDescending,
   IconUsers,
 } from "@tabler/icons-react";
 import {
@@ -32,7 +38,7 @@ import {
   getYear,
   setDate,
 } from "date-fns";
-import { groupBy } from "lodash-es";
+import { groupBy, sortBy } from "lodash-es";
 import { Fragment, Suspense, useMemo } from "react";
 import LikeButton from "~/components/LikeButton";
 import SimpleErrorBoundary from "~/components/SimpleErrorBoundary";
@@ -158,10 +164,22 @@ function yearMonthKey(d: Date) {
   return getYear(d) * 12 + getMonth(d);
 }
 
-function ConsTable() {
-  const cons = useCons();
-  const conPosts = useConPosts();
+function EmptyIcon({
+  size,
+  ...svgProps
+}: { size?: number | string } & React.ComponentPropsWithoutRef<"svg">) {
+  return <svg {...svgProps} width={size} height={size}></svg>;
+}
 
+function ConsByDate({
+  cons,
+  conPosts,
+  sortDesc,
+}: {
+  cons: Con[];
+  conPosts: Record<string, Post>;
+  sortDesc: boolean;
+}) {
   const { i18n } = useLingui();
 
   const consByMonth = useMemo(() => {
@@ -170,104 +188,285 @@ function ConsTable() {
     });
   }, [cons]);
 
+  const months = useMemo(() => {
+    const months = Array.from(
+      monthRange(
+        setDate(cons![0].start, 1),
+        addMonths(setDate(cons![cons!.length - 1].start, 1), 1)
+      )
+    );
+    if (sortDesc) {
+      months.reverse();
+    }
+    return months;
+  }, [cons, sortDesc]);
+
+  return (
+    <Table.Tbody>
+      {cons!.length > 0
+        ? months.map((date) => {
+            const groupKey = yearMonthKey(date);
+            return (
+              <Fragment key={groupKey}>
+                <Table.Tr
+                  bg="var(--mantine-color-default-hover)"
+                  pos="sticky"
+                  top={51 + 50}
+                  style={{
+                    zIndex: 3,
+                    borderBottom: "none",
+                  }}
+                >
+                  <Table.Th p={0}>
+                    <Box
+                      p="var(--table-vertical-spacing) var(--table-horizontal-spacing, var(--mantine-spacing-xs))"
+                      style={{
+                        borderBottom:
+                          "calc(0.0625rem * var(--mantine-scale)) solid var(--table-border-color)",
+                      }}
+                    >
+                      <Text fw={500} size="md">
+                        {i18n.date(date, {
+                          month: "long",
+                          year: "numeric",
+                        })}
+                      </Text>
+                    </Box>
+                  </Table.Th>
+                </Table.Tr>
+                {(consByMonth[groupKey] ?? []).map((con) => {
+                  const post = conPosts[con.rkey];
+
+                  return (
+                    <ConTableRow key={con.identifier} con={con} post={post} />
+                  );
+                })}
+              </Fragment>
+            );
+          })
+        : null}
+    </Table.Tbody>
+  );
+}
+
+function ConsByAttending({
+  cons,
+  conPosts,
+  sortDesc,
+}: {
+  cons: Con[];
+  conPosts: Record<string, Post>;
+  sortDesc: boolean;
+}) {
+  const sortedCons = useMemo(() => {
+    const sorted = sortBy(cons, (con) => conPosts[con.rkey].likeCount);
+    if (sortDesc) {
+      sorted.reverse();
+    }
+    return sorted;
+  }, [cons, conPosts, sortDesc]);
+
+  return (
+    <Table.Tbody>
+      {sortedCons.map((con) => {
+        const post = conPosts[con.rkey];
+
+        return <ConTableRow key={con.identifier} con={con} post={post} />;
+      })}
+    </Table.Tbody>
+  );
+}
+
+enum SortBy {
+  Date = "date",
+  Attending = "attending",
+}
+
+const DEFAULT_SORT_DESC_OPTIONS = {
+  [SortBy.Date]: false,
+  [SortBy.Attending]: true,
+};
+
+interface TableViewOptions {
+  showOnlyAttending: boolean;
+  sortBy: SortBy;
+  sortDesc: boolean;
+}
+
+function ConsTable() {
+  const cons = useCons();
+  const conPosts = useConPosts();
+
+  const { t } = useLingui();
+
   const isLoggedIn = useIsLoggedIn();
-  const [showOnlyAttending, setShowOnlyAttending] = useLocalStorage({
-    key: "fbl:_index:showOnlyAttending",
-    defaultValue: false,
+  const [viewOptions, setViewOptions] = useLocalStorage<TableViewOptions>({
+    key: "fbl:_index:viewOptions",
+    defaultValue: {
+      showOnlyAttending: false,
+      sortBy: SortBy.Date,
+      sortDesc: false,
+    },
   });
+
+  const sortByNames: Record<SortBy, string> = {
+    date: t`Date`,
+    attending: t`Attending`,
+  };
+
+  const filteredCons = cons.filter(
+    (con) =>
+      !isLoggedIn ||
+      !viewOptions.showOnlyAttending ||
+      conPosts[con.rkey]!.viewer?.like != null
+  );
 
   return (
     <>
-      {isLoggedIn ? (
-        <Box
-          py="xs"
-          pos="sticky"
-          top={51}
-          h={40}
-          bg="var(--mantine-color-default-hover)"
-          style={{ zIndex: 3 }}
-        >
+      <Group
+        p="xs"
+        wrap="nowrap"
+        justify="space-between"
+        pos="sticky"
+        top={51}
+        h={50}
+        bg="var(--mantine-color-default-hover)"
+        style={{ zIndex: 4 }}
+      >
+        {isLoggedIn ? (
           <Switch
             mx="xs"
             color="red"
             thumbIcon={
-              showOnlyAttending ? (
+              viewOptions.showOnlyAttending ? (
                 <IconHeartFilled size={10} color="var(--switch-bg)" />
               ) : (
                 <IconHeart size={10} color="var(--switch-bg)" />
               )
             }
-            checked={showOnlyAttending}
+            checked={viewOptions.showOnlyAttending}
             onChange={(e) => {
-              setShowOnlyAttending(e.target.checked);
+              setViewOptions((vo) => ({
+                ...vo,
+                showOnlyAttending: e.target.checked,
+              }));
             }}
             label={<Trans>Show only cons I’m attending</Trans>}
           />
-          )
-        </Box>
-      ) : null}
-      <Table>
-        <Table.Tbody>
-          {cons!.length > 0
-            ? Array.from(
-                monthRange(
-                  setDate(cons![0].start, 1),
-                  addMonths(setDate(cons![cons!.length - 1].start, 1), 1)
+        ) : (
+          <div></div>
+        )}
+        <Menu position="bottom-end" withArrow withinPortal={false}>
+          <Menu.Target>
+            <Button
+              variant="subtle"
+              size="xs"
+              style={{ alignSelf: "flex-end" }}
+              leftSection={
+                viewOptions.sortDesc ? (
+                  <IconSortDescending title={`Descending`} size={14} />
+                ) : (
+                  <IconSortAscending title={t`Ascending`} size={14} />
                 )
-              ).map((date) => {
-                const groupKey = yearMonthKey(date);
-                return (
-                  <Fragment key={groupKey}>
-                    <Table.Tr
-                      bg="var(--mantine-color-default-hover)"
-                      pos="sticky"
-                      top={51 + (isLoggedIn ? 40 : 0)}
-                      style={{
-                        zIndex: 3,
-                        borderBottom: "none",
-                      }}
-                    >
-                      <Table.Th p={0}>
-                        <Box
-                          p="var(--table-vertical-spacing) var(--table-horizontal-spacing, var(--mantine-spacing-xs))"
-                          style={{
-                            borderBottom:
-                              "calc(0.0625rem * var(--mantine-scale)) solid var(--table-border-color)",
-                          }}
-                        >
-                          <Text fw={500} size="md">
-                            {i18n.date(date, {
-                              month: "long",
-                              year: "numeric",
-                            })}
-                          </Text>
-                        </Box>
-                      </Table.Th>
-                    </Table.Tr>
-                    {(consByMonth[groupKey] ?? []).map((con) => {
-                      const post = conPosts![con.rkey];
+              }
+              rightSection={<IconChevronDown size={14} />}
+              color="gray"
+            >
+              {sortByNames[viewOptions.sortBy]}
+            </Button>
+          </Menu.Target>
 
-                      if (
-                        isLoggedIn &&
-                        showOnlyAttending &&
-                        post.viewer?.like == null
-                      ) {
-                        return null;
-                      }
+          <Menu.Dropdown>
+            <Menu.Label>
+              <Trans>Sort by</Trans>
+            </Menu.Label>
+            {Object.keys(SortBy).map((k) => {
+              const sortBy = SortBy[k as keyof typeof SortBy];
 
-                      return (
-                        <ConTableRow
-                          key={con.identifier}
-                          con={con}
-                          post={post}
-                        />
-                      );
-                    })}
-                  </Fragment>
-                );
-              })
-            : null}
-        </Table.Tbody>
+              return (
+                <Menu.Item
+                  onClick={() => {
+                    setViewOptions((vo) => ({
+                      ...vo,
+                      sortBy,
+                      sortDesc: DEFAULT_SORT_DESC_OPTIONS[sortBy],
+                    }));
+                  }}
+                  key={k}
+                  leftSection={
+                    viewOptions.sortBy == sortBy ? (
+                      <IconCheck size={14} />
+                    ) : (
+                      <EmptyIcon size={14} />
+                    )
+                  }
+                >
+                  {sortByNames[sortBy]}
+                </Menu.Item>
+              );
+            })}
+            <Menu.Label>
+              <Trans>Order</Trans>
+            </Menu.Label>
+            <Menu.Item
+              onClick={() => {
+                setViewOptions((vo) => ({ ...vo, sortDesc: false }));
+              }}
+              leftSection={
+                <>
+                  {!viewOptions.sortDesc ? (
+                    <IconCheck size={14} style={{ marginRight: "6px" }} />
+                  ) : (
+                    <EmptyIcon size={14} style={{ marginRight: "6px" }} />
+                  )}
+                  <IconSortAscending size={14} />
+                </>
+              }
+            >
+              {viewOptions.sortBy == SortBy.Date ? (
+                <Trans>Soonest</Trans>
+              ) : (
+                <Trans>Least</Trans>
+              )}
+            </Menu.Item>
+            <Menu.Item
+              onClick={() => {
+                setViewOptions((vo) => ({ ...vo, sortDesc: true }));
+              }}
+              leftSection={
+                <>
+                  {viewOptions.sortDesc ? (
+                    <IconCheck size={14} style={{ marginRight: "6px" }} />
+                  ) : (
+                    <EmptyIcon size={14} style={{ marginRight: "6px" }} />
+                  )}
+                  <IconSortDescending size={14} />
+                </>
+              }
+            >
+              {viewOptions.sortBy == SortBy.Date ? (
+                <Trans>Latest</Trans>
+              ) : (
+                <Trans>Most</Trans>
+              )}
+            </Menu.Item>
+          </Menu.Dropdown>
+        </Menu>
+      </Group>
+      <Table>
+        {viewOptions.sortBy == SortBy.Attending ? (
+          <ConsByAttending
+            cons={filteredCons}
+            conPosts={conPosts}
+            sortDesc={viewOptions.sortDesc}
+          />
+        ) : viewOptions.sortBy == SortBy.Date ? (
+          <ConsByDate
+            cons={filteredCons}
+            conPosts={conPosts}
+            sortDesc={viewOptions.sortDesc}
+          />
+        ) : null}
       </Table>
     </>
   );
