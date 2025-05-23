@@ -148,7 +148,7 @@ async fn sync_labels(
         .map(|(id, event)| (id, event))
         .collect::<std::collections::HashMap<_, _>>();
 
-    let original_record = match agent
+    let old_record = match agent
         .api
         .com
         .atproto
@@ -180,7 +180,7 @@ async fn sync_labels(
         atrium_api::app::bsky::labeler::service::Record::try_from_unknown(record.data.value).ok()
     });
 
-    if original_record.is_some() {
+    if old_record.is_some() {
         writes.push(
             atrium_api::com::atproto::repo::apply_writes::InputWritesItem::Delete(Box::new(
                 atrium_api::com::atproto::repo::apply_writes::DeleteData {
@@ -192,7 +192,7 @@ async fn sync_labels(
         );
     }
 
-    let mut current_events = original_record
+    let mut old_events = old_record
         .map(|record| {
             record
                 .policies
@@ -228,7 +228,7 @@ async fn sync_labels(
         .unwrap_or_default();
 
     // Delete events.
-    for (id, rkey) in current_events
+    for (id, rkey) in old_events
         .iter()
         .map(|(id, (rkey, _))| (*id, rkey.clone()))
         .collect::<Vec<_>>()
@@ -255,14 +255,14 @@ async fn sync_labels(
                 .into(),
             )),
         );
-        current_events.remove(&id);
+        old_events.remove(&id);
     }
 
     let mut now = chrono::Utc::now();
 
     // Create new events.
     for (id, event) in events.iter() {
-        if current_events.contains_key(id) {
+        if old_events.contains_key(id) {
             continue;
         }
 
@@ -366,11 +366,40 @@ async fn sync_labels(
             )
             .await?;
 
-        current_events.insert(*id, (rkey, None));
+        old_events.insert(*id, (rkey, None));
 
         // https://github.com/bluesky-social/atproto/issues/2468#issuecomment-2100947405
         now += chrono::Duration::milliseconds(1);
     }
+
+    let next_events = futures::future::try_join_all(events.iter().map(|(id, event)| async {
+        // The "DTEND" property for a "VEVENT" calendar component specifies the non-inclusive end of the event.
+        let end_date = event.dtend - chrono::Days::new(1);
+
+        let (rkey, info) = old_events.get(id).unwrap();
+
+        // Do something with info?
+        let _ = info;
+
+        Ok::<_, anyhow::Error>((
+            *id,
+            (
+                rkey.clone(),
+                LabelerEventInfo {
+                    date: format!(
+                        "{}/{}",
+                        event.dtstart.format("%Y-%m-%d"),
+                        end_date.format("%Y-%m-%d")
+                    ),
+                    location: event.location.clone(),
+                    url: event.url.clone(),
+                },
+            ),
+        ))
+    }))
+    .await?
+    .into_iter()
+    .collect::<std::collections::HashMap<_, _>>();
 
     {
         let record: atrium_api::app::bsky::labeler::service::Record =
@@ -414,10 +443,7 @@ async fn sync_labels(
                                     unreachable!()
                                 };
 
-                                let (rkey, info) = current_events.get(id).unwrap();
-
-                                // Make use of info, maybe?
-                                let _ = info;
+                                let (rkey, info) = next_events.get(id).unwrap();
 
                                 extra_data.insert(
                                     EXTRA_DATA_POST_RKEY.to_string(),
@@ -425,16 +451,7 @@ async fn sync_labels(
                                 );
                                 extra_data.insert(
                                     EXTRA_DATA_EVENT_INFO.to_string(),
-                                    ipld_core::serde::to_ipld(LabelerEventInfo {
-                                        date: format!(
-                                            "{}/{}",
-                                            event.dtstart.format("%Y-%m-%d"),
-                                            end_date.format("%Y-%m-%d")
-                                        ),
-                                        location: event.location.clone(),
-                                        url: event.url.clone(),
-                                    })
-                                    .unwrap(),
+                                    ipld_core::serde::to_ipld(info).unwrap(),
                                 );
                                 def
                             })
@@ -466,9 +483,9 @@ async fn sync_labels(
 
     events_state.events = events.into_iter().collect();
 
-    events_state.rkeys_to_ids = current_events
-        .into_iter()
-        .map(|(id, (rkey, _))| (rkey, id))
+    events_state.rkeys_to_ids = next_events
+        .iter()
+        .map(|(id, (rkey, _))| (rkey.clone(), *id))
         .collect();
 
     agent
