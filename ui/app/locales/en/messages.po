@@ -29,8 +29,8 @@ msgid "{likeCount} including you"
 msgstr "{likeCount} including you"
 
 #: app/routes/_index.tsx:536
-msgid "<0>This the website for the <1><2/> @cons.furryli.st</1> service. For the full experience, please log in. You’ll be able to:</0><3><4>Tell people which cons you’re going to (you can also do this by liking the con post on Bluesky).</4><5>See who you follow is going to a con.</5></3><6>A huge thank you to <7>FurryCons.com</7> who provides all the data on conventions!</6><8>To log using a self-hosted PDS, please use the dropdown next to the login button.</8>"
-msgstr "<0>This the website for the <1><2/> @cons.furryli.st</1> service. For the full experience, please log in. You’ll be able to:</0><3><4>Tell people which cons you’re going to (you can also do this by liking the con post on Bluesky).</4><5>See who you follow is going to a con.</5></3><6>A huge thank you to <7>FurryCons.com</7> who provides all the data on conventions!</6><8>To login using a self-hosted PDS, please use the dropdown next to the login button.</8>"
+msgid "<0>This the website for the <1><2/> @cons.furryli.st</1> service. For the full experience, please log in. You’ll be able to:</0><3><4>Tell people which cons you’re going to (you can also do this by liking the con post on Bluesky).</4><5>See who you follow is going to a con.</5></3><6>A huge thank you to <7>FurryCons.com</7> who provides all the data on conventions!</6><8>Note: To login using a self-hosted PDS, please use the dropdown next to the login button.</8>"
+msgstr "<0>This the website for the <1><2/> @cons.furryli.st</1> service. For the full experience, please log in. You’ll be able to:</0><3><4>Tell people which cons you’re going to (you can also do this by liking the con post on Bluesky).</4><5>See who you follow is going to a con.</5></3><6>A huge thank you to <7>FurryCons.com</7> who provides all the data on conventions!</6><8>Note: To login using a self-hosted PDS, please use the dropdown next to the login button.</8>"
 
 #: app/root.tsx:230
 msgid "All furry convention data courtesy of the volunteers at <0>FurryCons.com</0> – thank you! Convention missing? <1>Submit it here!</1>"
