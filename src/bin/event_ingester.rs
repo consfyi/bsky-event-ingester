@@ -29,6 +29,13 @@ struct Event {
     dtend: chrono::NaiveDate,
 }
 
+#[derive(serde::Serialize, serde::Deserialize)]
+struct LabelerEventInfo {
+    date: String,
+    location: String,
+    url: String,
+}
+
 #[derive(thiserror::Error, Debug)]
 enum EventParseError {
     #[error("invalid or missing field: {0}")]
@@ -197,15 +204,21 @@ async fn sync_labels(
                         .flat_map(|v| {
                             Some((
                                 base26::decode(&v.identifier).unwrap(),
-                                match v.extra_data.get(EXTRA_DATA_POST_RKEY).ok()?? {
-                                    ipld_core::ipld::Ipld::String(v) => {
-                                        atrium_api::types::string::RecordKey::new(v.clone())
-                                            .unwrap()
-                                    }
-                                    _ => {
-                                        return None;
-                                    }
-                                },
+                                (
+                                    atrium_api::types::string::RecordKey::new(
+                                        ipld_core::serde::from_ipld::<String>(
+                                            v.extra_data.get(EXTRA_DATA_POST_RKEY).ok()??.clone(),
+                                        )
+                                        .ok()?,
+                                    )
+                                    .unwrap(),
+                                    v.extra_data
+                                        .get(EXTRA_DATA_EVENT_INFO)
+                                        .ok()
+                                        .flatten()
+                                        .cloned()
+                                        .map(ipld_core::serde::from_ipld::<LabelerEventInfo>),
+                                ),
                             ))
                         })
                         .collect::<std::collections::HashMap<_, _>>()
@@ -215,7 +228,11 @@ async fn sync_labels(
         .unwrap_or_default();
 
     // Delete events.
-    for (id, rkey) in current_events.clone() {
+    for (id, rkey) in current_events
+        .iter()
+        .map(|(id, (rkey, _))| (*id, rkey.clone()))
+        .collect::<Vec<_>>()
+    {
         if next_events.contains_key(&id) {
             continue;
         }
@@ -349,7 +366,7 @@ async fn sync_labels(
             )
             .await?;
 
-        current_events.insert(*id, rkey);
+        current_events.insert(*id, (rkey, None));
 
         // https://github.com/bluesky-social/atproto/issues/2468#issuecomment-2100947405
         now += chrono::Duration::milliseconds(1);
@@ -391,40 +408,33 @@ async fn sync_labels(
                                     severity: "inform".to_string(),
                                 }
                                 .into();
+
                                 let ipld_core::ipld::Ipld::Map(extra_data) = &mut def.extra_data
                                 else {
                                     unreachable!()
                                 };
+
+                                let (rkey, info) = current_events.get(id).unwrap();
+
+                                // Make use of info, maybe?
+                                let _ = info;
+
                                 extra_data.insert(
                                     EXTRA_DATA_POST_RKEY.to_string(),
-                                    ipld_core::ipld::Ipld::String(
-                                        current_events
-                                            .get(id)
-                                            .cloned()
-                                            .unwrap()
-                                            .to_string(),
-                                    ),
+                                    ipld_core::serde::to_ipld(rkey.to_string()).unwrap(),
                                 );
                                 extra_data.insert(
                                     EXTRA_DATA_EVENT_INFO.to_string(),
-                                    ipld_core::ipld::Ipld::Map(std::collections::BTreeMap::from([
-                                        (
-                                            "date".to_string(),
-                                            ipld_core::ipld::Ipld::String(format!(
-                                                "{}/{}",
-                                                event.dtstart.format("%Y-%m-%d"),
-                                                end_date.format("%Y-%m-%d")
-                                            )),
+                                    ipld_core::serde::to_ipld(LabelerEventInfo {
+                                        date: format!(
+                                            "{}/{}",
+                                            event.dtstart.format("%Y-%m-%d"),
+                                            end_date.format("%Y-%m-%d")
                                         ),
-                                        (
-                                            "location".to_string(),
-                                            ipld_core::ipld::Ipld::String(event.location.clone()),
-                                        ),
-                                        (
-                                            "url".to_string(),
-                                            ipld_core::ipld::Ipld::String(event.url.clone()),
-                                        ),
-                                    ])),
+                                        location: event.location.clone(),
+                                        url: event.url.clone(),
+                                    })
+                                    .unwrap(),
                                 );
                                 def
                             })
@@ -458,7 +468,7 @@ async fn sync_labels(
 
     events_state.rkeys_to_ids = current_events
         .into_iter()
-        .map(|(id, rkey)| (rkey, id))
+        .map(|(id, (rkey, _))| (rkey, id))
         .collect();
 
     agent
