@@ -1,3 +1,4 @@
+import { useController, useLoading, useSuspense } from "@data-client/react";
 import { Plural, Trans, useLingui } from "@lingui/react/macro";
 import {
   Alert,
@@ -10,7 +11,6 @@ import {
   Menu,
   Stack,
   Switch,
-  Table,
   Text,
   ThemeIcon,
 } from "@mantine/core";
@@ -43,11 +43,10 @@ import { groupBy, sortBy } from "lodash-es";
 import { Fragment, Suspense, useMemo } from "react";
 import LikeButton from "~/components/LikeButton";
 import SimpleErrorBoundary from "~/components/SimpleErrorBoundary";
+import { LABELER_DID } from "~/config";
+import { useGetPreferences, usePutPreferences } from "~/endpoints";
 import { Con, useCons, useIsLoggedIn } from "~/hooks";
 import clientMetadata from "../../public/client-metadata.json";
-import { useGetPreferences, usePutPreferences } from "~/endpoints";
-import { LABELER_DID } from "~/config";
-import { useController, useLoading, useSuspense } from "@data-client/react";
 
 function* monthRange(start: Date, end: Date): Generator<Date> {
   while (start < end) {
@@ -61,7 +60,7 @@ export const meta: MetaFunction = ({ matches }) => [
   { title: clientMetadata.client_name },
 ];
 
-function ConTableRow({ con }: { con: Con }) {
+function ConRow({ con }: { con: Con }) {
   const isAttending = con.post.viewer?.like != null;
 
   const likeCountWithoutSelf =
@@ -70,97 +69,76 @@ function ConTableRow({ con }: { con: Con }) {
   const { i18n, t } = useLingui();
 
   return (
-    <Table.Tr key={con.identifier}>
-      <Table.Td
-        style={{
-          maxWidth: 0,
-          textOverflow: "ellipsis",
-          overflow: "hidden",
-          whiteSpace: "nowrap",
-        }}
-      >
-        <Group gap="xs" wrap="nowrap">
-          <Anchor<typeof Link> component={Link} to={`/cons/${con.identifier}`}>
-            <ThemeIcon
-              size="xl"
-              variant="light"
-              color={
-                [
-                  "red",
-                  "orange",
-                  "yellow",
-                  "green",
-                  "blue",
-                  "indigo",
-                  "violet",
-                ][getDay(con.start)]
-              }
-            >
-              <Stack gap={0}>
-                <Text size="md" ta="center" fw={500}>
-                  {i18n.date(con.start, { weekday: "short" })}
-                </Text>
-                <Text size="xs" ta="center" fw={500}>
-                  {i18n.date(con.start, { day: "numeric" })}
-                </Text>
-              </Stack>
-            </ThemeIcon>
-          </Anchor>
-          <Box style={{ minWidth: 0 }}>
-            <Group gap={7} wrap="nowrap">
-              {con.post.viewer != null ? (
-                <LikeButton size="xs" post={con.post} />
-              ) : null}
-
-              <Text size="sm" truncate>
-                <Anchor<typeof Link>
-                  fw={500}
-                  component={Link}
-                  to={`/cons/${con.identifier}`}
-                >
-                  {con.name}
-                </Anchor>
-              </Text>
-            </Group>
-            <Text size="sm" truncate>
-              <IconUsers title={t`Attendees`} size={12} />{" "}
-              {likeCountWithoutSelf + (isAttending ? 1 : 0)} •{" "}
-              <IconCalendarWeek title={t`End date`} size={12} />{" "}
-              <Trans context="ends [date] ([duration] days)">
-                ends{" "}
-                {i18n.date(con.end, {
-                  weekday: "short",
-                  day: "numeric",
-                  month: "short",
-                  year:
-                    getYear(con.start) != getYear(con.end)
-                      ? "numeric"
-                      : undefined,
-                })}{" "}
-                (
-                <Plural
-                  value={differenceInDays(con.end, con.start) + 1}
-                  one="# day"
-                  other="# days"
-                />
-                )
-              </Trans>{" "}
-              • <IconMapPin title={t`Location`} size={12} />{" "}
-              <Anchor
-                href={`https://www.google.com/maps?q=${con.location}`}
-                target="_blank"
-                rel="noreferrer"
-                style={{
-                  color: "unset",
-                }}
-              >
-                {con.location}
-              </Anchor>
+    <Group gap="xs" wrap="nowrap" mb="xs" px="xs">
+      <Anchor<typeof Link> component={Link} to={`/cons/${con.identifier}`}>
+        <ThemeIcon
+          size="xl"
+          variant="light"
+          color={
+            ["red", "orange", "yellow", "green", "blue", "indigo", "violet"][
+              getDay(con.start)
+            ]
+          }
+        >
+          <Stack gap={0}>
+            <Text size="md" ta="center" fw={500}>
+              {i18n.date(con.start, { weekday: "short" })}
             </Text>
-          </Box>
+            <Text size="xs" ta="center" fw={500}>
+              {i18n.date(con.start, { day: "numeric" })}
+            </Text>
+          </Stack>
+        </ThemeIcon>
+      </Anchor>
+      <Box style={{ minWidth: 0 }}>
+        <Group gap={7} wrap="nowrap">
+          {con.post.viewer != null ? (
+            <LikeButton size="xs" post={con.post} />
+          ) : null}
+
+          <Text size="sm" truncate>
+            <Anchor<typeof Link>
+              fw={500}
+              component={Link}
+              to={`/cons/${con.identifier}`}
+            >
+              {con.name}
+            </Anchor>
+          </Text>
         </Group>
-      </Table.Td>
-    </Table.Tr>
+        <Text size="sm" truncate>
+          <IconUsers title={t`Attendees`} size={12} />{" "}
+          {likeCountWithoutSelf + (isAttending ? 1 : 0)} •{" "}
+          <IconCalendarWeek title={t`End date`} size={12} />{" "}
+          <Trans context="ends [date] ([duration] days)">
+            ends{" "}
+            {i18n.date(con.end, {
+              weekday: "short",
+              day: "numeric",
+              month: "short",
+              year:
+                getYear(con.start) != getYear(con.end) ? "numeric" : undefined,
+            })}{" "}
+            (
+            <Plural
+              value={differenceInDays(con.end, con.start) + 1}
+              one="# day"
+              other="# days"
+            />
+            )
+          </Trans>{" "}
+          • <IconMapPin title={t`Location`} size={12} />{" "}
+          <Anchor
+            href={`https://www.google.com/maps?q=${con.location}`}
+            target="_blank"
+            rel="noreferrer"
+            c="var(--mantine-color-text)"
+          >
+            {con.location}
+          </Anchor>
+        </Text>
+      </Box>
+    </Group>
   );
 }
 
@@ -197,48 +175,37 @@ function ConsByDate({ cons, sortDesc }: { cons: Con[]; sortDesc: boolean }) {
     return months;
   }, [cons, sortDesc]);
 
-  return (
-    <Table.Tbody>
-      {cons!.length > 0
-        ? months.map((date) => {
-            const groupKey = yearMonthKey(date);
-            return (
-              <Fragment key={groupKey}>
-                <Table.Tr
-                  bg="var(--mantine-color-default-hover)"
-                  pos="sticky"
-                  top={51 + 40}
-                  style={{
-                    zIndex: 3,
-                    borderBottom: "none",
-                  }}
-                >
-                  <Table.Th p={0}>
-                    <Box
-                      p="var(--table-vertical-spacing) var(--table-horizontal-spacing, var(--mantine-spacing-xs))"
-                      style={{
-                        borderBottom:
-                          "calc(0.0625rem * var(--mantine-scale)) solid var(--table-border-color)",
-                      }}
-                    >
-                      <Text fw={500} size="md">
-                        {i18n.date(date, {
-                          month: "long",
-                          year: "numeric",
-                        })}
-                      </Text>
-                    </Box>
-                  </Table.Th>
-                </Table.Tr>
-                {(consByMonth[groupKey] ?? []).map((con) => {
-                  return <ConTableRow key={con.identifier} con={con} />;
-                })}
-              </Fragment>
-            );
-          })
-        : null}
-    </Table.Tbody>
-  );
+  return cons!.length > 0
+    ? months.map((date) => {
+        const groupKey = yearMonthKey(date);
+        return (
+          <Fragment key={groupKey}>
+            <Text
+              mb="xs"
+              px="xs"
+              py={4}
+              fw={500}
+              pos="sticky"
+              top={50 + 38}
+              bg="var(--mantine-color-body)"
+              style={{
+                zIndex: 3,
+                borderBottom:
+                  "calc(0.0625rem * var(--mantine-scale)) solid var(--mantine-color-default-border)",
+              }}
+            >
+              {i18n.date(date, {
+                month: "long",
+                year: "numeric",
+              })}
+            </Text>
+            {(consByMonth[groupKey] ?? []).map((con) => {
+              return <ConRow key={con.identifier} con={con} />;
+            })}
+          </Fragment>
+        );
+      })
+    : null;
 }
 
 function ConsByAttendees({
@@ -256,13 +223,9 @@ function ConsByAttendees({
     return sorted;
   }, [cons, sortDesc]);
 
-  return (
-    <Table.Tbody>
-      {sortedCons.map((con) => {
-        return <ConTableRow key={con.identifier} con={con} />;
-      })}
-    </Table.Tbody>
-  );
+  return sortedCons.map((con) => {
+    return <ConRow key={con.identifier} con={con} />;
+  });
 }
 
 enum SortBy {
@@ -287,7 +250,7 @@ interface SortByStrings {
   desc: string;
 }
 
-function ConsTable() {
+function ConsList() {
   const cons = useCons();
 
   const { t } = useLingui();
@@ -327,156 +290,141 @@ function ConsTable() {
 
   return (
     <>
-      <Table
-        bg="var(--mantine-color-default-hover)"
-        top={51}
-        h={40}
+      <Group
+        wrap="nowrap"
+        justify="space-between"
+        px="xs"
+        mx={{ base: -1, lg: 0 }}
+        my={{ base: -1, lg: "sm" }}
         pos="sticky"
+        top={50}
+        h={38}
+        bg="var(--mantine-color-body)"
         style={{
+          border:
+            "calc(0.0625rem * var(--mantine-scale)) solid var(--mantine-color-default-border)",
           zIndex: 4,
-          borderBottom:
-            viewOptions.sortBy != SortBy.Date
-              ? "calc(0.0625rem * var(--mantine-scale)) solid var(--table-border-color)"
-              : "",
         }}
       >
-        <Table.Tbody>
-          <Table.Tr>
-            <Table.Td p={0}>
-              <Group wrap="nowrap" justify="space-between" px="xs">
-                {isLoggedIn ? (
-                  <Switch
-                    color="red"
-                    thumbIcon={
-                      viewOptions.showOnlyAttending ? (
-                        <IconHeartFilled size={10} color="var(--switch-bg)" />
-                      ) : (
-                        <IconHeart size={10} color="var(--switch-bg)" />
-                      )
-                    }
-                    checked={viewOptions.showOnlyAttending}
-                    onChange={(e) => {
-                      setViewOptions((vo) => ({
-                        ...vo,
-                        showOnlyAttending: e.target.checked,
-                      }));
-                    }}
-                    label={<Trans>Show only cons I’m attending</Trans>}
+        {isLoggedIn ? (
+          <Switch
+            color="red"
+            thumbIcon={
+              viewOptions.showOnlyAttending ? (
+                <IconHeartFilled size={10} color="var(--switch-bg)" />
+              ) : (
+                <IconHeart size={10} color="var(--switch-bg)" />
+              )
+            }
+            checked={viewOptions.showOnlyAttending}
+            onChange={(e) => {
+              setViewOptions((vo) => ({
+                ...vo,
+                showOnlyAttending: e.target.checked,
+              }));
+            }}
+            label={<Trans>Show only cons I’m attending</Trans>}
+          />
+        ) : (
+          <div></div>
+        )}
+        <Menu position="bottom-end" withArrow withinPortal={false}>
+          <Menu.Target>
+            <Button
+              variant="subtle"
+              size="sm"
+              leftSection={
+                viewOptions.sortDesc ? (
+                  <IconSortDescending
+                    title={currentSortByStrings.desc}
+                    size={14}
                   />
                 ) : (
-                  <div></div>
-                )}
-                <Menu position="bottom-end" withArrow withinPortal={false}>
-                  <Menu.Target>
-                    <Button
-                      variant="subtle"
-                      size="sm"
-                      leftSection={
-                        viewOptions.sortDesc ? (
-                          <IconSortDescending
-                            title={currentSortByStrings.desc}
-                            size={14}
-                          />
-                        ) : (
-                          <IconSortAscending
-                            title={currentSortByStrings.asc}
-                            size={14}
-                          />
-                        )
-                      }
-                      rightSection={<IconChevronDown size={14} />}
-                      color="gray"
-                    >
-                      {currentSortByStrings.name}
-                    </Button>
-                  </Menu.Target>
+                  <IconSortAscending
+                    title={currentSortByStrings.asc}
+                    size={14}
+                  />
+                )
+              }
+              rightSection={<IconChevronDown size={14} />}
+              color="var(--mantine-color-text)"
+              fw={500}
+            >
+              {currentSortByStrings.name}
+            </Button>
+          </Menu.Target>
 
-                  <Menu.Dropdown>
-                    <Menu.Label>
-                      <Trans>Sort by</Trans>
-                    </Menu.Label>
-                    {Object.keys(SortBy).map((k) => {
-                      const sortBy = SortBy[k as keyof typeof SortBy];
+          <Menu.Dropdown>
+            <Menu.Label>
+              <Trans>Sort by</Trans>
+            </Menu.Label>
+            {Object.keys(SortBy).map((k) => {
+              const sortBy = SortBy[k as keyof typeof SortBy];
 
-                      return (
-                        <Menu.Item
-                          onClick={() => {
-                            setViewOptions((vo) => ({
-                              ...vo,
-                              sortBy,
-                              sortDesc: DEFAULT_SORT_DESC_OPTIONS[sortBy],
-                            }));
-                          }}
-                          key={k}
-                          leftSection={
-                            viewOptions.sortBy == sortBy ? (
-                              <IconCheck size={14} />
-                            ) : (
-                              <EmptyIcon size={14} />
-                            )
-                          }
-                        >
-                          {sortByStrings[sortBy].name}
-                        </Menu.Item>
-                      );
-                    })}
-                    <Menu.Label>
-                      <Trans>Order</Trans>
-                    </Menu.Label>
-                    <Menu.Item
-                      onClick={() => {
-                        setViewOptions((vo) => ({ ...vo, sortDesc: false }));
-                      }}
-                      leftSection={
-                        <>
-                          {!viewOptions.sortDesc ? (
-                            <IconCheck
-                              size={14}
-                              style={{ marginRight: "6px" }}
-                            />
-                          ) : (
-                            <EmptyIcon
-                              size={14}
-                              style={{ marginRight: "6px" }}
-                            />
-                          )}
-                          <IconSortAscending size={14} />
-                        </>
-                      }
-                    >
-                      {sortByStrings[viewOptions.sortBy].asc}
-                    </Menu.Item>
-                    <Menu.Item
-                      onClick={() => {
-                        setViewOptions((vo) => ({ ...vo, sortDesc: true }));
-                      }}
-                      leftSection={
-                        <>
-                          {viewOptions.sortDesc ? (
-                            <IconCheck
-                              size={14}
-                              style={{ marginRight: "6px" }}
-                            />
-                          ) : (
-                            <EmptyIcon
-                              size={14}
-                              style={{ marginRight: "6px" }}
-                            />
-                          )}
-                          <IconSortDescending size={14} />
-                        </>
-                      }
-                    >
-                      {sortByStrings[viewOptions.sortBy].desc}
-                    </Menu.Item>
-                  </Menu.Dropdown>
-                </Menu>
-              </Group>
-            </Table.Td>
-          </Table.Tr>
-        </Table.Tbody>
-      </Table>
-      <Table>
+              return (
+                <Menu.Item
+                  onClick={() => {
+                    setViewOptions((vo) => ({
+                      ...vo,
+                      sortBy,
+                      sortDesc: DEFAULT_SORT_DESC_OPTIONS[sortBy],
+                    }));
+                  }}
+                  key={k}
+                  leftSection={
+                    viewOptions.sortBy == sortBy ? (
+                      <IconCheck size={14} />
+                    ) : (
+                      <EmptyIcon size={14} />
+                    )
+                  }
+                >
+                  {sortByStrings[sortBy].name}
+                </Menu.Item>
+              );
+            })}
+            <Menu.Label>
+              <Trans>Order</Trans>
+            </Menu.Label>
+            <Menu.Item
+              onClick={() => {
+                setViewOptions((vo) => ({ ...vo, sortDesc: false }));
+              }}
+              leftSection={
+                <>
+                  {!viewOptions.sortDesc ? (
+                    <IconCheck size={14} style={{ marginRight: "6px" }} />
+                  ) : (
+                    <EmptyIcon size={14} style={{ marginRight: "6px" }} />
+                  )}
+                  <IconSortAscending size={14} />
+                </>
+              }
+            >
+              {sortByStrings[viewOptions.sortBy].asc}
+            </Menu.Item>
+            <Menu.Item
+              onClick={() => {
+                setViewOptions((vo) => ({ ...vo, sortDesc: true }));
+              }}
+              leftSection={
+                <>
+                  {viewOptions.sortDesc ? (
+                    <IconCheck size={14} style={{ marginRight: "6px" }} />
+                  ) : (
+                    <EmptyIcon size={14} style={{ marginRight: "6px" }} />
+                  )}
+                  <IconSortDescending size={14} />
+                </>
+              }
+            >
+              {sortByStrings[viewOptions.sortBy].desc}
+            </Menu.Item>
+          </Menu.Dropdown>
+        </Menu>
+      </Group>
+
+      <Box>
         {viewOptions.sortBy == SortBy.Attendees ? (
           <ConsByAttendees
             cons={filteredCons}
@@ -485,7 +433,7 @@ function ConsTable() {
         ) : viewOptions.sortBy == SortBy.Date ? (
           <ConsByDate cons={filteredCons} sortDesc={viewOptions.sortDesc} />
         ) : null}
-      </Table>
+      </Box>
     </>
   );
 }
@@ -612,7 +560,7 @@ export default function Index() {
             </Center>
           }
         >
-          <ConsTable />
+          <ConsList />
         </Suspense>
       </SimpleErrorBoundary>
     </>
