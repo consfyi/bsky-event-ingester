@@ -17,7 +17,6 @@ import {
   Menu,
   Text,
   TextInput,
-  UnstyledButton,
 } from "@mantine/core";
 import "@mantine/core/styles.css";
 import { LinksFunction } from "@remix-run/node";
@@ -114,21 +113,23 @@ function Header() {
               }}
             >
               <Menu.Target>
-                <UnstyledButton aria-label={`@${self.handle}`}>
-                  <Group gap={7} wrap="nowrap">
-                    <Box pos="relative">
-                      <Avatar
-                        src={self.avatar}
-                        alt={`@${self.handle}`}
-                        size="sm"
-                      />
-                    </Box>
-                    <Text fw={500} size="sm" lh={1} mr={3} visibleFrom="xs">
-                      @{self.handle}
-                    </Text>
-                    <IconChevronDown size={14} />
-                  </Group>
-                </UnstyledButton>
+                <Button
+                  my={-8}
+                  variant="outline"
+                  color="var(--mantine-color-dimmed)"
+                  c="var(--mantine-color-text)"
+                  size="sm"
+                  leftSection={
+                    <Avatar
+                      src={self.avatar}
+                      alt={`@${self.handle}`}
+                      size="sm"
+                    />
+                  }
+                  rightSection={<IconChevronDown size={14} />}
+                >
+                  @{self.handle}
+                </Button>
               </Menu.Target>
               <Menu.Dropdown>
                 <Button
