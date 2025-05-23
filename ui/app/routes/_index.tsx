@@ -42,8 +42,7 @@ import { groupBy, sortBy } from "lodash-es";
 import { Fragment, Suspense, useMemo } from "react";
 import LikeButton from "~/components/LikeButton";
 import SimpleErrorBoundary from "~/components/SimpleErrorBoundary";
-import { Post } from "~/endpoints";
-import { Con, useConPosts, useCons, useIsLoggedIn } from "~/hooks";
+import { Con, useCons, useIsLoggedIn } from "~/hooks";
 import clientMetadata from "../../public/client-metadata.json";
 
 function* monthRange(start: Date, end: Date): Generator<Date> {
@@ -58,10 +57,11 @@ export const meta: MetaFunction = ({ matches }) => [
   { title: clientMetadata.client_name },
 ];
 
-function ConTableRow({ con, post }: { con: Con; post: Post }) {
-  const isAttending = post.viewer?.like != null;
+function ConTableRow({ con }: { con: Con }) {
+  const isAttending = con.post.viewer?.like != null;
 
-  const likeCountWithoutSelf = (post.likeCount || 0) - (isAttending ? 1 : 0);
+  const likeCountWithoutSelf =
+    (con.post.likeCount || 0) - (isAttending ? 1 : 0);
 
   const { i18n, t } = useLingui();
 
@@ -104,8 +104,8 @@ function ConTableRow({ con, post }: { con: Con; post: Post }) {
           </Anchor>
           <Box style={{ minWidth: 0 }}>
             <Group gap={7} wrap="nowrap">
-              {post.viewer != null ? (
-                <LikeButton size="xs" post={post} />
+              {con.post.viewer != null ? (
+                <LikeButton size="xs" post={con.post} />
               ) : null}
 
               <Text size="sm" truncate>
@@ -171,15 +171,7 @@ function EmptyIcon({
   return <svg {...svgProps} width={size} height={size}></svg>;
 }
 
-function ConsByDate({
-  cons,
-  conPosts,
-  sortDesc,
-}: {
-  cons: Con[];
-  conPosts: Record<string, Post>;
-  sortDesc: boolean;
-}) {
+function ConsByDate({ cons, sortDesc }: { cons: Con[]; sortDesc: boolean }) {
   const { i18n } = useLingui();
 
   const consByMonth = useMemo(() => {
@@ -235,11 +227,7 @@ function ConsByDate({
                   </Table.Th>
                 </Table.Tr>
                 {(consByMonth[groupKey] ?? []).map((con) => {
-                  const post = conPosts[con.rkey];
-
-                  return (
-                    <ConTableRow key={con.identifier} con={con} post={post} />
-                  );
+                  return <ConTableRow key={con.identifier} con={con} />;
                 })}
               </Fragment>
             );
@@ -251,27 +239,23 @@ function ConsByDate({
 
 function ConsByAttendees({
   cons,
-  conPosts,
   sortDesc,
 }: {
   cons: Con[];
-  conPosts: Record<string, Post>;
   sortDesc: boolean;
 }) {
   const sortedCons = useMemo(() => {
-    const sorted = sortBy(cons, (con) => conPosts[con.rkey].likeCount);
+    const sorted = sortBy(cons, (con) => con.post.likeCount);
     if (sortDesc) {
       sorted.reverse();
     }
     return sorted;
-  }, [cons, conPosts, sortDesc]);
+  }, [cons, sortDesc]);
 
   return (
     <Table.Tbody>
       {sortedCons.map((con) => {
-        const post = conPosts[con.rkey];
-
-        return <ConTableRow key={con.identifier} con={con} post={post} />;
+        return <ConTableRow key={con.identifier} con={con} />;
       })}
     </Table.Tbody>
   );
@@ -301,7 +285,6 @@ interface SortByStrings {
 
 function ConsTable() {
   const cons = useCons();
-  const conPosts = useConPosts();
 
   const { t } = useLingui();
 
@@ -335,7 +318,7 @@ function ConsTable() {
     (con) =>
       !isLoggedIn ||
       !viewOptions.showOnlyAttending ||
-      conPosts[con.rkey]!.viewer?.like != null
+      con.post.viewer?.like != null
   );
 
   return (
@@ -493,15 +476,10 @@ function ConsTable() {
         {viewOptions.sortBy == SortBy.Attendees ? (
           <ConsByAttendees
             cons={filteredCons}
-            conPosts={conPosts}
             sortDesc={viewOptions.sortDesc}
           />
         ) : viewOptions.sortBy == SortBy.Date ? (
-          <ConsByDate
-            cons={filteredCons}
-            conPosts={conPosts}
-            sortDesc={viewOptions.sortDesc}
-          />
+          <ConsByDate cons={filteredCons} sortDesc={viewOptions.sortDesc} />
         ) : null}
       </Table>
     </>

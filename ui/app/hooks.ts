@@ -6,7 +6,6 @@ import { useMemo, useSyncExternalStore } from "react";
 import { LABELER_DID } from "~/config";
 import { Client, createClient } from "./bluesky";
 import {
-  LabelerView,
   Post,
   useGetAuthorPosts,
   useGetFollows,
@@ -62,35 +61,20 @@ export const useClient = (() => {
   };
 })();
 
-function postprocessConPosts(posts: Post[]): Record<string, Post> {
-  const postsMap: Record<string, Post> = {};
-  for (const post of posts) {
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const [_did, _collection, rkey] = post
-      .uri!.replace(/^at:\/\//, "")
-      .split("/");
-    postsMap[rkey] = post;
-  }
-  return postsMap;
-}
-
-export function useConPosts() {
+function useConPosts() {
   const resp = useSuspense(useGetAuthorPosts(), { actor: LABELER_DID });
-  const posts = useMemo(() => postprocessConPosts(resp), [resp]);
+  const posts = useMemo(() => {
+    const postsMap: Record<string, Post> = {};
+    for (const post of resp) {
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const [_did, _collection, rkey] = post
+        .uri!.replace(/^at:\/\//, "")
+        .split("/");
+      postsMap[rkey] = post;
+    }
+    return postsMap;
+  }, [resp]);
   return posts;
-}
-
-export function useConPostsDLE() {
-  const { data, loading, error } = useDLE(useGetAuthorPosts(), {
-    actor: LABELER_DID,
-  });
-
-  const posts = useMemo(
-    () => (data != null ? postprocessConPosts(data) : null),
-    [data]
-  );
-
-  return { data: posts, loading, error };
 }
 
 export interface Con {
@@ -99,48 +83,47 @@ export interface Con {
   start: Date;
   end: Date;
   location: string;
-  rkey: string;
+  post: Post;
+  postRkey: string;
   url: string;
-}
-
-function postprocessCon(labelerView: LabelerView) {
-  const cons = labelerView.policies!.labelValueDefinitions!.map((def) => {
-    const fullDef = def as typeof def & {
-      fbl_eventInfo: { date: string; location: string; url: string };
-      fbl_postRkey: string;
-    };
-
-    const [strings] = def.locales;
-    const [start, end] = fullDef.fbl_eventInfo.date.split("/");
-    return {
-      identifier: def.identifier,
-      name: strings.name,
-      start: parseDate(start, "yyyy-MM-dd", new Date()),
-      end: parseDate(end, "yyyy-MM-dd", new Date()),
-      location: fullDef.fbl_eventInfo.location,
-      rkey: fullDef.fbl_postRkey,
-      url: fullDef.fbl_eventInfo.url,
-    };
-  });
-
-  return sortBy(cons, (con) => con.start);
 }
 
 export function useCons() {
   const labelerView = useSuspense(useGetLabelerView(), { did: LABELER_DID });
-  const cons = useMemo(() => postprocessCon(labelerView), [labelerView]);
-  return cons;
-}
+  const conPosts = useConPosts();
 
-export function useConsDLE() {
-  const { data, loading, error } = useDLE(useGetLabelerView(), {
-    did: LABELER_DID,
-  });
-  const cons = useMemo(
-    () => (data != null ? postprocessCon(data) : null),
-    [data]
-  );
-  return { data: cons, loading, error };
+  const cons = useMemo(() => {
+    const cons = labelerView.policies!.labelValueDefinitions!.flatMap((def) => {
+      const fullDef = def as typeof def & {
+        fbl_eventInfo: { date: string; location: string; url: string };
+        fbl_postRkey: string;
+      };
+
+      if (
+        !Object.prototype.hasOwnProperty.call(conPosts, fullDef.fbl_postRkey)
+      ) {
+        return [];
+      }
+
+      const [strings] = def.locales;
+      const [start, end] = fullDef.fbl_eventInfo.date.split("/");
+      return [
+        {
+          identifier: def.identifier,
+          name: strings.name,
+          start: parseDate(start, "yyyy-MM-dd", new Date()),
+          end: parseDate(end, "yyyy-MM-dd", new Date()),
+          location: fullDef.fbl_eventInfo.location,
+          post: conPosts[fullDef.fbl_postRkey],
+          postRkey: fullDef.fbl_postRkey,
+          url: fullDef.fbl_eventInfo.url,
+        },
+      ];
+    });
+
+    return sortBy(cons, (con) => con.start);
+  }, [labelerView, conPosts]);
+  return cons;
 }
 
 export function useLikes(uri: ResourceUri) {

@@ -25,15 +25,8 @@ import { Suspense, useEffect, useMemo } from "react";
 import LikeButton from "~/components/LikeButton";
 import SimpleErrorBoundary from "~/components/SimpleErrorBoundary";
 import { LABELER_DID } from "~/config";
-import { Post, Profile } from "~/endpoints";
-import {
-  Con,
-  useConPosts,
-  useCons,
-  useLikes as useLikes,
-  useSelf,
-  useSelfFollowsDLE,
-} from "~/hooks";
+import { Profile } from "~/endpoints";
+import { Con, useCons, useLikes, useSelf, useSelfFollowsDLE } from "~/hooks";
 
 function ActorSkeleton() {
   return (
@@ -89,7 +82,7 @@ function Actor({ actor }: { actor: Profile }) {
   );
 }
 
-function Header({ con, post }: { con: Con; post: Post }) {
+function Header({ con }: { con: Con }) {
   const { i18n, t } = useLingui();
 
   const dateTimeFormat = useMemo(
@@ -106,16 +99,16 @@ function Header({ con, post }: { con: Con; post: Post }) {
   return (
     <Box>
       <Group gap={7} wrap="nowrap" align="top">
-        {post.viewer != null ? (
+        {con.post.viewer != null ? (
           <Box mt={2} mb={-2}>
-            <LikeButton size="sm" iconSize={24} post={post} />
+            <LikeButton size="sm" iconSize={24} post={con.post} />
           </Box>
         ) : null}
         <Text size="lg" fw={500}>
           {con.name}{" "}
           <Tooltip label={<Trans>View Bluesky Post</Trans>} position="bottom">
             <Anchor
-              href={`https://bsky.app/profile/${LABELER_DID}/post/${con.rkey}`}
+              href={`https://bsky.app/profile/${LABELER_DID}/post/${con.postRkey}`}
               target="_blank"
               rel="noreferrer"
             >
@@ -194,7 +187,9 @@ function AttendeesList({
   const self = useSelf();
   const { data: selfFollows } = useSelfFollowsDLE();
 
-  const likes = useLikes(`at://${LABELER_DID}/app.bsky.feed.post/${con.rkey}`);
+  const likes = useLikes(
+    `at://${LABELER_DID}/app.bsky.feed.post/${con.postRkey}`
+  );
 
   const [knownLikes, unknownLikes] = useMemo(() => {
     let knownLikes: Profile[] = [];
@@ -260,7 +255,6 @@ function AttendeesList({
 
 export default function Index() {
   const cons = useCons();
-  const conPosts = useConPosts();
 
   const { identifier } = useParams();
 
@@ -279,18 +273,17 @@ export default function Index() {
     });
   }
 
-  const post = conPosts![con.rkey]!;
+  const isAttending = con.post.viewer?.like != null;
 
-  const isAttending = post.viewer?.like != null;
-
-  const likeCountWithoutSelf = (post.likeCount || 0) - (isAttending ? 1 : 0);
+  const likeCountWithoutSelf =
+    (con.post.likeCount || 0) - (isAttending ? 1 : 0);
   const likeCount = isAttending
     ? likeCountWithoutSelf + 1
     : likeCountWithoutSelf;
 
   return (
     <Box p="sm">
-      <Header con={con} post={post} />
+      <Header con={con} />
 
       <Box mt="sm">
         <Text size="md" fw={500}>
