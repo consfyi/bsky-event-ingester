@@ -3,6 +3,7 @@ import type { ActorIdentifier, Did, ResourceUri } from "@atcute/lexicons";
 import { Endpoint, Entity, schema } from "@data-client/endpoint";
 import { useController } from "@data-client/react";
 import { useClient } from "./hooks";
+import type { Preferences as ActorPreferences } from "@atcute/bluesky/types/app/actor/defs";
 
 export class Profile extends Entity {
   static key = "Profile";
@@ -42,6 +43,16 @@ export class Like extends Entity {
   static schema = {
     actor: Profile,
   };
+}
+
+export class Preferences extends Entity {
+  static key = "Preferences";
+
+  public preferences: ActorPreferences | undefined;
+
+  pk() {
+    return "preferences";
+  }
 }
 
 export class LabelerView extends Entity {
@@ -189,6 +200,40 @@ export function useUnlikePost() {
     {
       name: "unlikePost",
       sideEffect: true,
+    }
+  );
+}
+
+export function useGetPreferences() {
+  const client = useClient();
+
+  return new Endpoint(
+    async () => {
+      if (client.did == null) {
+        return Preferences.fromJS({});
+      }
+
+      return Preferences.fromJS({ preferences: await client.getPreferences() });
+    },
+    {
+      name: "getPreferences",
+      schema: Preferences,
+    }
+  );
+}
+
+export function usePutPreferences() {
+  const client = useClient();
+
+  return new Endpoint(
+    async ({ preferences }: { preferences: ActorPreferences }) => {
+      await client.putPreferences(preferences);
+      return preferences;
+    },
+    {
+      name: "putPreferences",
+      sideEffect: true,
+      schema: Preferences,
     }
   );
 }

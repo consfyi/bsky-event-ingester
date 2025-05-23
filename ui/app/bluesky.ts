@@ -1,6 +1,7 @@
 import type {} from "@atcute/atproto";
 import type { AppBskyFeedLike } from "@atcute/bluesky";
 import type {
+  Preferences,
   ProfileView,
   ProfileViewDetailed,
 } from "@atcute/bluesky/types/app/actor/defs";
@@ -87,6 +88,26 @@ export class Client {
       await this.oauthUserAgent.signOut();
     } catch (e) {
       deleteStoredSession(this.oauthUserAgent.session.info.sub);
+    }
+  }
+
+  async getPreferences(): Promise<Preferences> {
+    const { ok, data } = await this.rpc.get("app.bsky.actor.getPreferences", {
+      params: {},
+    });
+    if (!ok) {
+      throw data.error;
+    }
+    return data.preferences;
+  }
+
+  async putPreferences(preferences: Preferences): Promise<void> {
+    const { ok, data } = await this.rpc.post("app.bsky.actor.putPreferences", {
+      input: { preferences },
+      as: null,
+    });
+    if (!ok) {
+      throw data.error;
     }
   }
 

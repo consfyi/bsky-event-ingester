@@ -18,6 +18,7 @@ import { useLocalStorage } from "@mantine/hooks";
 import type { MetaFunction } from "@remix-run/node";
 import { Link } from "@remix-run/react";
 import {
+  IconAlertTriangle,
   IconBrandBluesky,
   IconCalendarWeek,
   IconCheck,
@@ -44,6 +45,9 @@ import LikeButton from "~/components/LikeButton";
 import SimpleErrorBoundary from "~/components/SimpleErrorBoundary";
 import { Con, useCons, useIsLoggedIn } from "~/hooks";
 import clientMetadata from "../../public/client-metadata.json";
+import { useGetPreferences, usePutPreferences } from "~/endpoints";
+import { LABELER_DID } from "~/config";
+import { useController, useLoading, useSuspense } from "@data-client/react";
 
 function* monthRange(start: Date, end: Date): Generator<Date> {
   while (start < end) {
@@ -489,6 +493,38 @@ function ConsTable() {
 export default function Index() {
   const isLoggedIn = useIsLoggedIn();
 
+  const getPreferences = useGetPreferences();
+  const preferences = useSuspense(getPreferences);
+
+  const putPreferences = usePutPreferences();
+  const ctrl = useController();
+
+  const [doSubscribe, loading] = useLoading(async () => {
+    const prefs = (await ctrl.fetch(getPreferences)).preferences!;
+
+    let labelersPref = prefs.find(
+      (pref) => pref.$type == "app.bsky.actor.defs#labelersPref"
+    );
+    if (labelersPref == null) {
+      labelersPref = {
+        $type: "app.bsky.actor.defs#labelersPref",
+        labelers: [],
+      };
+      prefs.push(labelersPref);
+    }
+    labelersPref.labelers.push({ did: LABELER_DID });
+
+    await ctrl.fetch(putPreferences, { preferences: prefs });
+  }, [ctrl, preferences, putPreferences]);
+
+  const subscribedToLabeler =
+    preferences.preferences == null ||
+    preferences.preferences.some(
+      (preference) =>
+        preference.$type == "app.bsky.actor.defs#labelersPref" &&
+        preference.labelers.some((labeler) => labeler.did == LABELER_DID)
+    );
+
   return (
     <>
       {!isLoggedIn ? (
@@ -536,6 +572,31 @@ export default function Index() {
               who provides all the data on conventions!
             </Text>
           </Trans>
+        </Alert>
+      ) : null}
+      {!subscribedToLabeler ? (
+        <Alert
+          my={{ lg: "xs" }}
+          icon={<IconAlertTriangle />}
+          title={<Trans>Not subscribed to labeler</Trans>}
+          color="yellow"
+        >
+          <Text size="sm" mb="xs">
+            <Trans>
+              You are currently not subscribed to the labeler. That means you
+              won’t be able to see other people’s con labels on Bluesky.
+            </Trans>
+          </Text>
+          <Button
+            size="sm"
+            color="yellow"
+            loading={loading}
+            onClick={() => {
+              doSubscribe();
+            }}
+          >
+            <Trans>Fix this for me</Trans>
+          </Button>
         </Alert>
       ) : null}
       <SimpleErrorBoundary>
