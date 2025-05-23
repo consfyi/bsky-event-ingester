@@ -204,6 +204,9 @@ function ConsByDate({ cons, sortDesc }: { cons: Con[]; sortDesc: boolean }) {
   }, [cons]);
 
   const months = useMemo(() => {
+    if (cons.length == 0) {
+      return [];
+    }
     const months = Array.from(
       monthRange(
         setDate(cons![0].start, 1),
@@ -216,45 +219,39 @@ function ConsByDate({ cons, sortDesc }: { cons: Con[]; sortDesc: boolean }) {
     return months;
   }, [cons, sortDesc]);
 
-  return cons!.length > 0
-    ? months.map((date) => {
-        const groupKey = yearMonthKey(date);
-        return (
-          <Fragment key={groupKey}>
-            <Text
-              mb="xs"
-              px="xs"
-              mt={-8}
-              pt={8}
-              pb={4}
-              fw={500}
-              pos="sticky"
-              top={50}
-              bg="var(--mantine-color-body)"
-              style={{
-                zIndex: 3,
-                borderBottom:
-                  "calc(0.0625rem * var(--mantine-scale)) solid var(--mantine-color-default-border)",
-              }}
-            >
-              {i18n.date(date, {
-                month: "long",
-                year: "numeric",
-              })}
-            </Text>
-            {(consByMonth[groupKey] ?? []).map((con) => {
-              return (
-                <ConRow
-                  key={con.identifier}
-                  con={con}
-                  showMonthInIcon={false}
-                />
-              );
-            })}
-          </Fragment>
-        );
-      })
-    : null;
+  return months.map((date) => {
+    const groupKey = yearMonthKey(date);
+    return (
+      <Fragment key={groupKey}>
+        <Text
+          mb="xs"
+          px="xs"
+          mt={-8}
+          pt={8}
+          pb={4}
+          fw={500}
+          pos="sticky"
+          top={50}
+          bg="var(--mantine-color-body)"
+          style={{
+            zIndex: 3,
+            borderBottom:
+              "calc(0.0625rem * var(--mantine-scale)) solid var(--mantine-color-default-border)",
+          }}
+        >
+          {i18n.date(date, {
+            month: "long",
+            year: "numeric",
+          })}
+        </Text>
+        {(consByMonth[groupKey] ?? []).map((con) => {
+          return (
+            <ConRow key={con.identifier} con={con} showMonthInIcon={false} />
+          );
+        })}
+      </Fragment>
+    );
+  });
 }
 
 function ConsByAttendees({
