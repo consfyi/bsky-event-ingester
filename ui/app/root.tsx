@@ -161,11 +161,11 @@ function Header() {
                 startLogin(handle != "" ? handle : null);
               }}
             >
-              <Button.Group my={-2}>
+              <Button.Group my={-8}>
                 <Button
                   loading={pending}
                   type="submit"
-                  size="xs"
+                  size="sm"
                   leftSection={<IconBrandBluesky size={18} />}
                 >
                   <Trans>Log in</Trans>
@@ -183,7 +183,7 @@ function Header() {
                   }}
                 >
                   <Menu.Target>
-                    <Button size="xs" px={4} title={t`More log in options`}>
+                    <Button size="sm" px={4} title={t`More log in options`}>
                       <IconChevronDown size={14} />
                     </Button>
                   </Menu.Target>
