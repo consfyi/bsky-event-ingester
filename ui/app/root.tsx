@@ -225,7 +225,9 @@ function Header() {
                   </Menu.Target>
                   <Menu.Dropdown>
                     <TextInput
+                      label={<Trans>Custom PDS</Trans>}
                       name="pds"
+                      m={4}
                       w="300"
                       disabled={pending}
                       error={

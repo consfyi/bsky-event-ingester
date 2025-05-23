@@ -32,7 +32,7 @@ msgstr "{likeCount} including you"
 msgid "<0>This the website for the <1><2/> @cons.furryli.st</1> service. For the full experience, please log in. You’ll be able to:</0><3><4>Tell people which cons you’re going to (you can also do this by liking the con post on Bluesky).</4><5>See who you follow is going to a con.</5></3><6><7>Note:</7> If you’re using a self-hosted PDS, you’ll need to use the dropdown next to the Log in button to specify it.</6><8>A huge thank you to <9>FurryCons.com</9> who provides all the data on conventions!</8>"
 msgstr "<0>This the website for the <1><2/> @cons.furryli.st</1> service. For the full experience, please log in. You’ll be able to:</0><3><4>Tell people which cons you’re going to (you can also do this by liking the con post on Bluesky).</4><5>See who you follow is going to a con.</5></3><6><7>Note:</7> If you’re using a self-hosted PDS, you’ll need to use the dropdown next to the Log in button to specify it.</6><8>A huge thank you to <9>FurryCons.com</9> who provides all the data on conventions!</8>"
 
-#: app/root.tsx:270
+#: app/root.tsx:276
 msgid "All furry convention data courtesy of the volunteers at <0>FurryCons.com</0> – thank you! Convention missing? <1>Submit it here!</1>"
 msgstr "All furry convention data courtesy of the volunteers at <0>FurryCons.com</0> – thank you! Convention missing? <1>Submit it here!</1>"
 
@@ -50,9 +50,13 @@ msgstr "Attendees"
 msgid "Attending"
 msgstr "Attending"
 
-#: app/root.tsx:229
+#: app/root.tsx:235
 msgid "Couldn’t log in with this PDS. Is the URL correct?"
 msgstr "Couldn’t log in with this PDS. Is the URL correct?"
+
+#: app/root.tsx:228
+msgid "Custom PDS"
+msgstr "Custom PDS"
 
 #: app/routes/cons.$identifier.tsx:127
 #: app/routes/_index.tsx:308
@@ -95,15 +99,16 @@ msgstr "Link"
 msgid "Location"
 msgstr "Location"
 
-#: app/root.tsx:197
+#: app/root.tsx:201
 msgid "Log in"
 msgstr "Log in"
 
-#: app/root.tsx:195
-msgid "Log in via {pdsHost}"
-msgstr "Log in via {pdsHost}"
+#. placeholder {0}: realPdsHost.replace(/^https?:\/\//, "")
+#: app/root.tsx:197
+msgid "Log in via {0}"
+msgstr "Log in via {0}"
 
-#: app/root.tsx:216
+#: app/root.tsx:220
 msgid "Log in via custom PDS"
 msgstr "Log in via custom PDS"
 
@@ -119,8 +124,8 @@ msgstr "No known attendees yet."
 msgid "Not attending"
 msgstr "Not attending"
 
-#: app/root.tsx:321
 #: app/root.tsx:327
+#: app/root.tsx:333
 msgid "Not found"
 msgstr "Not found"
 
@@ -148,7 +153,7 @@ msgstr "Soonest to latest"
 msgid "Sort by"
 msgstr "Sort by"
 
-#: app/root.tsx:330
+#: app/root.tsx:336
 msgid "The page you requested could not be found."
 msgstr "The page you requested could not be found."
 
