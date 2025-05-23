@@ -175,8 +175,9 @@ function ConsByDate({ cons, sortDesc }: { cons: Con[]; sortDesc: boolean }) {
     return months;
   }, [cons, sortDesc]);
 
-  return cons!.length > 0
-    ? months.map((date) => {
+  return cons!.length > 0 ? (
+    <Box mt={-4}>
+      {months.map((date) => {
         const groupKey = yearMonthKey(date);
         return (
           <Fragment key={groupKey}>
@@ -186,7 +187,7 @@ function ConsByDate({ cons, sortDesc }: { cons: Con[]; sortDesc: boolean }) {
               py={4}
               fw={500}
               pos="sticky"
-              top={50 + 38}
+              top={50}
               bg="var(--mantine-color-body)"
               style={{
                 zIndex: 3,
@@ -204,8 +205,9 @@ function ConsByDate({ cons, sortDesc }: { cons: Con[]; sortDesc: boolean }) {
             })}
           </Fragment>
         );
-      })
-    : null;
+      })}
+    </Box>
+  ) : null;
 }
 
 function ConsByAttendees({
@@ -290,49 +292,13 @@ function ConsList() {
 
   return (
     <>
-      <Group
-        wrap="nowrap"
-        justify="space-between"
-        px="xs"
-        mx={{ base: -1, lg: 0 }}
-        my={{ base: -1, lg: "sm" }}
-        pos="sticky"
-        top={50}
-        h={38}
-        bg="var(--mantine-color-body)"
-        style={{
-          border:
-            "calc(0.0625rem * var(--mantine-scale)) solid var(--mantine-color-default-border)",
-          zIndex: 4,
-        }}
-      >
-        {isLoggedIn ? (
-          <Switch
-            color="red"
-            thumbIcon={
-              viewOptions.showOnlyAttending ? (
-                <IconHeartFilled size={10} color="var(--switch-bg)" />
-              ) : (
-                <IconHeart size={10} color="var(--switch-bg)" />
-              )
-            }
-            checked={viewOptions.showOnlyAttending}
-            onChange={(e) => {
-              setViewOptions((vo) => ({
-                ...vo,
-                showOnlyAttending: e.target.checked,
-              }));
-            }}
-            label={<Trans>Show only cons I’m attending</Trans>}
-          />
-        ) : (
-          <div></div>
-        )}
-        <Menu position="bottom-end" withArrow withinPortal={false}>
+      <Group wrap="nowrap" my="xs">
+        <Menu position="bottom-start" withArrow withinPortal={false}>
           <Menu.Target>
             <Button
               variant="subtle"
-              size="sm"
+              size="xs"
+              c="dimmed"
               leftSection={
                 viewOptions.sortDesc ? (
                   <IconSortDescending
@@ -348,9 +314,10 @@ function ConsList() {
               }
               rightSection={<IconChevronDown size={14} />}
               color="var(--mantine-color-text)"
-              fw={500}
             >
-              {currentSortByStrings.name}
+              <Text span size="sm" fw={500}>
+                {currentSortByStrings.name}
+              </Text>
             </Button>
           </Menu.Target>
 
@@ -422,6 +389,31 @@ function ConsList() {
             </Menu.Item>
           </Menu.Dropdown>
         </Menu>
+        {isLoggedIn ? (
+          <Switch
+            size="sm"
+            color="red"
+            thumbIcon={
+              viewOptions.showOnlyAttending ? (
+                <IconHeartFilled size={10} color="var(--switch-bg)" />
+              ) : (
+                <IconHeart size={10} color="var(--switch-bg)" />
+              )
+            }
+            checked={viewOptions.showOnlyAttending}
+            onChange={(e) => {
+              setViewOptions((vo) => ({
+                ...vo,
+                showOnlyAttending: e.target.checked,
+              }));
+            }}
+            label={
+              <Text span color="dimmed" size="sm" fw={500}>
+                <Trans>Show only cons I’m attending</Trans>
+              </Text>
+            }
+          />
+        ) : null}
       </Group>
 
       <Box>
@@ -478,7 +470,7 @@ export default function Index() {
     <>
       {!isLoggedIn ? (
         <Alert
-          my={{ lg: "xs" }}
+          mt={{ lg: "xs" }}
           icon={<IconPaw />}
           title={<Trans>Welcome!</Trans>}
         >
