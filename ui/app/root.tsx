@@ -118,8 +118,6 @@ function Header() {
                   variant="outline"
                   color="var(--mantine-color-dimmed)"
                   c="var(--mantine-color-text)"
-                  size="sm"
-                  fw={500}
                   leftSection={
                     <Avatar
                       src={self.avatar}
@@ -129,7 +127,9 @@ function Header() {
                   }
                   rightSection={<IconChevronDown size={14} />}
                 >
-                  @{self.handle}
+                  <Text span size="sm" fw={500} visibleFrom="xs">
+                    @{self.handle}
+                  </Text>
                 </Button>
               </Menu.Target>
               <Menu.Dropdown>
