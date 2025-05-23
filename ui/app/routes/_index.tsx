@@ -500,6 +500,7 @@ export default function Index() {
   const ctrl = useController();
 
   const [doSubscribe, loading] = useLoading(async () => {
+    // Refetch preferences, just so we don't clobber any preferences that may have changed in the meantime with our old preferences.
     const prefs = (await ctrl.fetch(getPreferences)).preferences!;
 
     let labelersPref = prefs.find(
