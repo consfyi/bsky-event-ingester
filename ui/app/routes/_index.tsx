@@ -560,6 +560,11 @@ export default function Index() {
               </li>
               <li>See who you follow is going to a con.</li>
             </ul>
+            <Text size="sm" mb="xs">
+              <strong>Note:</strong> If you’re using a self-hosted PDS, you’ll
+              need to use the dropdown next to the Log in button to enter in
+              your handle.
+            </Text>
             <Text size="sm">
               A huge thank you to{" "}
               <Anchor

@@ -19,6 +19,7 @@ import {
   TextInput,
 } from "@mantine/core";
 import "@mantine/core/styles.css";
+import { useLocalStorage } from "@mantine/hooks";
 import { LinksFunction } from "@remix-run/node";
 import {
   Link,
@@ -65,7 +66,12 @@ export const meta: MetaFunction = ({ matches }) => [
 
 function Header() {
   const [menuOpen, setMenuOpen] = useState(false);
-  const [handle, setHandle] = useState("");
+  const [pdsHost, setPdsHost] = useLocalStorage({
+    key: "fbl:pdsHost",
+    defaultValue: "",
+    getInitialValueInEffect: false,
+  });
+  const [loginError, setLoginError] = useState<unknown | null>(null);
   const [pending, setIsPending] = useState(false);
 
   const { t } = useLingui();
@@ -159,7 +165,23 @@ function Header() {
               onSubmit={(evt) => {
                 evt.preventDefault();
                 setIsPending(true);
-                startLogin(handle != "" ? handle : null);
+                let host = pdsHost != "" ? pdsHost : undefined;
+                if (host != null) {
+                  if (!host.match(/^https?:\/\//)) {
+                    host = `https://${host}`;
+                  }
+                }
+                (async () => {
+                  try {
+                    await startLogin(host);
+                  } catch (e) {
+                    setIsPending(false);
+                    if (pdsHost != "") {
+                      setMenuOpen(true);
+                      setLoginError(e);
+                    }
+                  }
+                })();
               }}
             >
               <Button.Group my={-8}>
@@ -168,8 +190,13 @@ function Header() {
                   type="submit"
                   size="sm"
                   leftSection={<IconBrandBluesky size={18} />}
+                  color={pdsHost != "" ? "#8338ec" : undefined}
                 >
-                  <Trans>Log in</Trans>
+                  {pdsHost != "" ? (
+                    <Trans>Log in via {pdsHost}</Trans>
+                  ) : (
+                    <Trans>Log in</Trans>
+                  )}
                 </Button>
                 <Menu
                   position="bottom-end"
@@ -184,19 +211,32 @@ function Header() {
                   }}
                 >
                   <Menu.Target>
-                    <Button size="sm" px={4} title={t`More log in options`}>
+                    <Button
+                      size="sm"
+                      px={4}
+                      title={t`Log in via custom PDS`}
+                      color={pdsHost != "" ? "#8338ec" : undefined}
+                    >
                       <IconChevronDown size={14} />
                     </Button>
                   </Menu.Target>
                   <Menu.Dropdown>
                     <TextInput
-                      name="username"
+                      name="pds"
+                      w="300"
                       disabled={pending}
-                      leftSection={<IconAt size={16} />}
-                      placeholder="handle.bsky.social"
-                      value={handle}
+                      error={
+                        loginError != null ? (
+                          <Trans>
+                            Couldn’t log in with this PDS. Is the URL correct?
+                          </Trans>
+                        ) : null
+                      }
+                      placeholder="https://your.pds.com"
+                      value={pdsHost}
                       onChange={(e) => {
-                        setHandle(e.target.value);
+                        setPdsHost(e.target.value);
+                        setLoginError(null);
                       }}
                     />
                   </Menu.Dropdown>

@@ -37,21 +37,10 @@ import {
 } from "@atcute/oauth-browser-client";
 import clientMetadata from "../public/client-metadata.json";
 
-export async function startLogin(handle: string | null) {
-  let identity = undefined;
-  let metadata;
-
-  if (handle != null) {
-    const resp = await resolveFromIdentity(handle);
-    identity = resp.identity;
-    metadata = resp.metadata;
-  } else {
-    const resp = await resolveFromService("https://bsky.social");
-    metadata = resp.metadata;
-  }
+export async function startLogin(pdsHost: string = "https://bsky.social") {
+  const { metadata } = await resolveFromService(pdsHost);
 
   const authUrl = await createAuthorizationUrl({
-    identity,
     metadata,
     scope: "atproto transition:generic",
   });
