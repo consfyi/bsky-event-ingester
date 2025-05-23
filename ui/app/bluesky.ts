@@ -36,7 +36,9 @@ import {
 } from "@atcute/oauth-browser-client";
 import clientMetadata from "../public/client-metadata.json";
 
-export async function startLogin(pdsHost: string = "https://bsky.social") {
+export const DEFAULT_PDS_HOST = "https://bsky.social";
+
+export async function startLogin(pdsHost: string = DEFAULT_PDS_HOST) {
   const { metadata } = await resolveFromService(pdsHost);
 
   const authUrl = await createAuthorizationUrl({

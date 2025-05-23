@@ -38,7 +38,7 @@ import {
 } from "@tabler/icons-react";
 import { Suspense, useEffect, useState } from "react";
 import clientMetadata from "../public/client-metadata.json";
-import { startLogin } from "./bluesky";
+import { DEFAULT_PDS_HOST, startLogin } from "./bluesky";
 import LinguiProvider from "./components/LinguiProvider";
 import { useClient, useHydrated, useSelf } from "./hooks";
 import "./styles.css";
@@ -70,6 +70,14 @@ function Header() {
     defaultValue: "",
     getInitialValueInEffect: false,
   });
+
+  const realPdsHost =
+    pdsHost != ""
+      ? pdsHost.replace(/^(?!https:\/\/)/, "https://")
+      : DEFAULT_PDS_HOST;
+
+  const usingDefaultPdsHost = realPdsHost == DEFAULT_PDS_HOST;
+
   const [loginError, setLoginError] = useState<unknown | null>(null);
   const [pending, setIsPending] = useState(false);
 
@@ -164,18 +172,12 @@ function Header() {
               onSubmit={(evt) => {
                 evt.preventDefault();
                 setIsPending(true);
-                let host = pdsHost != "" ? pdsHost : undefined;
-                if (host != null) {
-                  if (!host.match(/^https?:\/\//)) {
-                    host = `https://${host}`;
-                  }
-                }
                 (async () => {
                   try {
-                    await startLogin(host);
+                    await startLogin(realPdsHost);
                   } catch (e) {
                     setIsPending(false);
-                    if (pdsHost != "") {
+                    if (!usingDefaultPdsHost) {
                       setMenuOpen(true);
                       setLoginError(e);
                     }
@@ -189,10 +191,12 @@ function Header() {
                   type="submit"
                   size="sm"
                   leftSection={<IconBrandBluesky size={18} />}
-                  color={pdsHost != "" ? "#8338ec" : undefined}
+                  color={!usingDefaultPdsHost ? "#8338ec" : undefined}
                 >
-                  {pdsHost != "" ? (
-                    <Trans>Log in via {pdsHost}</Trans>
+                  {!usingDefaultPdsHost ? (
+                    <Trans>
+                      Log in via {realPdsHost.replace(/^https?:\/\//, "")}
+                    </Trans>
                   ) : (
                     <Trans>Log in</Trans>
                   )}
@@ -214,7 +218,7 @@ function Header() {
                       size="sm"
                       px={4}
                       title={t`Log in via custom PDS`}
-                      color={pdsHost != "" ? "#8338ec" : undefined}
+                      color={!usingDefaultPdsHost ? "#8338ec" : undefined}
                     >
                       <IconChevronDown size={14} />
                     </Button>
