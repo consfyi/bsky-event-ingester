@@ -228,7 +228,7 @@ export function usePutPreferences() {
   return new Endpoint(
     async ({ preferences }: { preferences: ActorPreferences }) => {
       await client.putPreferences(preferences);
-      return preferences;
+      return Preferences.fromJS({ preferences });
     },
     {
       name: "putPreferences",
