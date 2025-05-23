@@ -80,6 +80,53 @@ fn fixup_event(mut event: Event) -> Event {
     event
 }
 
+async fn list_all_records(
+    agent: &atrium_api::agent::Agent<
+        atrium_api::agent::atp_agent::CredentialSession<
+            atrium_api::agent::atp_agent::store::MemorySessionStore,
+            atrium_xrpc_client::reqwest::ReqwestClient,
+        >,
+    >,
+    did: &atrium_api::types::string::Did,
+) -> Result<
+    Vec<atrium_api::com::atproto::repo::list_records::Record>,
+    atrium_api::xrpc::Error<atrium_api::com::atproto::repo::list_records::Error>,
+> {
+    let mut cursor = None;
+    let mut records = vec![];
+
+    loop {
+        let resp = agent
+            .api
+            .com
+            .atproto
+            .repo
+            .list_records(
+                atrium_api::com::atproto::repo::list_records::ParametersData {
+                    collection: atrium_api::app::bsky::feed::Post::nsid(),
+                    limit: Some(100.try_into().unwrap()),
+                    cursor: cursor.clone(),
+                    repo: did.clone().into(),
+                    reverse: None,
+                }
+                .into(),
+            )
+            .await?;
+
+        for record in resp.data.records {
+            records.push(record);
+        }
+
+        if resp.data.cursor.is_none() {
+            break;
+        }
+
+        cursor = resp.data.cursor;
+    }
+
+    Ok(records)
+}
+
 async fn sync_labels(
     ics_url: &str,
     ui_endpoint: &str,
@@ -102,6 +149,23 @@ async fn sync_labels(
     const EXTRA_DATA_EVENT_INFO: &str = "fbl_eventInfo";
 
     let mut writes = vec![];
+
+    let record_rkeys = list_all_records(agent, did)
+        .await?
+        .into_iter()
+        .map(|record| {
+            let parts = record
+                .uri
+                .strip_prefix("at://")
+                .map(|v| v.splitn(3, '/').collect::<Vec<_>>());
+
+            let Some(&[_, _, rkey]) = parts.as_ref().map(|v| &v[..]) else {
+                unreachable!();
+            };
+
+            rkey.to_string()
+        })
+        .collect::<std::collections::HashSet<String>>();
 
     let calendar: icalendar::Calendar = reqwest::get(ics_url)
         .await?
@@ -202,16 +266,20 @@ async fn sync_labels(
                 .map(|defs| {
                     defs.iter()
                         .flat_map(|v| {
+                            let rkey = ipld_core::serde::from_ipld::<String>(
+                                v.extra_data.get(EXTRA_DATA_POST_RKEY).ok()??.clone(),
+                            )
+                            .ok()?;
+
+                            if !record_rkeys.contains(&rkey) {
+                                log::info!("could not find {rkey}, will delete");
+                                return None;
+                            }
+
                             Some((
                                 base26::decode(&v.identifier).unwrap(),
                                 (
-                                    atrium_api::types::string::RecordKey::new(
-                                        ipld_core::serde::from_ipld::<String>(
-                                            v.extra_data.get(EXTRA_DATA_POST_RKEY).ok()??.clone(),
-                                        )
-                                        .ok()?,
-                                    )
-                                    .unwrap(),
+                                    atrium_api::types::string::RecordKey::new(rkey).unwrap(),
                                     v.extra_data
                                         .get(EXTRA_DATA_EVENT_INFO)
                                         .ok()
