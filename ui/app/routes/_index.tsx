@@ -20,6 +20,7 @@ import { Link } from "@remix-run/react";
 import {
   IconAlertTriangle,
   IconBrandBluesky,
+  IconCalendar,
   IconCalendarWeek,
   IconCheck,
   IconChevronDown,
@@ -74,11 +75,22 @@ function ConRow({
 
   const { i18n, t } = useLingui();
 
+  const dateTimeFormat = useMemo(
+    () =>
+      new Intl.DateTimeFormat(i18n.locale, {
+        weekday: "short",
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+      }),
+    [i18n]
+  );
+
   return (
     <Group gap="xs" wrap="nowrap" mb="xs" px="xs">
       <Anchor<typeof Link> component={Link} to={`/cons/${con.identifier}`}>
         <ThemeIcon
-          size={48}
+          size="xl"
           variant="light"
           color={
             ["red", "orange", "yellow", "green", "blue", "indigo", "violet"][
@@ -88,12 +100,13 @@ function ConRow({
         >
           <Stack gap={0}>
             <Text size="md" ta="center" fw={500}>
-              {i18n.date(con.start, { weekday: "short" })}
+              {showMonthInIcon
+                ? i18n.date(con.start, { month: "short" })
+                : i18n.date(con.start, { weekday: "short" })}
             </Text>
             <Text size="xs" ta="center" fw={500}>
               {i18n.date(con.start, {
                 day: "numeric",
-                month: showMonthInIcon ? "short" : undefined,
               })}
             </Text>
           </Stack>
@@ -118,24 +131,43 @@ function ConRow({
         <Text size="sm" truncate>
           <IconUsers title={t`Attendees`} size={12} />{" "}
           {likeCountWithoutSelf + (isAttending ? 1 : 0)} •{" "}
-          <IconCalendarWeek title={t`End date`} size={12} />{" "}
-          <Trans context="ends [date] ([duration] days)">
-            ends{" "}
-            {i18n.date(con.end, {
-              weekday: "short",
-              day: "numeric",
-              month: "short",
-              year:
-                getYear(con.start) != getYear(con.end) ? "numeric" : undefined,
-            })}{" "}
-            (
-            <Plural
-              value={differenceInDays(con.end, con.start) + 1}
-              one="# day"
-              other="# days"
-            />
-            )
-          </Trans>{" "}
+          {showMonthInIcon ? (
+            <>
+              <IconCalendar title={t`Date`} size={12} />{" "}
+              <Trans context="[start date]-[end date] ([duration] days)">
+                {dateTimeFormat.formatRange(con.start, con.end)} (
+                <Plural
+                  value={differenceInDays(con.end, con.start) + 1}
+                  one="# day"
+                  other="# days"
+                />
+                )
+              </Trans>
+            </>
+          ) : (
+            <>
+              <IconCalendarWeek title={t`End date`} size={12} />{" "}
+              <Trans context="ends [date] ([duration] days)">
+                ends{" "}
+                {i18n.date(con.end, {
+                  weekday: "short",
+                  day: "numeric",
+                  month: "short",
+                  year:
+                    getYear(con.start) != getYear(con.end)
+                      ? "numeric"
+                      : undefined,
+                })}{" "}
+                (
+                <Plural
+                  value={differenceInDays(con.end, con.start) + 1}
+                  one="# day"
+                  other="# days"
+                />
+                )
+              </Trans>
+            </>
+          )}{" "}
           • <IconMapPin title={t`Location`} size={12} />{" "}
           <Anchor
             href={`https://www.google.com/maps?q=${con.location}`}
