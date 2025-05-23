@@ -115,10 +115,11 @@ function Header() {
               <Menu.Target>
                 <Button
                   my={-8}
-                  variant="outline"
+                  variant="light"
                   color="var(--mantine-color-dimmed)"
                   c="var(--mantine-color-text)"
                   size="sm"
+                  fw={500}
                   leftSection={
                     <Avatar
                       src={self.avatar}
