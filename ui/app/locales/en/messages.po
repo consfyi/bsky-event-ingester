@@ -28,7 +28,7 @@ msgctxt "attendee count, including you"
 msgid "{likeCount} including you"
 msgstr "{likeCount} including you"
 
-#: app/routes/_index.tsx:507
+#: app/routes/_index.tsx:522
 msgid "<0>This the website for the <1><2/> @cons.furryli.st</1> service. For the full experience, please log in. You’ll be able to:</0><3><4>Tell people which cons you’re going to (you can also do this by liking the con post on Bluesky).</4><5>See who you follow is going to a con.</5></3><6>A huge thank you to <7>FurryCons.com</7> who provides all the data on conventions!</6>"
 msgstr "<0>This the website for the <1><2/> @cons.furryli.st</1> service. For the full experience, please log in. You’ll be able to:</0><3><4>Tell people which cons you’re going to (you can also do this by liking the con post on Bluesky).</4><5>See who you follow is going to a con.</5></3><6>A huge thank you to <7>FurryCons.com</7> who provides all the data on conventions!</6>"
 
@@ -40,13 +40,9 @@ msgstr "All furry convention data courtesy of the volunteers at <0>FurryCons.com
 msgid "An error occurred while attempting to load this data."
 msgstr "An error occurred while attempting to load this data."
 
-#: app/routes/_index.tsx:374
-msgid "Ascending"
-msgstr "Ascending"
-
 #: app/routes/cons.$identifier.tsx:297
 #: app/routes/_index.tsx:122
-#: app/routes/_index.tsx:314
+#: app/routes/_index.tsx:326
 msgid "Attendees"
 msgstr "Attendees"
 
@@ -55,7 +51,7 @@ msgid "Attending"
 msgstr "Attending"
 
 #: app/routes/cons.$identifier.tsx:134
-#: app/routes/_index.tsx:313
+#: app/routes/_index.tsx:321
 msgid "Date"
 msgstr "Date"
 
@@ -74,13 +70,13 @@ msgstr "ends {0} ({1, plural, one {# day} other {# days}})"
 msgid "Error"
 msgstr "Error"
 
-#: app/routes/_index.tsx:440
-msgid "Fewest"
-msgstr "Fewest"
+#: app/routes/_index.tsx:327
+msgid "Fewest to most"
+msgstr "Fewest to most"
 
-#: app/routes/_index.tsx:465
-msgid "Latest"
-msgstr "Latest"
+#: app/routes/_index.tsx:323
+msgid "Latest to soonest"
+msgstr "Latest to soonest"
 
 #: app/routes/cons.$identifier.tsx:169
 msgid "Link"
@@ -99,9 +95,9 @@ msgstr "Log in"
 msgid "More log in options"
 msgstr "More log in options"
 
-#: app/routes/_index.tsx:467
-msgid "Most"
-msgstr "Most"
+#: app/routes/_index.tsx:328
+msgid "Most to fewest"
+msgstr "Most to fewest"
 
 #: app/routes/cons.$identifier.tsx:255
 msgid "No known attendees yet."
@@ -116,7 +112,7 @@ msgstr "Not attending"
 msgid "Not found"
 msgstr "Not found"
 
-#: app/routes/_index.tsx:414
+#: app/routes/_index.tsx:437
 msgid "Order"
 msgstr "Order"
 
@@ -124,15 +120,15 @@ msgstr "Order"
 msgid "People you don’t follow"
 msgstr "People you don’t follow"
 
-#: app/routes/_index.tsx:360
+#: app/routes/_index.tsx:377
 msgid "Show only cons I’m attending"
 msgstr "Show only cons I’m attending"
 
-#: app/routes/_index.tsx:438
-msgid "Soonest"
-msgstr "Soonest"
+#: app/routes/_index.tsx:322
+msgid "Soonest to latest"
+msgstr "Soonest to latest"
 
-#: app/routes/_index.tsx:386
+#: app/routes/_index.tsx:409
 msgid "Sort by"
 msgstr "Sort by"
 
@@ -149,6 +145,6 @@ msgstr "Toggle attending"
 msgid "View Bluesky Post"
 msgstr "View Bluesky Post"
 
-#: app/routes/_index.tsx:505
+#: app/routes/_index.tsx:520
 msgid "Welcome!"
 msgstr "Welcome!"

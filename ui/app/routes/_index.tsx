@@ -293,6 +293,12 @@ interface TableViewOptions {
   sortDesc: boolean;
 }
 
+interface SortByStrings {
+  name: string;
+  asc: string;
+  desc: string;
+}
+
 function ConsTable() {
   const cons = useCons();
   const conPosts = useConPosts();
@@ -310,10 +316,20 @@ function ConsTable() {
     },
   });
 
-  const sortByNames: Record<SortBy, string> = {
-    [SortBy.Date]: t`Date`,
-    [SortBy.Attendees]: t`Attendees`,
+  const sortByStrings: Record<SortBy, SortByStrings> = {
+    [SortBy.Date]: {
+      name: t`Date`,
+      asc: t`Soonest to latest`,
+      desc: t`Latest to soonest`,
+    },
+    [SortBy.Attendees]: {
+      name: t`Attendees`,
+      asc: t`Fewest to most`,
+      desc: t`Most to fewest`,
+    },
   };
+
+  const currentSortByStrings = sortByStrings[viewOptions.sortBy];
 
   const filteredCons = cons.filter(
     (con) =>
@@ -370,15 +386,21 @@ function ConsTable() {
                       size="sm"
                       leftSection={
                         viewOptions.sortDesc ? (
-                          <IconSortDescending title={`Descending`} size={14} />
+                          <IconSortDescending
+                            title={currentSortByStrings.desc}
+                            size={14}
+                          />
                         ) : (
-                          <IconSortAscending title={t`Ascending`} size={14} />
+                          <IconSortAscending
+                            title={currentSortByStrings.asc}
+                            size={14}
+                          />
                         )
                       }
                       rightSection={<IconChevronDown size={14} />}
                       color="gray"
                     >
-                      {sortByNames[viewOptions.sortBy]}
+                      {currentSortByStrings.name}
                     </Button>
                   </Menu.Target>
 
@@ -407,7 +429,7 @@ function ConsTable() {
                             )
                           }
                         >
-                          {sortByNames[sortBy]}
+                          {sortByStrings[sortBy].name}
                         </Menu.Item>
                       );
                     })}
@@ -435,11 +457,7 @@ function ConsTable() {
                         </>
                       }
                     >
-                      {viewOptions.sortBy == SortBy.Date ? (
-                        <Trans>Soonest</Trans>
-                      ) : (
-                        <Trans>Fewest</Trans>
-                      )}
+                      {sortByStrings[viewOptions.sortBy].asc}
                     </Menu.Item>
                     <Menu.Item
                       onClick={() => {
@@ -462,11 +480,7 @@ function ConsTable() {
                         </>
                       }
                     >
-                      {viewOptions.sortBy == SortBy.Date ? (
-                        <Trans>Latest</Trans>
-                      ) : (
-                        <Trans>Most</Trans>
-                      )}
+                      {sortByStrings[viewOptions.sortBy].desc}
                     </Menu.Item>
                   </Menu.Dropdown>
                 </Menu>
