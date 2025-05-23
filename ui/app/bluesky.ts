@@ -31,7 +31,6 @@ import {
   getSession,
   listStoredSessions,
   OAuthUserAgent,
-  resolveFromIdentity,
   resolveFromService,
   Session,
 } from "@atcute/oauth-browser-client";

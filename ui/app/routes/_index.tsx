@@ -562,8 +562,7 @@ export default function Index() {
             </ul>
             <Text size="sm" mb="xs">
               <strong>Note:</strong> If you’re using a self-hosted PDS, you’ll
-              need to use the dropdown next to the Log in button to enter in
-              your handle.
+              need to use the dropdown next to the Log in button to specify it.
             </Text>
             <Text size="sm">
               A huge thank you to{" "}
