@@ -60,7 +60,13 @@ export const meta: MetaFunction = ({ matches }) => [
   { title: clientMetadata.client_name },
 ];
 
-function ConRow({ con }: { con: Con }) {
+function ConRow({
+  con,
+  showMonthInIcon,
+}: {
+  con: Con;
+  showMonthInIcon: boolean;
+}) {
   const isAttending = con.post.viewer?.like != null;
 
   const likeCountWithoutSelf =
@@ -72,7 +78,7 @@ function ConRow({ con }: { con: Con }) {
     <Group gap="xs" wrap="nowrap" mb="xs" px="xs">
       <Anchor<typeof Link> component={Link} to={`/cons/${con.identifier}`}>
         <ThemeIcon
-          size="xl"
+          size={48}
           variant="light"
           color={
             ["red", "orange", "yellow", "green", "blue", "indigo", "violet"][
@@ -85,7 +91,10 @@ function ConRow({ con }: { con: Con }) {
               {i18n.date(con.start, { weekday: "short" })}
             </Text>
             <Text size="xs" ta="center" fw={500}>
-              {i18n.date(con.start, { day: "numeric" })}
+              {i18n.date(con.start, {
+                day: "numeric",
+                month: showMonthInIcon ? "short" : undefined,
+              })}
             </Text>
           </Stack>
         </ThemeIcon>
@@ -202,7 +211,13 @@ function ConsByDate({ cons, sortDesc }: { cons: Con[]; sortDesc: boolean }) {
               })}
             </Text>
             {(consByMonth[groupKey] ?? []).map((con) => {
-              return <ConRow key={con.identifier} con={con} />;
+              return (
+                <ConRow
+                  key={con.identifier}
+                  con={con}
+                  showMonthInIcon={false}
+                />
+              );
             })}
           </Fragment>
         );
@@ -226,7 +241,7 @@ function ConsByAttendees({
   }, [cons, sortDesc]);
 
   return sortedCons.map((con) => {
-    return <ConRow key={con.identifier} con={con} />;
+    return <ConRow key={con.identifier} con={con} showMonthInIcon={true} />;
   });
 }
 
