@@ -115,7 +115,7 @@ function Header() {
               <Menu.Target>
                 <Button
                   my={-8}
-                  variant="light"
+                  variant="outline"
                   color="var(--mantine-color-dimmed)"
                   c="var(--mantine-color-text)"
                   size="sm"
