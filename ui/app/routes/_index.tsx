@@ -175,16 +175,17 @@ function ConsByDate({ cons, sortDesc }: { cons: Con[]; sortDesc: boolean }) {
     return months;
   }, [cons, sortDesc]);
 
-  return cons!.length > 0 ? (
-    <Box mt={-4}>
-      {months.map((date) => {
+  return cons!.length > 0
+    ? months.map((date) => {
         const groupKey = yearMonthKey(date);
         return (
           <Fragment key={groupKey}>
             <Text
               mb="xs"
               px="xs"
-              py={4}
+              mt={-8}
+              pt={8}
+              pb={4}
               fw={500}
               pos="sticky"
               top={50}
@@ -205,9 +206,8 @@ function ConsByDate({ cons, sortDesc }: { cons: Con[]; sortDesc: boolean }) {
             })}
           </Fragment>
         );
-      })}
-    </Box>
-  ) : null;
+      })
+    : null;
 }
 
 function ConsByAttendees({
