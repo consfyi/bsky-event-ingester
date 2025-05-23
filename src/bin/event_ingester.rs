@@ -481,13 +481,6 @@ async fn sync_labels(
 
     log::info!("applying writes:\n{writes:#?}");
 
-    events_state.events = events.into_iter().collect();
-
-    events_state.rkeys_to_ids = next_events
-        .iter()
-        .map(|(id, (rkey, _))| (rkey.clone(), *id))
-        .collect();
-
     agent
         .api
         .com
@@ -503,6 +496,12 @@ async fn sync_labels(
             .into(),
         )
         .await?;
+
+    events_state.events = events.into_iter().collect();
+    events_state.rkeys_to_ids = next_events
+        .iter()
+        .map(|(id, (rkey, _))| (rkey.clone(), *id))
+        .collect();
 
     metrics::gauge!("label_sync_time").set(chrono::Utc::now().timestamp_micros() as f64);
 
@@ -804,15 +803,19 @@ async fn main() -> Result<(), anyhow::Error> {
             loop {
                 tokio::time::sleep(std::time::Duration::from_secs(config.label_sync_delay_secs))
                     .await;
+
                 log::info!("syncing labels");
-                sync_labels(
+                if let Err(e) = sync_labels(
                     &config.ics_url,
                     &config.ui_endpoint,
                     &did,
                     &agent,
                     events_state.clone(),
                 )
-                .await?;
+                .await
+                {
+                    log::error!("could not sync labels: {e}");
+                }
             }
 
             #[allow(unreachable_code)]
