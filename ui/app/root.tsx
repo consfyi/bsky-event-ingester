@@ -41,6 +41,7 @@ import clientMetadata from "../public/client-metadata.json";
 import { startLogin } from "./bluesky";
 import LinguiProvider from "./components/LinguiProvider";
 import { useClient, useHydrated, useSelf } from "./hooks";
+import "./styles.css";
 
 const theme = createTheme({});
 
