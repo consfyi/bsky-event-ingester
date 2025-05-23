@@ -12,16 +12,19 @@ import {
   Text,
   Tooltip,
 } from "@mantine/core";
+import { useColorScheme } from "@mantine/hooks";
 import { useParams } from "@remix-run/react";
 import {
   IconBrandBluesky,
   IconCalendar,
   IconLink,
   IconMapPin,
+  IconMapPinFilled,
 } from "@tabler/icons-react";
 import { differenceInDays } from "date-fns";
 import { range, sortBy } from "lodash-es";
-import { Suspense, useEffect, useMemo } from "react";
+import { Map, Marker } from "pigeon-maps";
+import { Suspense, useCallback, useEffect, useMemo } from "react";
 import LikeButton from "~/components/LikeButton";
 import SimpleErrorBoundary from "~/components/SimpleErrorBoundary";
 import { LABELER_DID } from "~/config";
@@ -85,6 +88,15 @@ function Actor({ actor }: { actor: Profile }) {
 function Header({ con }: { con: Con }) {
   const { i18n, t } = useLingui();
 
+  const colorScheme = useColorScheme();
+  const mapProvider = useCallback(
+    (x: number, y: number, z: number, dpr?: number) =>
+      `http://basemaps.cartocdn.com/${colorScheme}_all/${z}/${x}/${y}${
+        (dpr ?? 1) >= 2 ? "@2x" : ""
+      }.png`,
+    [colorScheme]
+  );
+
   const dateTimeFormat = useMemo(
     () =>
       new Intl.DateTimeFormat(i18n.locale, {
@@ -97,83 +109,108 @@ function Header({ con }: { con: Con }) {
   );
 
   return (
-    <Box>
-      <Group gap={7} wrap="nowrap" align="top">
-        {con.post.viewer != null ? (
-          <Box mt={2} mb={-2}>
-            <LikeButton size="sm" iconSize={24} post={con.post} />
-          </Box>
-        ) : null}
-        <Text size="lg" fw={500}>
-          {con.name}{" "}
-          <Tooltip label={<Trans>View Bluesky Post</Trans>} position="bottom">
-            <Anchor
-              href={`https://bsky.app/profile/${LABELER_DID}/post/${con.postRkey}`}
-              target="_blank"
-              rel="noreferrer"
-            >
-              <IconBrandBluesky
-                title={t`View Bluesky Post`}
-                size={16}
-                stroke={1.5}
-              />
-            </Anchor>
-          </Tooltip>
-        </Text>
-      </Group>
-      <Box mt={4}>
-        <Group wrap="nowrap" gap="xs" align="top">
-          <Box>
-            <IconCalendar title={t`Date`} size={16} stroke={1.5} />
-          </Box>
-          <Text size="sm" mb={5}>
-            <Trans context="[start date]-[end date] ([duration] days)">
-              {dateTimeFormat.formatRange(con.start, con.end)} (
-              <Plural
-                value={differenceInDays(con.end, con.start) + 1}
-                one="# day"
-                other="# days"
-              />
-              )
-            </Trans>
+    <Group justify="space-between" align="stretch">
+      <Box>
+        <Group gap={7} wrap="nowrap" align="top">
+          {con.post.viewer != null ? (
+            <Box mt={2} mb={-2}>
+              <LikeButton size="sm" iconSize={24} post={con.post} />
+            </Box>
+          ) : null}
+          <Text size="lg" fw={500}>
+            {con.name}{" "}
+            <Tooltip label={<Trans>View Bluesky Post</Trans>} position="bottom">
+              <Anchor
+                href={`https://bsky.app/profile/${LABELER_DID}/post/${con.postRkey}`}
+                target="_blank"
+                rel="noreferrer"
+              >
+                <IconBrandBluesky
+                  title={t`View Bluesky Post`}
+                  size={16}
+                  stroke={1.5}
+                />
+              </Anchor>
+            </Tooltip>
           </Text>
         </Group>
+        <Box mt={4}>
+          <Group wrap="nowrap" gap="xs" align="top">
+            <Box>
+              <IconCalendar title={t`Date`} size={16} stroke={1.5} />
+            </Box>
+            <Text size="sm" mb={5}>
+              <Trans context="[start date]-[end date] ([duration] days)">
+                {dateTimeFormat.formatRange(con.start, con.end)} (
+                <Plural
+                  value={differenceInDays(con.end, con.start) + 1}
+                  one="# day"
+                  other="# days"
+                />
+                )
+              </Trans>
+            </Text>
+          </Group>
 
-        <Group wrap="nowrap" gap="xs" align="top">
-          <Box>
-            <IconMapPin title={t`Location`} size={16} stroke={1.5} />
-          </Box>
-          <Text size="sm" mb={5}>
-            <Anchor
-              href={`https://www.google.com/maps?q=${con.location}`}
-              target="_blank"
-              rel="noreferrer"
-              style={{
-                color: "unset",
-              }}
-            >
-              {con.location}
-            </Anchor>
-          </Text>
-        </Group>
+          <Group wrap="nowrap" gap="xs" align="top">
+            <Box>
+              <IconMapPin title={t`Location`} size={16} stroke={1.5} />
+            </Box>
+            <Text size="sm" mb={5}>
+              <Anchor
+                href={`https://www.google.com/maps?q=${con.location}`}
+                target="_blank"
+                rel="noreferrer"
+                style={{
+                  color: "unset",
+                }}
+              >
+                {con.location}
+              </Anchor>
+            </Text>
+          </Group>
 
-        <Group wrap="nowrap" gap="xs" align="top">
-          <Box>
-            <IconLink title={t`Link`} size={16} stroke={1.5} />
-          </Box>
-          <Text size="sm" mb={5}>
-            <Anchor
-              href={con.url}
-              target="_blank"
-              rel="noreferrer"
-              style={{ wordBreak: "break-all" }}
-            >
-              {con.url.replace(/https?:\/\//, "")}
-            </Anchor>
-          </Text>
-        </Group>
+          <Group wrap="nowrap" gap="xs" align="top">
+            <Box>
+              <IconLink title={t`Link`} size={16} stroke={1.5} />
+            </Box>
+            <Text size="sm" mb={5}>
+              <Anchor
+                href={con.url}
+                target="_blank"
+                rel="noreferrer"
+                style={{ wordBreak: "break-all" }}
+              >
+                {con.url.replace(/https?:\/\//, "")}
+              </Anchor>
+            </Text>
+          </Group>
+        </Box>
       </Box>
-    </Box>
+      <Box
+        visibleFrom="sm"
+        style={{
+          overflow: "hidden",
+          borderRadius: "var(--mantine-radius-default)",
+        }}
+      >
+        {con.latLng != null ? (
+          <Map
+            width={100}
+            provider={mapProvider}
+            zoom={12}
+            mouseEvents={false}
+            touchEvents={false}
+            attribution={false}
+            center={con.latLng}
+          >
+            <Marker anchor={con.latLng} width={32}>
+              <IconMapPinFilled color="var(--mantine-color-anchor)" size={32} />
+            </Marker>
+          </Map>
+        ) : null}
+      </Box>
+    </Group>
   );
 }
 

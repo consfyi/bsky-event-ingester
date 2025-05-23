@@ -83,6 +83,7 @@ export interface Con {
   start: Date;
   end: Date;
   location: string;
+  latLng: [number, number] | null;
   post: Post;
   postRkey: string;
   url: string;
@@ -95,7 +96,11 @@ export function useCons() {
   const cons = useMemo(() => {
     const cons = labelerView.policies!.labelValueDefinitions!.flatMap((def) => {
       const fullDef = def as typeof def & {
-        fbl_eventInfo: { date: string; location: string; url: string };
+        fbl_eventInfo: {
+          date: string;
+          location: string;
+          url: string;
+        };
         fbl_postRkey: string;
       };
 
@@ -114,6 +119,7 @@ export function useCons() {
           start: parseDate(start, "yyyy-MM-dd", new Date()),
           end: parseDate(end, "yyyy-MM-dd", new Date()),
           location: fullDef.fbl_eventInfo.location,
+          latLng: null,
           post: conPosts[fullDef.fbl_postRkey],
           postRkey: fullDef.fbl_postRkey,
           url: fullDef.fbl_eventInfo.url,

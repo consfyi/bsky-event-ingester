@@ -33,10 +33,10 @@
     "date-fns": "^4.1.0",
     "isbot": "^4.1.0",
     "lodash-es": "^4.17.21",
+    "pigeon-maps": "^0.22.1",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "react-error-boundary": "^6.0.0",
-    "react-leaflet": "^4.2.1"
+    "react-error-boundary": "^6.0.0"
   },
   "devDependencies": {
     "@lingui/cli": "^5.3.1",
