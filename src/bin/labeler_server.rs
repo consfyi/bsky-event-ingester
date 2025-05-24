@@ -6,31 +6,41 @@ struct Config {
     postgres_url: String,
 }
 
-fn encode_message(seq: i64, raw: &[u8]) -> Result<Vec<u8>, anyhow::Error> {
+fn encode_message(seq: i64, raw: &[u8]) -> Vec<u8> {
     let mut writer = minicbor::Encoder::new(vec![]);
 
     // {"t": "#labels", "op": 1}
     writer
-        .map(2)?
+        .map(2)
+        .unwrap()
         //
-        .str("t")?
-        .str("#labels")?
+        .str("t")
+        .unwrap()
+        .str("#labels")
+        .unwrap()
         //
-        .str("op")?
-        .i64(1)?;
+        .str("op")
+        .unwrap()
+        .i64(1)
+        .unwrap();
 
     // com.atproto.label.subscribeLabels#labels
     writer
-        .map(2)?
+        .map(2)
+        .unwrap()
         //
-        .str("seq")?
-        .i64(seq)?
+        .str("seq")
+        .unwrap()
+        .i64(seq)
+        .unwrap()
         //
-        .str("labels")?
-        .array(1)?;
+        .str("labels")
+        .unwrap()
+        .array(1)
+        .unwrap();
     writer.writer_mut().extend(raw);
 
-    Ok(writer.into_writer())
+    writer.into_writer()
 }
 
 async fn subscribe_labels(
@@ -92,7 +102,7 @@ async fn subscribe_labels(
                             let row = row?;
 
                             sink.send(axum::extract::ws::Message::Binary(
-                                encode_message(row.seq, &row.payload)?.into(),
+                                encode_message(row.seq, &row.payload).into(),
                             ))
                             .await?;
 
