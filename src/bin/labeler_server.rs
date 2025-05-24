@@ -28,7 +28,6 @@ fn encode_message(seq: i64, raw: &[u8]) -> Result<Vec<u8>, anyhow::Error> {
         //
         .str("labels")?
         .array(1)?;
-
     writer.writer_mut().extend(raw);
 
     Ok(writer.into_writer())
