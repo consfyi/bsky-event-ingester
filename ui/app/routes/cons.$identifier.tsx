@@ -256,7 +256,7 @@ function AttendeesList({
     </>
   ) : (
     <Box>
-      <Text c="dimmed" size="sm" h={38}>
+      <Text c="dimmed" size="sm" h={38} pt={4}>
         <Trans>No known attendees yet.</Trans>
       </Text>
     </Box>
