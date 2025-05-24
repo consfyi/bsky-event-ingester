@@ -32,7 +32,7 @@ export default function LikeButton({
       label={isLiked ? <Trans>Attending</Trans> : <Trans>Not attending</Trans>}
     >
       <ActionIcon
-        color={isLiked ? "red" : "dimmed"}
+        color={isLiked ? "var(--mantine-color-red-filled)" : "dimmed"}
         aria-pressed={isLiked}
         disabled={loading}
         aria-label={t`Toggle attending`}
