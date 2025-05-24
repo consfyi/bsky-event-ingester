@@ -343,6 +343,7 @@ function ConsList() {
         {isLoggedIn ? (
           <Switch
             size="sm"
+            ml="xs"
             color="red"
             thumbIcon={
               viewOptions.showOnlyAttending ? (
