@@ -311,9 +311,9 @@ export default function Index() {
         <Box mt="xs">
           <SimpleErrorBoundary>
             {selfFollowsIsLoading ? (
-              <Group wrap="nowrap" gap={7}>
+              <Group wrap="nowrap" gap={7} mt={10}>
                 <Loader size={8} color="dimmed" type="bars" />
-                <Text c="dimmed" size="xs">
+                <Text c="dimmed" size="xs" lh="md">
                   <Trans>Loading people you follow</Trans>
                 </Text>
               </Group>
