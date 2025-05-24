@@ -119,6 +119,7 @@ function Header() {
               position="bottom-end"
               withArrow
               opened={menuOpen}
+              withinPortal={false}
               onChange={(value) => {
                 if (!value && pending) {
                   return;
