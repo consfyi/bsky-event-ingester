@@ -13,6 +13,7 @@ import {
   Switch,
   Text,
   ThemeIcon,
+  Title,
 } from "@mantine/core";
 import { useLocalStorage } from "@mantine/hooks";
 import type { MetaFunction } from "@remix-run/node";
@@ -223,12 +224,14 @@ function ConsByDate({ cons, sortDesc }: { cons: Con[]; sortDesc: boolean }) {
     const groupKey = yearMonthKey(date);
     return (
       <Fragment key={groupKey}>
-        <Text
+        <Title
           mb="xs"
           px="xs"
           mt={-8}
           pt={8}
           pb={4}
+          order={2}
+          size="h5"
           fw={500}
           pos="sticky"
           top={50}
@@ -243,7 +246,7 @@ function ConsByDate({ cons, sortDesc }: { cons: Con[]; sortDesc: boolean }) {
             month: "long",
             year: "numeric",
           })}
-        </Text>
+        </Title>
         {(consByMonth[groupKey] ?? []).map((con) => {
           return (
             <ConRow key={con.identifier} con={con} showMonthInIcon={false} />
