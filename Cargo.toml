@@ -10,9 +10,7 @@ atrium-crypto = "0.1"
 atrium-xrpc-client = "0.5"
 axum = { version = "0.8", features = ["ws"] }
 axum-extra = { version = "0.10", features = ["query"] }
-base64 = "0.22"
 chrono = "0.4"
-cid = "0.11"
 config = "0.15"
 env_logger = "0.11"
 futures = "0.3"
