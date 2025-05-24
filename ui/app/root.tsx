@@ -3,7 +3,6 @@ import { Trans, useLingui } from "@lingui/react/macro";
 import {
   ActionIcon,
   Anchor,
-  Avatar,
   Box,
   Button,
   Center,
@@ -40,6 +39,7 @@ import { Suspense, useEffect, useState } from "react";
 import clientMetadata from "../public/client-metadata.json";
 import { DEFAULT_PDS_HOST, startLogin } from "./bluesky";
 import LinguiProvider from "./components/LinguiProvider";
+import Avatar from "~/components/Avatar";
 import { useClient, useHydrated, useSelf } from "./hooks";
 import "./styles.css";
 

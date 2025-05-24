@@ -1,11 +1,11 @@
 import { Plural, Trans, useLingui } from "@lingui/react/macro";
 import {
   Anchor,
-  Avatar,
   Box,
   Divider,
   Group,
   Loader,
+  Popover,
   SimpleGrid,
   Skeleton,
   Stack,
@@ -13,6 +13,7 @@ import {
   Title,
   Tooltip,
 } from "@mantine/core";
+import { useDisclosure } from "@mantine/hooks";
 import { useParams } from "@remix-run/react";
 import {
   IconBrandBluesky,
@@ -23,6 +24,7 @@ import {
 import { differenceInDays } from "date-fns";
 import { range, sortBy } from "lodash-es";
 import { Suspense, useEffect, useMemo } from "react";
+import Avatar from "~/components/Avatar";
 import LikeButton from "~/components/LikeButton";
 import SimpleErrorBoundary from "~/components/SimpleErrorBoundary";
 import { LABELER_DID } from "~/config";
@@ -43,44 +45,52 @@ function ActorSkeleton() {
 }
 
 function Actor({ actor }: { actor: Profile }) {
+  const [opened, { close, open }] = useDisclosure(false);
+
   return (
-    <Anchor
-      href={`https://bsky.app/profile/${actor.handle}`}
-      target="_blank"
-      rel="noreferrer"
-      c="var(--mantine-color-text)"
-      style={{
-        textDecoration: "unset",
-      }}
+    <Popover
+      position="top-start"
+      shadow="md"
+      offset={{ mainAxis: -51, crossAxis: -17 }}
+      opened={opened}
     >
-      <Group wrap="nowrap" gap="sm">
-        <Tooltip
-          position="right"
-          label={
+      <Popover.Target>
+        <Anchor
+          onMouseEnter={open}
+          onMouseLeave={close}
+          href={`https://bsky.app/profile/${actor.handle}`}
+          target="_blank"
+          rel="noreferrer"
+          c="var(--mantine-color-text)"
+          style={{
+            textDecoration: "unset",
+          }}
+        >
+          <Group wrap="nowrap" gap="sm">
+            <Avatar src={actor.avatar} alt={`@${actor.handle}`} />
             <Stack gap={0} miw={0}>
               <Text size="sm" fw={500} truncate>
-                {actor.displayName ? actor.displayName : actor.handle}
+                {actor.displayName ? actor.displayName : actor.handle}{" "}
               </Text>
-
               <Text size="xs" truncate>
                 @{actor.handle}
               </Text>
             </Stack>
-          }
-        >
+          </Group>
+        </Anchor>
+      </Popover.Target>
+      <Popover.Dropdown style={{ pointerEvents: "none" }}>
+        <Group wrap="nowrap" gap="sm">
           <Avatar src={actor.avatar} alt={`@${actor.handle}`} />
-        </Tooltip>
-        <Stack gap={0} miw={0}>
-          <Text size="sm" fw={500} truncate>
-            {actor.displayName ? actor.displayName : actor.handle}{" "}
-          </Text>
-
-          <Text size="xs" truncate>
-            @{actor.handle}
-          </Text>
-        </Stack>
-      </Group>
-    </Anchor>
+          <Stack gap={0} miw={0}>
+            <Text size="sm" fw={500}>
+              {actor.displayName ? actor.displayName : actor.handle}
+            </Text>
+            <Text size="xs">@{actor.handle}</Text>
+          </Stack>
+        </Group>
+      </Popover.Dropdown>
+    </Popover>
   );
 }
 
