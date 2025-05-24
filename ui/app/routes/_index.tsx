@@ -195,7 +195,15 @@ function EmptyIcon({
   return <svg {...svgProps} width={size} height={size}></svg>;
 }
 
-function ConsByDate({ cons, sortDesc }: { cons: Con[]; sortDesc: boolean }) {
+function ConsByDate({
+  cons,
+  hideEmptyGroups,
+  sortDesc,
+}: {
+  cons: Con[];
+  hideEmptyGroups: boolean;
+  sortDesc: boolean;
+}) {
   const { i18n } = useLingui();
 
   const consByMonth = useMemo(() => {
@@ -208,17 +216,22 @@ function ConsByDate({ cons, sortDesc }: { cons: Con[]; sortDesc: boolean }) {
     if (cons.length == 0) {
       return [];
     }
-    const months = Array.from(
-      monthRange(
-        setDate(cons![0].start, 1),
-        addMonths(setDate(cons![cons!.length - 1].start, 1), 1)
-      )
-    );
+    const months = [];
+    for (const d of monthRange(
+      setDate(cons![0].start, 1),
+      addMonths(setDate(cons![cons!.length - 1].start, 1), 1)
+    )) {
+      if (hideEmptyGroups && (consByMonth[yearMonthKey(d)] ?? []).length == 0) {
+        continue;
+      }
+      months.push(d);
+    }
+
     if (sortDesc) {
       months.reverse();
     }
     return months;
-  }, [cons, sortDesc]);
+  }, [cons, hideEmptyGroups, consByMonth, sortDesc]);
 
   return months.map((date) => {
     const groupKey = yearMonthKey(date);
@@ -475,7 +488,11 @@ function ConsList() {
             sortDesc={viewOptions.sortDesc}
           />
         ) : viewOptions.sortBy == SortBy.Date ? (
-          <ConsByDate cons={filteredCons} sortDesc={viewOptions.sortDesc} />
+          <ConsByDate
+            cons={filteredCons}
+            sortDesc={viewOptions.sortDesc}
+            hideEmptyGroups={viewOptions.showOnlyAttending}
+          />
         ) : null}
       </Box>
     </>
