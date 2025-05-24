@@ -6,34 +6,32 @@ struct Config {
     postgres_url: String,
 }
 
-fn encode_labels(
-    labels: &atrium_api::com::atproto::label::subscribe_labels::Labels,
-) -> Result<Vec<u8>, serde_ipld_dagcbor::EncodeError<std::collections::TryReserveError>> {
-    static HEADER: std::sync::LazyLock<Vec<u8>> = std::sync::LazyLock::new(|| {
-        let mut buf = vec![];
+fn encode_message(seq: i64, raw: &[u8]) -> Result<Vec<u8>, anyhow::Error> {
+    let mut writer = minicbor::Encoder::new(vec![]);
 
-        #[derive(serde::Serialize)]
-        struct Header {
-            t: String,
-            op: i64,
-        }
+    // {"t": "#labels", "op": 1}
+    writer
+        .map(2)?
+        //
+        .str("t")?
+        .str("#labels")?
+        //
+        .str("op")?
+        .i64(1)?;
 
-        buf.extend(
-            serde_ipld_dagcbor::to_vec(&Header {
-                t: "#labels".to_string(),
-                op: 1,
-            })
-            .unwrap(),
-        );
+    // com.atproto.label.subscribeLabels#labels
+    writer
+        .map(2)?
+        //
+        .str("seq")?
+        .i64(seq)?
+        //
+        .str("labels")?
+        .array(1)?;
 
-        buf
-    });
+    writer.writer_mut().extend(raw);
 
-    let mut buf = vec![];
-    buf.extend(&*HEADER);
-    buf.extend(serde_ipld_dagcbor::to_vec(labels)?);
-
-    Ok(buf)
+    Ok(writer.into_writer())
 }
 
 async fn subscribe_labels(
@@ -95,14 +93,7 @@ async fn subscribe_labels(
                             let row = row?;
 
                             sink.send(axum::extract::ws::Message::Binary(
-                                encode_labels(
-                                    &atrium_api::com::atproto::label::subscribe_labels::LabelsData {
-                                        seq: row.seq,
-                                        labels: vec![serde_ipld_dagcbor::from_slice(&row.payload)?],
-                                    }
-                                    .into(),
-                                )?
-                                .into(),
+                                encode_message(row.seq, &row.payload)?.into(),
                             ))
                             .await?;
 
