@@ -339,7 +339,35 @@ function ConsList() {
 
   return (
     <>
-      <Group wrap="nowrap" my="xs">
+      <Group wrap="nowrap" my="xs" justify="space-between">
+        {isLoggedIn ? (
+          <Switch
+            size="sm"
+            color="red"
+            thumbIcon={
+              viewOptions.showOnlyAttending ? (
+                <IconHeartFilled size={10} color="var(--switch-bg)" />
+              ) : (
+                <IconHeart size={10} color="var(--switch-bg)" />
+              )
+            }
+            checked={viewOptions.showOnlyAttending}
+            onChange={(e) => {
+              setViewOptions((vo) => ({
+                ...vo,
+                showOnlyAttending: e.target.checked,
+              }));
+            }}
+            label={
+              <Text span color="dimmed" size="sm" fw={500}>
+                <Trans>Show only cons I’m attending</Trans>
+              </Text>
+            }
+          />
+        ) : (
+          <Box />
+        )}
+
         <Menu position="bottom-start" withArrow withinPortal={false}>
           <Menu.Target>
             <Button
@@ -436,31 +464,6 @@ function ConsList() {
             </Menu.Item>
           </Menu.Dropdown>
         </Menu>
-        {isLoggedIn ? (
-          <Switch
-            size="sm"
-            color="red"
-            thumbIcon={
-              viewOptions.showOnlyAttending ? (
-                <IconHeartFilled size={10} color="var(--switch-bg)" />
-              ) : (
-                <IconHeart size={10} color="var(--switch-bg)" />
-              )
-            }
-            checked={viewOptions.showOnlyAttending}
-            onChange={(e) => {
-              setViewOptions((vo) => ({
-                ...vo,
-                showOnlyAttending: e.target.checked,
-              }));
-            }}
-            label={
-              <Text span color="dimmed" size="sm" fw={500}>
-                <Trans>Show only cons I’m attending</Trans>
-              </Text>
-            }
-          />
-        ) : null}
       </Group>
 
       <Box>
