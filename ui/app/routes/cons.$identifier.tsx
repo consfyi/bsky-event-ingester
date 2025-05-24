@@ -306,11 +306,18 @@ export default function Index() {
             ) : (
               <Trans context="attendee count">{likeCount}</Trans>
             )}{" "}
-            {selfFollowsIsLoading ? <Loader size={10} color="dimmed" /> : null}
           </Text>
         </Title>
         <Box mt="xs">
           <SimpleErrorBoundary>
+            {selfFollowsIsLoading ? (
+              <Group wrap="nowrap" gap={7}>
+                <Loader size={8} color="dimmed" type="bars" />
+                <Text c="dimmed" size="xs">
+                  <Trans>Loading people you follow</Trans>
+                </Text>
+              </Group>
+            ) : null}
             <Suspense
               fallback={
                 <SimpleGrid cols={{ base: 1, sm: 2, lg: 5 }} mt="xs">
