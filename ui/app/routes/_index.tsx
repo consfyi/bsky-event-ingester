@@ -6,6 +6,7 @@ import {
   Box,
   Button,
   Center,
+  Collapse,
   Group,
   Loader,
   Menu,
@@ -594,7 +595,7 @@ export default function Index() {
           </Trans>
         </Alert>
       ) : null}
-      {!subscribedToLabeler ? (
+      <Collapse in={!subscribedToLabeler}>
         <Alert
           my={{ lg: "xs" }}
           icon={<IconAlertTriangle />}
@@ -618,7 +619,7 @@ export default function Index() {
             <Trans>Fix this for me</Trans>
           </Button>
         </Alert>
-      ) : null}
+      </Collapse>
       <SimpleErrorBoundary>
         <Suspense
           fallback={
