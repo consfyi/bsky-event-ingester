@@ -10,6 +10,7 @@ import {
   Skeleton,
   Stack,
   Text,
+  Title,
   Tooltip,
 } from "@mantine/core";
 import { useParams } from "@remix-run/react";
@@ -40,14 +41,15 @@ function ActorSkeleton() {
     </Group>
   );
 }
+
 function Actor({ actor }: { actor: Profile }) {
   return (
     <Anchor
       href={`https://bsky.app/profile/${actor.handle}`}
       target="_blank"
       rel="noreferrer"
+      c="var(--mantine-color-text)"
       style={{
-        color: "unset",
         textDecoration: "unset",
       }}
     >
@@ -104,7 +106,7 @@ function Header({ con }: { con: Con }) {
             <LikeButton size="sm" iconSize={24} post={con.post} />
           </Box>
         ) : null}
-        <Text size="lg" fw={500}>
+        <Title size="h4" fw={500}>
           {con.name}{" "}
           <Tooltip label={<Trans>View Bluesky Post</Trans>} position="bottom">
             <Anchor
@@ -119,7 +121,7 @@ function Header({ con }: { con: Con }) {
               />
             </Anchor>
           </Tooltip>
-        </Text>
+        </Title>
       </Group>
       <Box mt={4}>
         <Group wrap="nowrap" gap="xs" align="top">
@@ -148,9 +150,7 @@ function Header({ con }: { con: Con }) {
               href={`https://www.google.com/maps?q=${con.location}`}
               target="_blank"
               rel="noreferrer"
-              style={{
-                color: "unset",
-              }}
+              c="var(--mantine-color-text)"
             >
               {con.location}
             </Anchor>
@@ -286,7 +286,7 @@ export default function Index() {
       <Header con={con} />
 
       <Box mt="sm">
-        <Text size="md" fw={500}>
+        <Title order={2} size="h5" fw={500}>
           <Trans>Attendees</Trans>{" "}
           <Text size="sm" span>
             {isAttending ? (
@@ -298,7 +298,7 @@ export default function Index() {
             )}{" "}
             {selfFollowsIsLoading ? <Loader size={10} color="dimmed" /> : null}
           </Text>
-        </Text>
+        </Title>
         <Box mt="xs">
           <SimpleErrorBoundary>
             <Suspense
