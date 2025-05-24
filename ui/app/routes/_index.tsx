@@ -227,8 +227,8 @@ function ConsByDate({ cons, sortDesc }: { cons: Con[]; sortDesc: boolean }) {
         <Title
           mb="xs"
           px="xs"
-          mt={-8}
-          pt={8}
+          mt={{ base: -4, lg: -8 }}
+          pt={{ base: 4, lg: 8 }}
           pb={4}
           order={2}
           size="h5"
