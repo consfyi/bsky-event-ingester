@@ -147,6 +147,7 @@ function Header() {
                 </Button>
               </Menu.Target>
               <Menu.Dropdown>
+                <Menu.Label hiddenFrom="xs">@{self.handle}</Menu.Label>
                 <Button
                   fullWidth
                   loading={pending}
