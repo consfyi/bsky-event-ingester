@@ -207,10 +207,16 @@ function ConsByDate({
   const { i18n } = useLingui();
 
   const consByMonth = useMemo(() => {
-    return groupBy(cons, (con) => {
+    const groups = groupBy(cons, (con) => {
       return yearMonthKey(con.start);
     });
-  }, [cons]);
+    if (sortDesc) {
+      for (const k in groups) {
+        groups[k].reverse();
+      }
+    }
+    return groups;
+  }, [cons, sortDesc]);
 
   const months = useMemo(() => {
     if (cons.length == 0) {
