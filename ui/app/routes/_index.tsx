@@ -368,12 +368,13 @@ function ConsList() {
           <Box />
         )}
 
-        <Menu position="bottom-start" withArrow withinPortal={false}>
+        <Menu position="bottom-end" withArrow withinPortal={false}>
           <Menu.Target>
             <Button
               variant="subtle"
               size="xs"
               c="dimmed"
+              style={{ zIndex: 4 }}
               leftSection={
                 viewOptions.sortDesc ? (
                   <IconSortDescending
