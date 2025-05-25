@@ -456,6 +456,8 @@ async fn sync_labels(
 
         let (rkey, info) = old_events.get(id).unwrap();
 
+        let lat_lng = info.as_ref().and_then(|info| info.lat_lng.clone());
+
         Ok::<_, anyhow::Error>((
             *id,
             (
@@ -468,8 +470,8 @@ async fn sync_labels(
                     ),
                     location: event.location.clone(),
                     url: event.url.clone(),
-                    lat_lng: if let Some(info) = info {
-                        info.lat_lng.clone()
+                    lat_lng: if let Some(lat_lng) = lat_lng {
+                        Some(lat_lng)
                     } else {
                         if let Some(google_maps_client) = google_maps_client.as_ref() {
                             Some(
