@@ -31,7 +31,7 @@ struct Event {
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
-#[serde(rename = "camelCase")]
+#[serde(rename_all = "camelCase")]
 struct LabelerEventInfo {
     date: String,
     location: String,

@@ -99,6 +99,7 @@ export function useCons() {
         fbl_eventInfo: {
           date: string;
           location: string;
+          latLng?: string | null;
           url: string;
         };
         fbl_postRkey: string;
@@ -119,7 +120,12 @@ export function useCons() {
           start: parseDate(start, "yyyy-MM-dd", new Date()),
           end: parseDate(end, "yyyy-MM-dd", new Date()),
           location: fullDef.fbl_eventInfo.location,
-          latLng: null,
+          latLng:
+            fullDef.fbl_eventInfo.latLng != null
+              ? (fullDef.fbl_eventInfo.latLng
+                  .split(/,/)
+                  .map((v) => parseFloat(v)) as [number, number])
+              : null,
           post: conPosts[fullDef.fbl_postRkey],
           postRkey: fullDef.fbl_postRkey,
           url: fullDef.fbl_eventInfo.url,
