@@ -428,22 +428,21 @@ function ConsList() {
           </Menu.Target>
 
           <Menu.Dropdown>
-            <Menu.Item>
-              <Checkbox
-                size="sm"
-                disabled={!isLoggedIn}
-                color="red"
-                icon={({ ...props }) => <IconHeartFilled {...props} />}
-                checked={actuallyShowOnlyAttending}
-                onChange={(e) => {
-                  setViewOptions((vo) => ({
-                    ...vo,
-                    showOnlyAttending: e.target.checked,
-                  }));
-                }}
-                label={<Trans>Show only cons I’m attending</Trans>}
-              />
-            </Menu.Item>
+            <Checkbox
+              px="sm"
+              py="calc(var(--mantine-spacing-xs) / 1.5)"
+              disabled={!isLoggedIn}
+              color="red"
+              icon={({ ...props }) => <IconHeartFilled {...props} />}
+              checked={actuallyShowOnlyAttending}
+              onChange={(e) => {
+                setViewOptions((vo) => ({
+                  ...vo,
+                  showOnlyAttending: e.target.checked,
+                }));
+              }}
+              label={<Trans>Show only cons I’m attending</Trans>}
+            />
             <Menu.Label>
               <Trans>Continents</Trans>
             </Menu.Label>
