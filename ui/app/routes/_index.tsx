@@ -3,11 +3,9 @@ import { Plural, Trans, useLingui } from "@lingui/react/macro";
 import {
   Alert,
   Anchor,
-  Badge,
   Box,
   Button,
   Center,
-  Checkbox,
   Collapse,
   Group,
   Loader,
@@ -27,9 +25,9 @@ import {
   IconCalendarWeek,
   IconCheck,
   IconChevronDown,
-  IconFilter,
   IconHeartFilled,
   IconMapPin,
+  IconMinus,
   IconPaw,
   IconSortAscending,
   IconSortDescending,
@@ -357,12 +355,6 @@ function ConsList() {
 
   const actuallyShowOnlyAttending = isLoggedIn && viewOptions.filter.attending;
 
-  const numFilters =
-    (actuallyShowOnlyAttending ? 1 : 0) +
-    (!isEqual(viewOptions.filter.continents, DEFAULT_FILTER.continents)
-      ? 1
-      : 0);
-
   const sortByStrings: Record<SortBy, SortByStrings> = {
     [SortBy.Date]: {
       name: t`Date`,
@@ -390,15 +382,21 @@ function ConsList() {
     return counts;
   }, [cons]);
 
-  const continentList = [
-    ["NA", t`North America`],
-    ["EU", t`Europe`],
-    ["AS", t`Asia`],
-    ["SA", t`South America`],
-    ["OC", t`Oceania`],
-    ["AF", t`Africa`],
-    ["XX", t`Unknown`],
-  ] satisfies [Continent, string][];
+  const continentStrings: Record<Continent, string> = {
+    NA: t`North America`,
+    EU: t`Europe`,
+    AN: t`Antarctica`,
+    AS: t`Asia`,
+    SA: t`South America`,
+    OC: t`Oceania`,
+    AF: t`Africa`,
+    XX: t`Unknown`,
+  };
+
+  const continentsFiltered = !isEqual(
+    viewOptions.filter.continents,
+    DEFAULT_FILTER.continents
+  );
 
   const filteredCons = cons.filter(
     (con) =>
@@ -415,88 +413,155 @@ function ConsList() {
   return (
     <>
       <Group wrap="nowrap" my="xs" justify="space-between">
-        <Menu
-          position="bottom-start"
-          withArrow
-          withinPortal={false}
-          closeOnItemClick={false}
+        <Group
+          wrap="nowrap"
+          style={{
+            flexGrow: 1,
+            zIndex: 4,
+          }}
+          gap="xs"
         >
-          <Menu.Target>
+          {isLoggedIn ? (
             <Button
-              variant="subtle"
-              c="dimmed"
-              color="dimmed"
+              radius="lg"
               size="xs"
-              style={{ zIndex: 4 }}
-              leftSection={<IconFilter size={14} />}
-              rightSection={<IconChevronDown size={14} />}
+              style={{ flexShrink: 0 }}
+              onClick={() => {
+                setViewOptions({
+                  ...viewOptions,
+                  filter: {
+                    ...viewOptions.filter,
+                    attending: !viewOptions.filter.attending,
+                  },
+                });
+              }}
+              {...(actuallyShowOnlyAttending
+                ? {
+                    color: "red",
+                    variant: "light",
+                    leftSection: <IconHeartFilled size={14} />,
+                  }
+                : {
+                    c: "dimmed",
+                    color: "var(--mantine-color-dimmed)",
+                    variant: "outline",
+                  })}
             >
               <Text span size="sm" fw={500}>
-                <Trans>Filters</Trans>
+                <Trans>Attending only</Trans>
               </Text>
-              {numFilters > 0 ? (
-                <Badge size="sm" ml="xs">
-                  {numFilters}
-                </Badge>
-              ) : null}
             </Button>
-          </Menu.Target>
-
-          <Menu.Dropdown>
-            <Checkbox
-              px="sm"
-              py="calc(var(--mantine-spacing-xs) / 1.5)"
-              disabled={!isLoggedIn}
-              color="red"
-              icon={({ ...props }) => <IconHeartFilled {...props} />}
-              checked={actuallyShowOnlyAttending}
-              onChange={(e) => {
-                setViewOptions((vo) => ({
-                  ...vo,
-                  filter: { ...vo.filter, attending: e.target.checked },
-                }));
-              }}
-              label={<Trans>Show only cons I’m attending</Trans>}
-            />
-            <Menu.Label>
-              <Trans>Continents</Trans>
-            </Menu.Label>
-            {sortBy(continentList, ([co]) => -(continentCount[co] ?? 0)).map(
-              ([code, name]) => (
-                <Checkbox
+          ) : null}
+          <Menu
+            position="bottom-start"
+            withArrow
+            withinPortal={false}
+            closeOnItemClick={false}
+          >
+            <Menu.Target>
+              <Button
+                radius="lg"
+                size="xs"
+                style={{ flexShrink: 0 }}
+                rightSection={<IconChevronDown size={14} />}
+                {...(continentsFiltered
+                  ? {
+                      variant: "light",
+                    }
+                  : {
+                      c: "dimmed",
+                      color: "var(--mantine-color-dimmed)",
+                      variant: "outline",
+                    })}
+              >
+                <Text span size="sm" fw={500}>
+                  {continentsFiltered ? (
+                    viewOptions.filter.continents.length == 1 ? (
+                      continentStrings[viewOptions.filter.continents[0]]
+                    ) : (
+                      <Plural
+                        value={viewOptions.filter.continents.length}
+                        one="# region"
+                        other="# regions"
+                      />
+                    )
+                  ) : (
+                    <Trans>Regions</Trans>
+                  )}
+                </Text>
+              </Button>
+            </Menu.Target>
+            <Menu.Dropdown>
+              <Menu.Item
+                leftSection={
+                  viewOptions.filter.continents.length > 0 ? (
+                    continentsFiltered ? (
+                      <IconMinus size={14} />
+                    ) : (
+                      <IconCheck size={14} />
+                    )
+                  ) : (
+                    <EmptyIcon size={14} />
+                  )
+                }
+                onClick={() => {
+                  setViewOptions({
+                    ...viewOptions,
+                    filter: {
+                      ...viewOptions.filter,
+                      continents: continentsFiltered
+                        ? DEFAULT_FILTER.continents
+                        : [],
+                    },
+                  });
+                }}
+                fw={500}
+              >
+                <Plural
+                  value={viewOptions.filter.continents.length}
+                  one="# selected"
+                  other="# selected"
+                />
+              </Menu.Item>
+              <Menu.Divider />
+              {sortBy(
+                DEFAULT_FILTER.continents,
+                (code) => -(continentCount[code] ?? 0)
+              ).map((code) => (
+                <Menu.Item
                   key={code}
-                  px="sm"
-                  py="calc(var(--mantine-spacing-xs) / 1.5)"
-                  label={
-                    <>
-                      {name}{" "}
-                      <Text span size="xs" color="dimmed">
-                        {continentCount[code] ?? 0}
-                      </Text>
-                    </>
+                  leftSection={
+                    viewOptions.filter.continents.includes(code) ? (
+                      <IconCheck size={14} />
+                    ) : (
+                      <EmptyIcon size={14} />
+                    )
                   }
-                  checked={viewOptions.filter.continents.includes(code)}
-                  onChange={(e) => {
+                  onClick={() => {
                     setViewOptions({
                       ...viewOptions,
                       filter: {
                         ...viewOptions.filter,
-                        continents: e.target.checked
-                          ? !viewOptions.filter.continents.includes(code)
-                            ? sortBy([...viewOptions.filter.continents, code])
-                            : viewOptions.filter.continents
+                        continents: !viewOptions.filter.continents.includes(
+                          code
+                        )
+                          ? sortBy([...viewOptions.filter.continents, code])
                           : viewOptions.filter.continents.filter(
                               (c) => c != code
                             ),
                       },
                     });
                   }}
-                />
-              )
-            )}
-          </Menu.Dropdown>
-        </Menu>
-
+                >
+                  {continentStrings[code]}{" "}
+                  <Text span size="xs" color="dimmed">
+                    {continentCount[code] ?? 0}
+                  </Text>
+                </Menu.Item>
+              ))}
+            </Menu.Dropdown>
+          </Menu>
+        </Group>
         <Menu position="bottom-end" withArrow withinPortal={false}>
           <Menu.Target>
             <Button
@@ -504,7 +569,7 @@ function ConsList() {
               size="xs"
               c="dimmed"
               color="dimmed"
-              style={{ zIndex: 4 }}
+              style={{ zIndex: 4, flexShrink: 0 }}
               leftSection={
                 viewOptions.sort.desc ? (
                   <IconSortDescending
