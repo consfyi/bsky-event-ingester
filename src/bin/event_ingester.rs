@@ -490,7 +490,8 @@ async fn sync_labels(
                                     .execute()
                                     .await?
                                     .results
-                                    .first()
+                                    .into_iter()
+                                    .next()
                                     .map(|r| {
                                         let google_maps::LatLng { lat, lng } = r.geometry.location;
                                         Geocoded {
