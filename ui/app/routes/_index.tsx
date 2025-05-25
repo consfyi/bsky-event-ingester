@@ -246,7 +246,8 @@ function ConsByDate({
       <Fragment key={groupKey}>
         <Title
           mb="xs"
-          px="xs"
+          mx={{ base: 0, lg: "xs" }}
+          px={{ base: "xs", lg: 0 }}
           mt={{ base: -4, lg: -8 }}
           pt={{ base: 4, lg: 8 }}
           pb={4}
