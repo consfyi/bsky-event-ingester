@@ -413,14 +413,15 @@ function ConsList() {
 
   return (
     <>
-      <Group wrap="nowrap" my="xs" justify="space-between">
+      <Group wrap="nowrap" my="xs" justify="space-between" gap="0">
         <Group
           wrap="nowrap"
           style={{
             flexGrow: 1,
             zIndex: 4,
+            overflowX: "scroll",
           }}
-          px="sm"
+          ml="xs"
           gap="xs"
         >
           {isLoggedIn ? (
