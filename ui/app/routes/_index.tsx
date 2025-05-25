@@ -421,7 +421,9 @@ function ConsList() {
             zIndex: 4,
             overflowX: "scroll",
           }}
-          ml="xs"
+          p="xs"
+          m="calc(var(--mantine-spacing-xs) * -1)"
+          ml={0}
           gap="xs"
         >
           {isLoggedIn ? (
