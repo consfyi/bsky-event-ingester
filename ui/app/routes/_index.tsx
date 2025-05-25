@@ -419,6 +419,7 @@ function ConsList() {
             flexGrow: 1,
             zIndex: 4,
           }}
+          px="sm"
           gap="xs"
         >
           {isLoggedIn ? (
@@ -669,8 +670,8 @@ function ConsList() {
         </Menu>
       </Group>
 
-      <Box>
-        {viewOptions.sort.by == SortBy.Attendees ? (
+      {filteredCons.length > 0 ? (
+        viewOptions.sort.by == SortBy.Attendees ? (
           <ConsByAttendees
             cons={filteredCons}
             sortDesc={viewOptions.sort.desc}
@@ -681,8 +682,28 @@ function ConsList() {
             sortDesc={viewOptions.sort.desc}
             hideEmptyGroups={actuallyShowOnlyAttending}
           />
-        ) : null}
-      </Box>
+        ) : null
+      ) : (
+        <Box px="sm">
+          <Stack ta="center" gap="xs" py="lg">
+            <Text h={38} pt={4} fw={500}>
+              <Trans>No cons to display.</Trans>
+            </Text>
+
+            {!isEqual(viewOptions.filter, DEFAULT_FILTER) ? (
+              <Box>
+                <Button
+                  onClick={() => {
+                    setViewOptions({ ...viewOptions, filter: DEFAULT_FILTER });
+                  }}
+                >
+                  <Trans>Clear all filters</Trans>
+                </Button>
+              </Box>
+            ) : null}
+          </Stack>
+        </Box>
+      )}
     </>
   );
 }
