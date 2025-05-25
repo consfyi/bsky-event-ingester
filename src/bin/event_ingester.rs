@@ -35,16 +35,12 @@ struct LabelerEventInfo {
     date: String,
     location: String,
     url: String,
-    #[serde(default, deserialize_with = "deserialize_some")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "::serde_with::rust::double_option"
+    )]
     lat_lng: Option<Option<String>>,
-}
-
-fn deserialize_some<'de, T, D>(deserializer: D) -> Result<Option<T>, D::Error>
-where
-    T: serde::de::Deserialize<'de>,
-    D: serde::de::Deserializer<'de>,
-{
-    serde::de::Deserialize::deserialize(deserializer).map(Some)
 }
 
 #[derive(thiserror::Error, Debug)]
