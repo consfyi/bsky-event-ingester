@@ -77,13 +77,19 @@ function useConPosts() {
   return posts;
 }
 
+export interface Geocoded {
+  address: string;
+  country: string;
+  latLng: [number, number];
+}
+
 export interface Con {
   identifier: string;
   name: string;
   start: Date;
   end: Date;
   location: string;
-  latLng: [number, number] | null;
+  geocoded: Geocoded | null;
   post: Post;
   postRkey: string;
   url: string;
@@ -99,7 +105,11 @@ export function useCons() {
         fbl_eventInfo: {
           date: string;
           location: string;
-          latLng?: string | null;
+          geocoded?: {
+            address: string;
+            country: string;
+            latLng: string;
+          } | null;
           url: string;
         };
         fbl_postRkey: string;
@@ -120,16 +130,20 @@ export function useCons() {
           start: parseDate(start, "yyyy-MM-dd", new Date()),
           end: parseDate(end, "yyyy-MM-dd", new Date()),
           location: fullDef.fbl_eventInfo.location,
-          latLng:
-            fullDef.fbl_eventInfo.latLng != null
-              ? (fullDef.fbl_eventInfo.latLng
-                  .split(/,/)
-                  .map((v) => parseFloat(v)) as [number, number])
+          geocoded:
+            fullDef.fbl_eventInfo.geocoded != null
+              ? {
+                  address: fullDef.fbl_eventInfo.geocoded.address,
+                  country: fullDef.fbl_eventInfo.geocoded.country,
+                  latLng: fullDef.fbl_eventInfo.geocoded.latLng
+                    .split(/,/)
+                    .map((v) => parseFloat(v)) as [number, number],
+                }
               : null,
           post: conPosts[fullDef.fbl_postRkey],
           postRkey: fullDef.fbl_postRkey,
           url: fullDef.fbl_eventInfo.url,
-        },
+        } satisfies Con,
       ];
     });
 

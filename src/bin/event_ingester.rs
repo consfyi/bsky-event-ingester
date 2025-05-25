@@ -30,7 +30,7 @@ struct Event {
     dtend: chrono::NaiveDate,
 }
 
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct Geocoded {
     address: String,
