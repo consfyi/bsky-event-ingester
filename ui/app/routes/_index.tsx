@@ -564,7 +564,12 @@ function ConsList() {
             </Menu.Dropdown>
           </Menu>
         </Group>
-        <Menu position="bottom-end" withArrow withinPortal={false}>
+        <Menu
+          position="bottom-end"
+          withArrow
+          withinPortal={false}
+          closeOnItemClick={false}
+        >
           <Menu.Target>
             <Button
               variant="subtle"
