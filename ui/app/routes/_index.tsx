@@ -3,15 +3,16 @@ import { Plural, Trans, useLingui } from "@lingui/react/macro";
 import {
   Alert,
   Anchor,
+  Badge,
   Box,
   Button,
   Center,
+  Checkbox,
   Collapse,
   Group,
   Loader,
   Menu,
   Stack,
-  Switch,
   Text,
   ThemeIcon,
   Title,
@@ -26,7 +27,7 @@ import {
   IconCalendarWeek,
   IconCheck,
   IconChevronDown,
-  IconHeart,
+  IconFilter,
   IconHeartFilled,
   IconMapPin,
   IconPaw,
@@ -42,11 +43,12 @@ import {
   getYear,
   setDate,
 } from "date-fns";
-import { groupBy, sortBy } from "lodash-es";
+import { groupBy, isEqual, sortBy } from "lodash-es";
 import { Fragment, Suspense, useMemo } from "react";
 import LikeButton from "~/components/LikeButton";
 import SimpleErrorBoundary from "~/components/SimpleErrorBoundary";
 import { LABELER_DID } from "~/config";
+import { Continent, getContinentForCountry } from "~/continents";
 import { useGetPreferences, usePutPreferences } from "~/endpoints";
 import { Con, useCons, useIsLoggedIn } from "~/hooks";
 import clientMetadata from "../../public/client-metadata.json";
@@ -309,6 +311,7 @@ const DEFAULT_SORT_DESC_OPTIONS = {
 
 interface TableViewOptions {
   showOnlyAttending: boolean;
+  showOnlyContinents?: Continent[];
   sortBy: SortBy;
   sortDesc: boolean;
 }
@@ -318,6 +321,8 @@ interface SortByStrings {
   asc: string;
   desc: string;
 }
+
+const ALL_CONTINENTS: Continent[] = ["AF", "AS", "EU", "NA", "OC", "SA", "XX"];
 
 function ConsList() {
   const cons = useCons();
@@ -330,10 +335,18 @@ function ConsList() {
     getInitialValueInEffect: false,
     defaultValue: {
       showOnlyAttending: false,
+      showOnlyContinents: ALL_CONTINENTS,
       sortBy: SortBy.Date,
       sortDesc: false,
     },
   });
+
+  const actuallyShowOnlyAttending = isLoggedIn && viewOptions.showOnlyAttending;
+  const actuallyShowOnlyContinents = viewOptions.showOnlyContinents ?? [];
+
+  const numFilters =
+    (actuallyShowOnlyAttending ? 1 : 0) +
+    (!isEqual(actuallyShowOnlyContinents, ALL_CONTINENTS) ? 1 : 0);
 
   const sortByStrings: Record<SortBy, SortByStrings> = {
     [SortBy.Date]: {
@@ -350,44 +363,120 @@ function ConsList() {
 
   const currentSortByStrings = sortByStrings[viewOptions.sortBy];
 
+  const continentCount = useMemo(() => {
+    const counts: Partial<Record<Continent, number>> = {};
+    for (const con of cons) {
+      const continent =
+        con.geocoded != null
+          ? getContinentForCountry(con.geocoded.country)
+          : "XX";
+      counts[continent] = (counts[continent] || 0) + 1;
+    }
+    return counts;
+  }, [cons]);
+
+  const continentList = [
+    ["NA", t`North America`],
+    ["EU", t`Europe`],
+    ["AS", t`Asia`],
+    ["SA", t`South America`],
+    ["OC", t`Oceania`],
+    ["AF", t`Africa`],
+    ["XX", t`Unknown`],
+  ] satisfies [Continent, string][];
+
   const filteredCons = cons.filter(
     (con) =>
-      !isLoggedIn ||
-      !viewOptions.showOnlyAttending ||
-      con.post.viewer?.like != null
+      // Attending filter
+      (!actuallyShowOnlyAttending || con.post.viewer?.like != null) &&
+      // Continents filter
+      actuallyShowOnlyContinents.includes(
+        con.geocoded != null
+          ? getContinentForCountry(con.geocoded.country)
+          : "XX"
+      )
   );
 
   return (
     <>
       <Group wrap="nowrap" my="xs" justify="space-between">
-        {isLoggedIn ? (
-          <Switch
-            size="sm"
-            ml="xs"
-            color="red"
-            thumbIcon={
-              viewOptions.showOnlyAttending ? (
-                <IconHeartFilled size={10} color="var(--switch-bg)" />
-              ) : (
-                <IconHeart size={10} color="var(--switch-bg)" />
-              )
-            }
-            checked={viewOptions.showOnlyAttending}
-            onChange={(e) => {
-              setViewOptions((vo) => ({
-                ...vo,
-                showOnlyAttending: e.target.checked,
-              }));
-            }}
-            label={
-              <Text span color="dimmed" size="sm" fw={500}>
-                <Trans>Show only cons I’m attending</Trans>
+        <Menu
+          position="bottom-start"
+          withArrow
+          withinPortal={false}
+          closeOnItemClick={false}
+        >
+          <Menu.Target>
+            <Button
+              variant="subtle"
+              c="dimmed"
+              color="dimmed"
+              size="xs"
+              style={{ zIndex: 4 }}
+              leftSection={<IconFilter size={14} />}
+              rightSection={<IconChevronDown size={14} />}
+            >
+              <Text span size="sm" fw={500}>
+                <Trans>Filters</Trans>
               </Text>
-            }
-          />
-        ) : (
-          <Box />
-        )}
+              {numFilters > 0 ? (
+                <Badge size="sm" ml="xs">
+                  {numFilters}
+                </Badge>
+              ) : null}
+            </Button>
+          </Menu.Target>
+
+          <Menu.Dropdown>
+            <Menu.Item>
+              <Checkbox
+                size="sm"
+                disabled={!isLoggedIn}
+                color="red"
+                icon={({ ...props }) => <IconHeartFilled {...props} />}
+                checked={actuallyShowOnlyAttending}
+                onChange={(e) => {
+                  setViewOptions((vo) => ({
+                    ...vo,
+                    showOnlyAttending: e.target.checked,
+                  }));
+                }}
+                label={<Trans>Show only cons I’m attending</Trans>}
+              />
+            </Menu.Item>
+            <Menu.Label>
+              <Trans>Continents</Trans>
+            </Menu.Label>
+            {sortBy(continentList, ([co]) => -(continentCount[co] ?? 0)).map(
+              ([code, name]) => (
+                <Checkbox
+                  key={code}
+                  px="sm"
+                  py="calc(var(--mantine-spacing-xs) / 1.5)"
+                  label={
+                    <>
+                      {name}{" "}
+                      <Text span size="xs" color="dimmed">
+                        {continentCount[code] ?? 0}
+                      </Text>
+                    </>
+                  }
+                  checked={actuallyShowOnlyContinents.includes(code)}
+                  onChange={(e) => {
+                    setViewOptions({
+                      ...viewOptions,
+                      showOnlyContinents: e.target.checked
+                        ? !actuallyShowOnlyContinents.includes(code)
+                          ? sortBy([...actuallyShowOnlyContinents, code])
+                          : actuallyShowOnlyContinents
+                        : actuallyShowOnlyContinents.filter((c) => c != code),
+                    });
+                  }}
+                />
+              )
+            )}
+          </Menu.Dropdown>
+        </Menu>
 
         <Menu position="bottom-end" withArrow withinPortal={false}>
           <Menu.Target>
@@ -395,6 +484,7 @@ function ConsList() {
               variant="subtle"
               size="xs"
               c="dimmed"
+              color="dimmed"
               style={{ zIndex: 4 }}
               leftSection={
                 viewOptions.sortDesc ? (
@@ -410,7 +500,6 @@ function ConsList() {
                 )
               }
               rightSection={<IconChevronDown size={14} />}
-              color="var(--mantine-color-text)"
             >
               <Text span size="sm" fw={500}>
                 {currentSortByStrings.name}
@@ -498,7 +587,7 @@ function ConsList() {
           <ConsByDate
             cons={filteredCons}
             sortDesc={viewOptions.sortDesc}
-            hideEmptyGroups={viewOptions.showOnlyAttending}
+            hideEmptyGroups={actuallyShowOnlyAttending}
           />
         ) : null}
       </Box>
