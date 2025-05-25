@@ -32,6 +32,14 @@ struct Event {
 
 #[derive(serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
+struct Geocoded {
+    address: String,
+    lat_lng: String,
+    country: String,
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct LabelerEventInfo {
     date: String,
     location: String,
@@ -41,7 +49,7 @@ struct LabelerEventInfo {
         skip_serializing_if = "Option::is_none",
         with = "::serde_with::rust::double_option"
     )]
-    lat_lng: Option<Option<String>>,
+    geocoded: Option<Option<Geocoded>>,
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -457,7 +465,7 @@ async fn sync_labels(
 
         let (rkey, info) = old_events.get(id).unwrap();
 
-        let lat_lng = info.as_ref().and_then(|info| info.lat_lng.clone());
+        let geocoded = info.as_ref().and_then(|info| info.geocoded.clone());
 
         Ok::<_, anyhow::Error>((
             *id,
@@ -471,8 +479,8 @@ async fn sync_labels(
                     ),
                     location: event.location.clone(),
                     url: event.url.clone(),
-                    lat_lng: if let Some(lat_lng) = lat_lng {
-                        Some(lat_lng)
+                    geocoded: if let Some(geocoded) = geocoded {
+                        Some(geocoded)
                     } else {
                         if let Some(google_maps_client) = google_maps_client.as_ref() {
                             Some(
@@ -485,7 +493,19 @@ async fn sync_labels(
                                     .first()
                                     .map(|r| {
                                         let google_maps::LatLng { lat, lng } = r.geometry.location;
-                                        format!("{lat},{lng}")
+                                        Geocoded {
+                                            address: r.formatted_address,
+                                            country: r
+                                                .address_components
+                                                .into_iter()
+                                                .find(|c| {
+                                                    c.types
+                                                        .contains(&google_maps::PlaceType::Country)
+                                                })
+                                                .map(|c| c.short_name)
+                                                .unwrap_or_else(|| "XX".to_string()),
+                                            lat_lng: format!("{lat},{lng}"),
+                                        }
                                     }),
                             )
                         } else {
