@@ -17,6 +17,7 @@ struct Config {
     postgres_url: String,
     keypair_path: String,
     label_sync_delay_secs: u64,
+    google_maps_api_key: String,
 }
 
 #[derive(Debug)]
@@ -34,6 +35,16 @@ struct LabelerEventInfo {
     date: String,
     location: String,
     url: String,
+    #[serde(default, deserialize_with = "deserialize_some")]
+    lat_lng: Option<Option<String>>,
+}
+
+fn deserialize_some<'de, T, D>(deserializer: D) -> Result<Option<T>, D::Error>
+where
+    T: serde::de::Deserialize<'de>,
+    D: serde::de::Deserializer<'de>,
+{
+    serde::de::Deserialize::deserialize(deserializer).map(Some)
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -137,6 +148,7 @@ async fn sync_labels(
             atrium_xrpc_client::reqwest::ReqwestClient,
         >,
     >,
+    google_maps_client: Option<&google_maps::Client>,
     events_state: std::sync::Arc<tokio::sync::Mutex<EventsState>>,
 ) -> Result<(), anyhow::Error> {
     // Lock the entire events state while labels are syncing.
@@ -285,7 +297,9 @@ async fn sync_labels(
                                         .ok()
                                         .flatten()
                                         .cloned()
-                                        .map(ipld_core::serde::from_ipld::<LabelerEventInfo>),
+                                        .and_then(|v| {
+                                            ipld_core::serde::from_ipld::<LabelerEventInfo>(v).ok()
+                                        }),
                                 ),
                             ))
                         })
@@ -446,9 +460,6 @@ async fn sync_labels(
 
         let (rkey, info) = old_events.get(id).unwrap();
 
-        // Do something with info?
-        let _ = info;
-
         Ok::<_, anyhow::Error>((
             *id,
             (
@@ -461,6 +472,27 @@ async fn sync_labels(
                     ),
                     location: event.location.clone(),
                     url: event.url.clone(),
+                    lat_lng: if let Some(info) = info {
+                        info.lat_lng.clone()
+                    } else {
+                        if let Some(google_maps_client) = google_maps_client.as_ref() {
+                            Some(
+                                google_maps_client
+                                    .geocoding()
+                                    .with_address(&event.location)
+                                    .execute()
+                                    .await?
+                                    .results
+                                    .first()
+                                    .map(|r| {
+                                        let google_maps::LatLng { lat, lng } = r.geometry.location;
+                                        format!("{lat},{lng}")
+                                    }),
+                            )
+                        } else {
+                            None
+                        }
+                    },
                 },
             ),
         ))
@@ -818,6 +850,7 @@ async fn main() -> Result<(), anyhow::Error> {
         )?
         .set_default("label_sync_delay_secs", 60 * 60)?
         .set_default("ingester_bind", "127.0.0.1:3002")?
+        .set_default("google_maps_api_key", "")?
         .build()?
         .try_deserialize()?;
 
@@ -847,6 +880,12 @@ async fn main() -> Result<(), anyhow::Error> {
     let metrics_handle =
         metrics_exporter_prometheus::PrometheusBuilder::new().install_recorder()?;
 
+    let google_maps_client = if !config.google_maps_api_key.is_empty() {
+        Some(google_maps::Client::try_new(config.google_maps_api_key)?)
+    } else {
+        None
+    };
+
     log::info!("syncing initial labels");
 
     sync_labels(
@@ -854,6 +893,7 @@ async fn main() -> Result<(), anyhow::Error> {
         &config.ui_endpoint,
         &did,
         &agent,
+        google_maps_client.as_ref(),
         events_state.clone(),
     )
     .await?;
@@ -878,6 +918,7 @@ async fn main() -> Result<(), anyhow::Error> {
                     &config.ui_endpoint,
                     &did,
                     &agent,
+                    google_maps_client.as_ref(),
                     events_state.clone(),
                 )
                 .await
