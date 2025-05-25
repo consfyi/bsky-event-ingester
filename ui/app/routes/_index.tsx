@@ -310,10 +310,18 @@ const DEFAULT_SORT_DESC_OPTIONS = {
 };
 
 interface TableViewOptions {
-  showOnlyAttending: boolean;
-  showOnlyContinents?: Continent[];
-  sortBy: SortBy;
-  sortDesc: boolean;
+  filter: FilterOptions;
+  sort: SortOptions;
+}
+
+interface FilterOptions {
+  attending: boolean;
+  continents: Continent[];
+}
+
+interface SortOptions {
+  by: SortBy;
+  desc: boolean;
 }
 
 interface SortByStrings {
@@ -322,7 +330,15 @@ interface SortByStrings {
   desc: string;
 }
 
-const ALL_CONTINENTS: Continent[] = ["AF", "AS", "EU", "NA", "OC", "SA", "XX"];
+const DEFAULT_FILTER: FilterOptions = {
+  attending: false,
+  continents: ["AF", "AS", "EU", "NA", "OC", "SA", "XX"],
+};
+
+const DEFAULT_SORT: SortOptions = {
+  by: SortBy.Date,
+  desc: false,
+};
 
 function ConsList() {
   const cons = useCons();
@@ -331,22 +347,21 @@ function ConsList() {
 
   const isLoggedIn = useIsLoggedIn();
   const [viewOptions, setViewOptions] = useLocalStorage<TableViewOptions>({
-    key: "fbl:_index:viewOptions",
+    key: "fbl:_index:viewOptions3",
     getInitialValueInEffect: false,
     defaultValue: {
-      showOnlyAttending: false,
-      showOnlyContinents: ALL_CONTINENTS,
-      sortBy: SortBy.Date,
-      sortDesc: false,
+      filter: DEFAULT_FILTER,
+      sort: DEFAULT_SORT,
     },
   });
 
-  const actuallyShowOnlyAttending = isLoggedIn && viewOptions.showOnlyAttending;
-  const actuallyShowOnlyContinents = viewOptions.showOnlyContinents ?? [];
+  const actuallyShowOnlyAttending = isLoggedIn && viewOptions.filter.attending;
 
   const numFilters =
     (actuallyShowOnlyAttending ? 1 : 0) +
-    (!isEqual(actuallyShowOnlyContinents, ALL_CONTINENTS) ? 1 : 0);
+    (!isEqual(viewOptions.filter.continents, DEFAULT_FILTER.continents)
+      ? 1
+      : 0);
 
   const sortByStrings: Record<SortBy, SortByStrings> = {
     [SortBy.Date]: {
@@ -361,7 +376,7 @@ function ConsList() {
     },
   };
 
-  const currentSortByStrings = sortByStrings[viewOptions.sortBy];
+  const currentSortByStrings = sortByStrings[viewOptions.sort.by];
 
   const continentCount = useMemo(() => {
     const counts: Partial<Record<Continent, number>> = {};
@@ -390,7 +405,7 @@ function ConsList() {
       // Attending filter
       (!actuallyShowOnlyAttending || con.post.viewer?.like != null) &&
       // Continents filter
-      actuallyShowOnlyContinents.includes(
+      viewOptions.filter.continents.includes(
         con.geocoded != null
           ? getContinentForCountry(con.geocoded.country)
           : "XX"
@@ -438,7 +453,7 @@ function ConsList() {
               onChange={(e) => {
                 setViewOptions((vo) => ({
                   ...vo,
-                  showOnlyAttending: e.target.checked,
+                  filter: { ...vo.filter, attending: e.target.checked },
                 }));
               }}
               label={<Trans>Show only cons I’m attending</Trans>}
@@ -460,15 +475,20 @@ function ConsList() {
                       </Text>
                     </>
                   }
-                  checked={actuallyShowOnlyContinents.includes(code)}
+                  checked={viewOptions.filter.continents.includes(code)}
                   onChange={(e) => {
                     setViewOptions({
                       ...viewOptions,
-                      showOnlyContinents: e.target.checked
-                        ? !actuallyShowOnlyContinents.includes(code)
-                          ? sortBy([...actuallyShowOnlyContinents, code])
-                          : actuallyShowOnlyContinents
-                        : actuallyShowOnlyContinents.filter((c) => c != code),
+                      filter: {
+                        ...viewOptions.filter,
+                        continents: e.target.checked
+                          ? !viewOptions.filter.continents.includes(code)
+                            ? sortBy([...viewOptions.filter.continents, code])
+                            : viewOptions.filter.continents
+                          : viewOptions.filter.continents.filter(
+                              (c) => c != code
+                            ),
+                      },
                     });
                   }}
                 />
@@ -486,7 +506,7 @@ function ConsList() {
               color="dimmed"
               style={{ zIndex: 4 }}
               leftSection={
-                viewOptions.sortDesc ? (
+                viewOptions.sort.desc ? (
                   <IconSortDescending
                     title={currentSortByStrings.desc}
                     size={14}
@@ -518,13 +538,15 @@ function ConsList() {
                   onClick={() => {
                     setViewOptions((vo) => ({
                       ...vo,
-                      sortBy,
-                      sortDesc: DEFAULT_SORT_DESC_OPTIONS[sortBy],
+                      sort: {
+                        by: sortBy,
+                        desc: DEFAULT_SORT_DESC_OPTIONS[sortBy],
+                      },
                     }));
                   }}
                   key={k}
                   leftSection={
-                    viewOptions.sortBy == sortBy ? (
+                    viewOptions.sort.by == sortBy ? (
                       <IconCheck size={14} />
                     ) : (
                       <EmptyIcon size={14} />
@@ -540,11 +562,14 @@ function ConsList() {
             </Menu.Label>
             <Menu.Item
               onClick={() => {
-                setViewOptions((vo) => ({ ...vo, sortDesc: false }));
+                setViewOptions((vo) => ({
+                  ...vo,
+                  sort: { ...vo.sort, desc: false },
+                }));
               }}
               leftSection={
                 <>
-                  {!viewOptions.sortDesc ? (
+                  {!viewOptions.sort.desc ? (
                     <IconCheck size={14} style={{ marginRight: "6px" }} />
                   ) : (
                     <EmptyIcon size={14} style={{ marginRight: "6px" }} />
@@ -553,15 +578,18 @@ function ConsList() {
                 </>
               }
             >
-              {sortByStrings[viewOptions.sortBy].asc}
+              {sortByStrings[viewOptions.sort.by].asc}
             </Menu.Item>
             <Menu.Item
               onClick={() => {
-                setViewOptions((vo) => ({ ...vo, sortDesc: true }));
+                setViewOptions((vo) => ({
+                  ...vo,
+                  sort: { ...vo.sort, desc: true },
+                }));
               }}
               leftSection={
                 <>
-                  {viewOptions.sortDesc ? (
+                  {viewOptions.sort.desc ? (
                     <IconCheck size={14} style={{ marginRight: "6px" }} />
                   ) : (
                     <EmptyIcon size={14} style={{ marginRight: "6px" }} />
@@ -570,22 +598,22 @@ function ConsList() {
                 </>
               }
             >
-              {sortByStrings[viewOptions.sortBy].desc}
+              {sortByStrings[viewOptions.sort.by].desc}
             </Menu.Item>
           </Menu.Dropdown>
         </Menu>
       </Group>
 
       <Box>
-        {viewOptions.sortBy == SortBy.Attendees ? (
+        {viewOptions.sort.by == SortBy.Attendees ? (
           <ConsByAttendees
             cons={filteredCons}
-            sortDesc={viewOptions.sortDesc}
+            sortDesc={viewOptions.sort.desc}
           />
-        ) : viewOptions.sortBy == SortBy.Date ? (
+        ) : viewOptions.sort.by == SortBy.Date ? (
           <ConsByDate
             cons={filteredCons}
-            sortDesc={viewOptions.sortDesc}
+            sortDesc={viewOptions.sort.desc}
             hideEmptyGroups={actuallyShowOnlyAttending}
           />
         ) : null}
