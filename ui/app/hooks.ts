@@ -78,9 +78,7 @@ function useConPosts() {
 }
 
 export interface Geocoded {
-  address: string;
   country: string;
-  latLng: [number, number];
 }
 
 export interface Con {
@@ -106,9 +104,7 @@ export function useCons() {
           date: string;
           location: string;
           geocoded?: {
-            address: string;
             country: string;
-            latLng: string;
           } | null;
           url: string;
         };
@@ -133,11 +129,7 @@ export function useCons() {
           geocoded:
             fullDef.fbl_eventInfo.geocoded != null
               ? {
-                  address: fullDef.fbl_eventInfo.geocoded.address,
                   country: fullDef.fbl_eventInfo.geocoded.country,
-                  latLng: fullDef.fbl_eventInfo.geocoded.latLng
-                    .split(/,/)
-                    .map((v) => parseFloat(v)) as [number, number],
                 }
               : null,
           post: conPosts[fullDef.fbl_postRkey],

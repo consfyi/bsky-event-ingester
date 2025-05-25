@@ -33,8 +33,6 @@ struct Event {
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct Geocoded {
-    address: String,
-    lat_lng: String,
     country: String,
 }
 
@@ -492,21 +490,15 @@ async fn sync_labels(
                                     .results
                                     .into_iter()
                                     .next()
-                                    .map(|r| {
-                                        let google_maps::LatLng { lat, lng } = r.geometry.location;
-                                        Geocoded {
-                                            address: r.formatted_address,
-                                            country: r
-                                                .address_components
-                                                .into_iter()
-                                                .find(|c| {
-                                                    c.types
-                                                        .contains(&google_maps::PlaceType::Country)
-                                                })
-                                                .map(|c| c.short_name)
-                                                .unwrap_or_else(|| "XX".to_string()),
-                                            lat_lng: format!("{lat},{lng}"),
-                                        }
+                                    .map(|r| Geocoded {
+                                        country: r
+                                            .address_components
+                                            .into_iter()
+                                            .find(|c| {
+                                                c.types.contains(&google_maps::PlaceType::Country)
+                                            })
+                                            .map(|c| c.short_name)
+                                            .unwrap_or_else(|| "XX".to_string()),
                                     }),
                             )
                         } else {
