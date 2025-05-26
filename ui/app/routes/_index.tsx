@@ -18,6 +18,7 @@ import {
   Text,
   ThemeIcon,
   Title,
+  Tooltip,
   useMantineTheme,
 } from "@mantine/core";
 import { useLocalStorage, useMediaQuery } from "@mantine/hooks";
@@ -48,6 +49,7 @@ import {
 } from "date-fns";
 import { groupBy, isEqual, sortBy } from "lodash-es";
 import { Fragment, Suspense, useEffect, useMemo, useState } from "react";
+import Avatar from "~/components/Avatar";
 import Flag from "~/components/Flag";
 import LikeButton from "~/components/LikeButton";
 import SimpleErrorBoundary from "~/components/SimpleErrorBoundary";
@@ -62,6 +64,9 @@ import {
   useIsLoggedIn,
 } from "~/hooks";
 import clientMetadata from "../../public/client-metadata.json";
+import { plural } from "@lingui/core/macro";
+
+const MAX_AVATARS_IN_STACK = 3;
 
 function* monthRange(start: Date, end: Date): Generator<Date> {
   while (start < end) {
@@ -99,6 +104,15 @@ function ConRow({
         day: "numeric",
         month: "short",
         year: "numeric",
+      }),
+    [i18n]
+  );
+
+  const listFormat = useMemo(
+    () =>
+      new Intl.ListFormat(i18n.locales, {
+        type: "conjunction",
+        style: "long",
       }),
     [i18n]
   );
@@ -152,16 +166,46 @@ function ConRow({
         </Group>
         <Text size="sm" truncate>
           <IconUsers title={t`Attendees`} size={12} />{" "}
+          <Trans context="attendee count">{[likeCount][0]}</Trans>{" "}
           {follows != null && follows.length > 0 ? (
-            <Trans context="attendee count, with followed">
-              {[likeCount][0]}{" "}
-              <Text span size="xs">
-                {follows.length} followed
-              </Text>
-            </Trans>
-          ) : (
-            <Trans context="attendee count">{[likeCount][0]}</Trans>
-          )}{" "}
+            <Tooltip
+              label={listFormat.format(
+                follows
+                  .slice(0, MAX_AVATARS_IN_STACK)
+                  .map((follow) => follow.displayName ?? follow.handle ?? "")
+                  .concat(
+                    follows.length > MAX_AVATARS_IN_STACK
+                      ? [
+                          plural(follows.length - MAX_AVATARS_IN_STACK, {
+                            one: "# other",
+                            other: "# others",
+                          }),
+                        ]
+                      : []
+                  )
+              )}
+            >
+              <Avatar.Group
+                display="inline-flex"
+                spacing="xs"
+                style={{ verticalAlign: "bottom" }}
+              >
+                {follows.slice(0, MAX_AVATARS_IN_STACK).map((follow) => (
+                  <Avatar
+                    key={follow.did}
+                    src={follow.avatar}
+                    alt={`@${follow.handle}`}
+                    size={22}
+                  />
+                ))}
+                {follows.length > MAX_AVATARS_IN_STACK ? (
+                  <Avatar size={22}>
+                    +{follows.length - MAX_AVATARS_IN_STACK}
+                  </Avatar>
+                ) : null}
+              </Avatar.Group>
+            </Tooltip>
+          ) : null}{" "}
           •{" "}
           {showMonthInIcon ? (
             <>
