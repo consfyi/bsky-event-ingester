@@ -51,6 +51,8 @@ async fn subscribe_labels(
         atrium_api::com::atproto::label::subscribe_labels::ParametersData,
     >,
 ) -> axum::response::Response {
+    notify_recv.mark_changed();
+
     ws.on_upgrade(move |socket: axum::extract::ws::WebSocket| async move {
         log::info!("got websocket subscriber, cursor = {:?}", params.cursor);
         metrics::gauge!("num_subscriptions").increment(1);
@@ -167,11 +169,8 @@ async fn main() -> Result<(), anyhow::Error> {
                     atrium_api::com::atproto::label::subscribe_labels::NSID
                 ),
                 axum::routing::get({
-                    let mut notify_recv = notify_recv.clone();
-                    notify_recv.mark_changed();
-
+                    let notify_recv = notify_recv.clone();
                     let db_pool = db_pool.clone();
-
                     |ws, query| subscribe_labels(notify_recv, db_pool, ws, query)
                 }),
             ),
