@@ -545,38 +545,41 @@ function ConsList() {
               {sortBy(
                 DEFAULT_FILTER.continents,
                 (code) => -(continentCount[code] ?? 0)
-              ).map((code) => (
-                <Menu.Item
-                  key={code}
-                  leftSection={
-                    viewOptions.filter.continents.includes(code) ? (
-                      <IconCheck size={14} />
-                    ) : (
-                      <EmptyIcon size={14} />
-                    )
-                  }
-                  onClick={() => {
-                    setViewOptions({
-                      ...viewOptions,
-                      filter: {
-                        ...viewOptions.filter,
-                        continents: !viewOptions.filter.continents.includes(
-                          code
-                        )
-                          ? sortBy([...viewOptions.filter.continents, code])
-                          : viewOptions.filter.continents.filter(
-                              (c) => c != code
-                            ),
-                      },
-                    });
-                  }}
-                >
-                  {continentStrings[code]}{" "}
-                  <Text span size="xs" color="dimmed">
-                    {continentCount[code] ?? 0}
-                  </Text>
-                </Menu.Item>
-              ))}
+              ).map((code) => {
+                const selected = viewOptions.filter.continents.includes(code);
+
+                return (
+                  <Menu.Item
+                    aria-selected={selected}
+                    key={code}
+                    leftSection={
+                      selected ? (
+                        <IconCheck size={14} />
+                      ) : (
+                        <EmptyIcon size={14} />
+                      )
+                    }
+                    onClick={() => {
+                      setViewOptions({
+                        ...viewOptions,
+                        filter: {
+                          ...viewOptions.filter,
+                          continents: !selected
+                            ? sortBy([...viewOptions.filter.continents, code])
+                            : viewOptions.filter.continents.filter(
+                                (c) => c != code
+                              ),
+                        },
+                      });
+                    }}
+                  >
+                    {continentStrings[code]}{" "}
+                    <Text span size="xs" color="dimmed">
+                      {continentCount[code] ?? 0}
+                    </Text>
+                  </Menu.Item>
+                );
+              })}
             </Menu.Dropdown>
           </Menu>
           <Menu position="bottom-start" withArrow closeOnItemClick={false}>
@@ -703,9 +706,11 @@ function ConsList() {
             </Menu.Label>
             {Object.keys(SortBy).map((k) => {
               const sortBy = SortBy[k as keyof typeof SortBy];
+              const selected = viewOptions.sort.by == sortBy;
 
               return (
                 <Menu.Item
+                  aria-selected={selected}
                   onClick={() => {
                     setViewOptions((vo) => ({
                       ...vo,
@@ -717,11 +722,7 @@ function ConsList() {
                   }}
                   key={k}
                   leftSection={
-                    viewOptions.sort.by == sortBy ? (
-                      <IconCheck size={14} />
-                    ) : (
-                      <EmptyIcon size={14} />
-                    )
+                    selected ? <IconCheck size={14} /> : <EmptyIcon size={14} />
                   }
                 >
                   {sortByStrings[sortBy].name}
@@ -732,6 +733,7 @@ function ConsList() {
               <Trans>Order</Trans>
             </Menu.Label>
             <Menu.Item
+              aria-selected={!viewOptions.sort.desc}
               onClick={() => {
                 setViewOptions((vo) => ({
                   ...vo,
@@ -752,6 +754,7 @@ function ConsList() {
               {sortByStrings[viewOptions.sort.by].asc}
             </Menu.Item>
             <Menu.Item
+              aria-selected={viewOptions.sort.desc}
               onClick={() => {
                 setViewOptions((vo) => ({
                   ...vo,
