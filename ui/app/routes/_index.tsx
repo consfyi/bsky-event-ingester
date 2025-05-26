@@ -320,17 +320,35 @@ function ConsByDate({
 function ConsByAttendees({
   cons,
   sortDesc,
-  followed,
 }: {
   cons: Con[];
   sortDesc: boolean;
-  followed: boolean;
+}) {
+  const sortedCons = useMemo(() => {
+    const sorted = sortBy(cons, (con) => con.post.likeCount);
+    if (sortDesc) {
+      sorted.reverse();
+    }
+    return sorted;
+  }, [cons, sortDesc]);
+
+  return sortedCons.map((con) => {
+    return <ConRow key={con.identifier} con={con} showMonthInIcon={true} />;
+  });
+}
+
+function ConsByFollowed({
+  cons,
+  sortDesc,
+}: {
+  cons: Con[];
+  sortDesc: boolean;
 }) {
   const followedConAttendees = useFollowedConAttendees();
 
   const sortedCons = useMemo(() => {
     const sorted = sortBy(cons, (con) =>
-      !followed || followedConAttendees == null
+      followedConAttendees == null
         ? con.post.likeCount
         : (followedConAttendees[con.identifier] ?? []).length
     );
@@ -338,7 +356,7 @@ function ConsByAttendees({
       sorted.reverse();
     }
     return sorted;
-  }, [cons, followedConAttendees, followed, sortDesc]);
+  }, [cons, followedConAttendees, sortDesc]);
 
   return sortedCons.map((con) => {
     return <ConRow key={con.identifier} con={con} showMonthInIcon={true} />;
@@ -1028,12 +1046,15 @@ function ConsList() {
         }
       >
         {filteredCons.length > 0 ? (
-          viewOptions.sort.by == SortBy.Attendees ||
-          viewOptions.sort.by == SortBy.Followed ? (
+          viewOptions.sort.by == SortBy.Attendees ? (
             <ConsByAttendees
               cons={filteredCons}
               sortDesc={viewOptions.sort.desc}
-              followed={viewOptions.sort.by == SortBy.Followed}
+            />
+          ) : viewOptions.sort.by == SortBy.Followed ? (
+            <ConsByFollowed
+              cons={filteredCons}
+              sortDesc={viewOptions.sort.desc}
             />
           ) : viewOptions.sort.by == SortBy.Date ? (
             <ConsByDate
