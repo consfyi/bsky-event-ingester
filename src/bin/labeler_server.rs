@@ -44,7 +44,8 @@ fn encode_message(seq: i64, raw: &[u8]) -> Vec<u8> {
 }
 
 async fn subscribe_labels(
-    axum::extract::State(app_state): axum::extract::State<AppState>,
+    mut notify_recv: tokio::sync::watch::Receiver<()>,
+    db_pool: sqlx::PgPool,
     ws: axum::extract::ws::WebSocketUpgrade,
     axum_extra::extract::Query(params): axum_extra::extract::Query<
         atrium_api::com::atproto::label::subscribe_labels::ParametersData,
@@ -56,15 +57,12 @@ async fn subscribe_labels(
 
         let (mut sink, mut stream) = socket.split();
 
-        let mut notify_recv = app_state.notify_recv.clone();
-        notify_recv.mark_changed();
-
         match async {
             let mut seq = {
                 if let Some(cursor) = params.cursor {
                     cursor
                 } else {
-                    let mut db_conn = app_state.db_pool.acquire().await?;
+                    let mut db_conn = db_pool.acquire().await?;
                     sqlx::query!(
                         r#"
                         SELECT COALESCE((SELECT MAX(seq) FROM labels), 0) AS "seq!"
@@ -86,7 +84,7 @@ async fn subscribe_labels(
                     }
                     msg = notify_recv.changed() => {
                         let _ = msg?;
-                        let mut db_conn = app_state.db_pool.acquire().await?;
+                        let mut db_conn = db_pool.acquire().await?;
 
                         let mut rows = sqlx::query!(
                             r#"
@@ -125,12 +123,6 @@ async fn subscribe_labels(
         log::info!("websocket subscriber disconnected");
         metrics::gauge!("num_subscriptions").decrement(1);
     })
-}
-
-#[derive(Clone)]
-struct AppState {
-    db_pool: sqlx::PgPool,
-    notify_recv: tokio::sync::watch::Receiver<()>,
 }
 
 #[tokio::main]
@@ -174,18 +166,21 @@ async fn main() -> Result<(), anyhow::Error> {
                     "/{}",
                     atrium_api::com::atproto::label::subscribe_labels::NSID
                 ),
-                axum::routing::get(subscribe_labels),
+                axum::routing::get({
+                    let mut notify_recv = notify_recv.clone();
+                    notify_recv.mark_changed();
+
+                    let db_pool = db_pool.clone();
+
+                    |ws, query| subscribe_labels(notify_recv, db_pool, ws, query)
+                }),
             ),
         )
         .route(
             "/metrics",
             axum::routing::get(|| async move { metrics_handle.render() }),
         )
-        .route("/", axum::routing::get(|| async { ">:3" }))
-        .with_state(AppState {
-            db_pool: db_pool.clone(),
-            notify_recv,
-        });
+        .route("/", axum::routing::get(|| async { ">:3" }));
 
     tokio::try_join!(
         async {
