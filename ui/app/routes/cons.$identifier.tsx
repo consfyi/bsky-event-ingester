@@ -315,7 +315,7 @@ export default function Index() {
     (followedConAttendees != null &&
     followedConAttendees[con.identifier] != null
       ? followedConAttendees[con.identifier].length
-      : con.post.likeCount ?? 0) + (isAttending ? 1 : 0);
+      : 0) + (isAttending ? 1 : 0);
 
   const unknownLikeCount = likeCount - knownLikeCount;
 
@@ -349,27 +349,35 @@ export default function Index() {
             <Suspense
               fallback={
                 <>
-                  <SimpleGrid cols={{ base: 1, sm: 2, lg: 5 }} mt="xs">
-                    {range(Math.max(knownLikeCount, 1)).map((i) => (
-                      <ActorSkeleton key={i} />
-                    ))}
-                  </SimpleGrid>
-                  <Divider
-                    label={
-                      <Plural
-                        value={[unknownLikeCount][0]}
-                        one="# person you don’t follow"
-                        other="# people you don’t follow"
+                  {knownLikeCount > 0 || unknownLikeCount == 0 ? (
+                    <SimpleGrid cols={{ base: 1, sm: 2, lg: 5 }} mt="xs">
+                      {range(knownLikeCount > 0 ? knownLikeCount : 1).map(
+                        (i) => (
+                          <ActorSkeleton key={i} />
+                        )
+                      )}
+                    </SimpleGrid>
+                  ) : null}
+                  {unknownLikeCount > 0 ? (
+                    <>
+                      <Divider
+                        label={
+                          <Plural
+                            value={[unknownLikeCount][0]}
+                            one="# person you don’t follow"
+                            other="# people you don’t follow"
+                          />
+                        }
+                        labelPosition="left"
+                        mt="xs"
                       />
-                    }
-                    labelPosition="left"
-                    mt="xs"
-                  />
-                  <SimpleGrid cols={{ base: 1, sm: 2, lg: 5 }} mt="xs">
-                    {range(Math.max(unknownLikeCount, 1)).map((i) => (
-                      <ActorSkeleton key={i} />
-                    ))}
-                  </SimpleGrid>
+                      <SimpleGrid cols={{ base: 1, sm: 2, lg: 5 }} mt="xs">
+                        {range(unknownLikeCount).map((i) => (
+                          <ActorSkeleton key={i} />
+                        ))}
+                      </SimpleGrid>
+                    </>
+                  ) : null}
                 </>
               }
             >
