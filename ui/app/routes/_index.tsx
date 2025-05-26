@@ -152,7 +152,7 @@ function ConRow({
         </Group>
         <Text size="sm" truncate>
           <IconUsers title={t`Attendees`} size={12} />{" "}
-          {follows != null ? (
+          {follows != null && follows.length > 0 ? (
             <Trans context="attendee count, with followed">
               {[likeCount][0]}{" "}
               <Text span size="xs">
