@@ -44,6 +44,7 @@ import {
 } from "date-fns";
 import { groupBy, isEqual, sortBy } from "lodash-es";
 import { Fragment, Suspense, useMemo } from "react";
+import Flag from "~/components/Flag";
 import LikeButton from "~/components/LikeButton";
 import SimpleErrorBoundary from "~/components/SimpleErrorBoundary";
 import { LABELER_DID } from "~/config";
@@ -179,7 +180,16 @@ function ConRow({
             c="var(--mantine-color-text)"
           >
             {con.location}
-          </Anchor>
+          </Anchor>{" "}
+          {con.geocoded != null ? (
+            <Flag
+              country={con.geocoded.country}
+              display="inline"
+              h={8}
+              w="auto"
+              ml={2}
+            />
+          ) : null}
         </Text>
       </Box>
     </Group>

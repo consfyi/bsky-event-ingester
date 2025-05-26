@@ -25,6 +25,7 @@ import { differenceInDays } from "date-fns";
 import { range, sortBy } from "lodash-es";
 import { Suspense, useEffect, useMemo } from "react";
 import Avatar from "~/components/Avatar";
+import Flag from "~/components/Flag";
 import LikeButton from "~/components/LikeButton";
 import SimpleErrorBoundary from "~/components/SimpleErrorBoundary";
 import { LABELER_DID } from "~/config";
@@ -163,7 +164,16 @@ function Header({ con }: { con: Con }) {
               c="var(--mantine-color-text)"
             >
               {con.location}
-            </Anchor>
+            </Anchor>{" "}
+            {con.geocoded != null ? (
+              <Flag
+                country={con.geocoded.country}
+                display="inline"
+                h={8}
+                w="auto"
+                ml={2}
+              />
+            ) : null}
           </Text>
         </Group>
 
