@@ -6,7 +6,10 @@ import {
   Box,
   Button,
   Center,
+  Checkbox,
   Collapse,
+  Divider,
+  Drawer,
   Group,
   Loader,
   Menu,
@@ -15,8 +18,9 @@ import {
   Text,
   ThemeIcon,
   Title,
+  useMantineTheme,
 } from "@mantine/core";
-import { useLocalStorage } from "@mantine/hooks";
+import { useLocalStorage, useMediaQuery } from "@mantine/hooks";
 import type { MetaFunction } from "@remix-run/node";
 import { Link } from "@remix-run/react";
 import {
@@ -43,7 +47,7 @@ import {
   setDate,
 } from "date-fns";
 import { groupBy, isEqual, sortBy } from "lodash-es";
-import { Fragment, Suspense, useMemo } from "react";
+import { Fragment, Suspense, useMemo, useState } from "react";
 import Flag from "~/components/Flag";
 import LikeButton from "~/components/LikeButton";
 import SimpleErrorBoundary from "~/components/SimpleErrorBoundary";
@@ -367,6 +371,15 @@ function ConsList() {
     },
   });
 
+  const [continentsMenuOpen, setContinentsMenuOpen] = useState(false);
+  const [durationMenuOpen, setDurationMenuOpen] = useState(false);
+  const [sortMenuOpen, setSortMenuOpen] = useState(false);
+
+  const theme = useMantineTheme();
+  const isLg = useMediaQuery(`(min-width: ${theme.breakpoints.lg})`, false, {
+    getInitialValueInEffect: false,
+  });
+
   const actuallyShowOnlyAttending = isLoggedIn && viewOptions.filter.attending;
 
   const sortByStrings: Record<SortBy, SortByStrings> = {
@@ -395,6 +408,12 @@ function ConsList() {
     }
     return counts;
   }, [cons]);
+
+  const sortedContinents = useMemo(
+    () =>
+      sortBy(DEFAULT_FILTER.continents, (code) => -(continentCount[code] ?? 0)),
+    [continentCount]
+  );
 
   const continentStrings: Record<Continent, string> = {
     NA: t`North America`,
@@ -485,7 +504,18 @@ function ConsList() {
               </Text>
             </Button>
           ) : null}
-          <Menu position="bottom-start" withArrow closeOnItemClick={false}>
+          <Menu
+            position="bottom-start"
+            withArrow
+            closeOnItemClick={false}
+            opened={continentsMenuOpen}
+            onChange={(v) => {
+              if (!v && !isLg) {
+                return;
+              }
+              setContinentsMenuOpen(v);
+            }}
+          >
             <Menu.Target>
               <Button
                 radius="lg"
@@ -519,7 +549,7 @@ function ConsList() {
                 </Text>
               </Button>
             </Menu.Target>
-            <Menu.Dropdown>
+            <Menu.Dropdown visibleFrom="lg">
               <Menu.Item
                 leftSection={
                   viewOptions.filter.continents.length > 0 ? (
@@ -552,10 +582,7 @@ function ConsList() {
                 />
               </Menu.Item>
               <Menu.Divider />
-              {sortBy(
-                DEFAULT_FILTER.continents,
-                (code) => -(continentCount[code] ?? 0)
-              ).map((code) => {
+              {sortedContinents.map((code) => {
                 const selected = viewOptions.filter.continents.includes(code);
 
                 return (
@@ -584,7 +611,7 @@ function ConsList() {
                     }}
                   >
                     {continentStrings[code]}{" "}
-                    <Text span size="xs" color="dimmed">
+                    <Text span size="xs" c="dimmed">
                       {continentCount[code] ?? 0}
                     </Text>
                   </Menu.Item>
@@ -592,7 +619,18 @@ function ConsList() {
               })}
             </Menu.Dropdown>
           </Menu>
-          <Menu position="bottom-start" withArrow closeOnItemClick={false}>
+          <Menu
+            position="bottom-start"
+            withArrow
+            closeOnItemClick={false}
+            opened={durationMenuOpen}
+            onChange={(v) => {
+              if (!v && !isLg) {
+                return;
+              }
+              setDurationMenuOpen(v);
+            }}
+          >
             <Menu.Target>
               <Button
                 radius="lg"
@@ -646,7 +684,7 @@ function ConsList() {
                 </Text>
               </Button>
             </Menu.Target>
-            <Menu.Dropdown>
+            <Menu.Dropdown visibleFrom="lg">
               <Box p="calc(var(--mantine-spacing-xs) / 1.5) var(--mantine-spacing-sm)">
                 <RangeSlider
                   w={200}
@@ -681,7 +719,12 @@ function ConsList() {
             </Menu.Dropdown>
           </Menu>
         </Group>
-        <Menu position="bottom-end" withArrow>
+        <Menu
+          position="bottom-end"
+          withArrow
+          opened={sortMenuOpen}
+          onChange={setSortMenuOpen}
+        >
           <Menu.Target>
             <Button
               variant="subtle"
@@ -822,6 +865,105 @@ function ConsList() {
           </Stack>
         </Box>
       )}
+      <Drawer
+        position="bottom"
+        opened={continentsMenuOpen || durationMenuOpen}
+        onClose={() => {
+          setContinentsMenuOpen(false);
+          setDurationMenuOpen(false);
+        }}
+        hiddenFrom="lg"
+        title={<Trans>Filter by</Trans>}
+      >
+        <Title order={2} size="h5" mb="sm">
+          <Trans>Regions</Trans>
+        </Title>
+        <Checkbox
+          mb="sm"
+          checked={viewOptions.filter.continents.length > 0}
+          indeterminate={
+            viewOptions.filter.continents.length != 0 && continentsFiltered
+          }
+          onClick={() => {
+            setViewOptions({
+              ...viewOptions,
+              filter: {
+                ...viewOptions.filter,
+                continents: continentsFiltered ? DEFAULT_FILTER.continents : [],
+              },
+            });
+          }}
+          fw={500}
+          label={
+            <Plural
+              value={viewOptions.filter.continents.length}
+              one="# selected"
+              other="# selected"
+            />
+          }
+        />
+        {sortedContinents.map((code) => {
+          const selected = viewOptions.filter.continents.includes(code);
+
+          return (
+            <Checkbox
+              key={code}
+              mb="sm"
+              checked={selected}
+              onClick={() => {
+                setViewOptions({
+                  ...viewOptions,
+                  filter: {
+                    ...viewOptions.filter,
+                    continents: !selected
+                      ? sortBy([...viewOptions.filter.continents, code])
+                      : viewOptions.filter.continents.filter((c) => c != code),
+                  },
+                });
+              }}
+              label={
+                <>
+                  {continentStrings[code]}{" "}
+                  <Text span size="xs" c="dimmed">
+                    {continentCount[code] ?? 0}
+                  </Text>
+                </>
+              }
+            />
+          );
+        })}
+        <Divider mb="sm" mx="calc(var(--mantine-spacing-md) * -1)" />
+        <Title order={2} size="h5" mb="sm">
+          <Trans>Duration</Trans>
+        </Title>
+        <RangeSlider
+          w="100%"
+          min={1}
+          max={DEFAULT_FILTER.duration[1]}
+          minRange={0}
+          value={viewOptions.filter.duration}
+          onChange={(v) => {
+            setViewOptions({
+              ...viewOptions,
+              filter: { ...viewOptions.filter, duration: v },
+            });
+          }}
+          label={(value) =>
+            value < DEFAULT_FILTER.duration[1] ? (
+              <Plural value={value} one="# day" other="# days" />
+            ) : (
+              <Plural
+                value={DEFAULT_FILTER.duration[1]}
+                one="# day or longer"
+                other="# days or longer"
+              />
+            )
+          }
+          marks={[...Array(DEFAULT_FILTER.duration[1]).keys()].map((v) => ({
+            value: v + 1,
+          }))}
+        />
+      </Drawer>
     </>
   );
 }
