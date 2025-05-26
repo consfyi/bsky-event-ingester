@@ -875,6 +875,27 @@ function ConsList() {
         hiddenFrom="lg"
         title={<Trans>Filter by</Trans>}
       >
+        {isLoggedIn ? (
+          <>
+            <Checkbox
+              mb="sm"
+              checked={actuallyShowOnlyAttending}
+              color="red"
+              icon={(props) => <IconHeartFilled {...props} />}
+              label={<Trans>Attending only</Trans>}
+              onClick={() => {
+                setViewOptions({
+                  ...viewOptions,
+                  filter: {
+                    ...viewOptions.filter,
+                    attending: !viewOptions.filter.attending,
+                  },
+                });
+              }}
+            />
+            <Divider mb="sm" mx="calc(var(--mantine-spacing-md) * -1)" />
+          </>
+        ) : null}
         <Title order={2} size="h5" mb="sm">
           <Trans>Regions</Trans>
         </Title>
