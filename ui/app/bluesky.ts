@@ -35,6 +35,7 @@ import {
   Session,
 } from "@atcute/oauth-browser-client";
 import clientMetadata from "../public/client-metadata.json";
+import { LABELER_DID } from "./config";
 
 export const DEFAULT_PDS_HOST = "https://bsky.social";
 
@@ -171,6 +172,7 @@ export class Client {
     while (true) {
       const { ok, data } = await this.rpc.get("app.bsky.graph.getFollows", {
         params: { actor, limit: LIMIT, cursor },
+        headers: { "Atproto-Accept-Labelers": LABELER_DID },
       });
       if (!ok) {
         throw data.error;
