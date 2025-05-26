@@ -441,6 +441,7 @@ function ConsList() {
           }}
           p="xs"
           m="calc(var(--mantine-spacing-xs) * -1)"
+          mr="xs"
           gap="xs"
         >
           {isLoggedIn ? (
