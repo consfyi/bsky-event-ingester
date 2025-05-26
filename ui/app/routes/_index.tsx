@@ -413,7 +413,7 @@ function ConsList() {
 
   return (
     <>
-      <Group wrap="nowrap" my="xs" justify="space-between" gap="0">
+      <Group wrap="nowrap" m="xs" justify="space-between" gap="0">
         <Group
           wrap="nowrap"
           style={{
@@ -421,9 +421,7 @@ function ConsList() {
             zIndex: 4,
             overflowX: "scroll",
           }}
-          p="xs"
           m="calc(var(--mantine-spacing-xs) * -1)"
-          ml={0}
           gap="xs"
         >
           {isLoggedIn ? (
@@ -753,6 +751,7 @@ export default function Index() {
       {!isLoggedIn ? (
         <Alert
           mt={{ lg: "xs" }}
+          mx={{ base: 0, lg: "xs" }}
           icon={<IconPaw />}
           title={<Trans>Welcome!</Trans>}
         >
