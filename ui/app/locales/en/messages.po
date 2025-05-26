@@ -11,23 +11,42 @@ msgstr ""
 "Content-Transfer-Encoding: \n"
 "Plural-Forms: \n"
 
+#. placeholder {0}: DEFAULT_FILTER.duration[1]
+#. placeholder {0}: viewOptions.filter.duration[0]
+#: app/routes/_index.tsx:614
+#: app/routes/_index.tsx:628
+#: app/routes/_index.tsx:663
+msgid "{0, plural, one {# day or longer} other {# days or longer}}"
+msgstr "{0, plural, one {# day or longer} other {# days or longer}}"
+
+#. placeholder {0}: viewOptions.filter.duration[0]
+#: app/routes/_index.tsx:620
+msgid "{0, plural, one {# day} other {# days}}"
+msgstr "{0, plural, one {# day} other {# days}}"
+
 #. placeholder {0}: viewOptions.filter.continents.length
-#: app/routes/_index.tsx:483
+#: app/routes/_index.tsx:504
 msgid "{0, plural, one {# region} other {# regions}}"
 msgstr "{0, plural, one {# region} other {# regions}}"
 
 #. placeholder {0}: viewOptions.filter.continents.length
-#: app/routes/_index.tsx:521
+#: app/routes/_index.tsx:542
 msgid "{0, plural, one {# selected} other {# selected}}"
 msgstr "{0, plural, one {# selected} other {# selected}}"
 
 #. placeholder {0}: dateTimeFormat.formatRange(con.start, con.end)
 #. placeholder {1}: differenceInDays(con.end, con.start) + 1
 #: app/routes/cons.$identifier.tsx:142
-#: app/routes/_index.tsx:139
+#: app/routes/_index.tsx:140
 msgctxt "[start date]-[end date] ([duration] days)"
 msgid "{0} ({1, plural, one {# day} other {# days}})"
 msgstr "{0} ({1, plural, one {# day} other {# days}})"
+
+#. placeholder {0}: viewOptions.filter.duration[0]
+#. placeholder {1}: viewOptions.filter.duration[1]
+#: app/routes/_index.tsx:634
+msgid "{0} to {1} days"
+msgstr "{0} to {1} days"
 
 #: app/routes/cons.$identifier.tsx:307
 msgctxt "attendee count"
@@ -39,11 +58,15 @@ msgctxt "attendee count, including you"
 msgid "{likeCount} including you"
 msgstr "{likeCount} including you"
 
-#: app/routes/_index.tsx:755
+#: app/routes/_index.tsx:661
+msgid "{value, plural, one {# day} other {# days}}"
+msgstr "{value, plural, one {# day} other {# days}}"
+
+#: app/routes/_index.tsx:870
 msgid "<0>This the website for the <1><2/> @cons.furryli.st</1> service. For the full experience, please log in. You’ll be able to:</0><3><4>Tell people which cons you’re going to (you can also do this by liking the con post on Bluesky).</4><5>See who you follow is going to a con.</5></3><6><7>Note:</7> If you’re using a self-hosted PDS, you’ll need to use the dropdown next to the Log in button to specify it.</6><8>A huge thank you to <9>FurryCons.com</9> who provides all the data on conventions!</8>"
 msgstr "<0>This the website for the <1><2/> @cons.furryli.st</1> service. For the full experience, please log in. You’ll be able to:</0><3><4>Tell people which cons you’re going to (you can also do this by liking the con post on Bluesky).</4><5>See who you follow is going to a con.</5></3><6><7>Note:</7> If you’re using a self-hosted PDS, you’ll need to use the dropdown next to the Log in button to specify it.</6><8>A huge thank you to <9>FurryCons.com</9> who provides all the data on conventions!</8>"
 
-#: app/routes/_index.tsx:392
+#: app/routes/_index.tsx:396
 msgid "Africa"
 msgstr "Africa"
 
@@ -55,17 +78,17 @@ msgstr "All furry convention data courtesy of the volunteers at <0>FurryCons.com
 msgid "An error occurred while attempting to load this data."
 msgstr "An error occurred while attempting to load this data."
 
-#: app/routes/_index.tsx:388
+#: app/routes/_index.tsx:392
 msgid "Antarctica"
 msgstr "Antarctica"
 
-#: app/routes/_index.tsx:389
+#: app/routes/_index.tsx:393
 msgid "Asia"
 msgstr "Asia"
 
 #: app/routes/cons.$identifier.tsx:300
-#: app/routes/_index.tsx:134
-#: app/routes/_index.tsx:365
+#: app/routes/_index.tsx:135
+#: app/routes/_index.tsx:369
 msgid "Attendees"
 msgstr "Attendees"
 
@@ -73,11 +96,11 @@ msgstr "Attendees"
 msgid "Attending"
 msgstr "Attending"
 
-#: app/routes/_index.tsx:452
+#: app/routes/_index.tsx:473
 msgid "Attending only"
 msgstr "Attending only"
 
-#: app/routes/_index.tsx:700
+#: app/routes/_index.tsx:814
 msgid "Clear all filters"
 msgstr "Clear all filters"
 
@@ -90,18 +113,22 @@ msgid "Custom PDS"
 msgstr "Custom PDS"
 
 #: app/routes/cons.$identifier.tsx:139
-#: app/routes/_index.tsx:138
-#: app/routes/_index.tsx:360
+#: app/routes/_index.tsx:139
+#: app/routes/_index.tsx:364
 msgid "Date"
 msgstr "Date"
 
-#: app/routes/_index.tsx:151
+#: app/routes/_index.tsx:640
+msgid "Duration"
+msgstr "Duration"
+
+#: app/routes/_index.tsx:152
 msgid "End date"
 msgstr "End date"
 
 #. placeholder {0}: i18n.date(con.end, { weekday: "short", day: "numeric", month: "short", year: getYear(con.start) != getYear(con.end) ? "numeric" : undefined, })
 #. placeholder {1}: differenceInDays(con.end, con.start) + 1
-#: app/routes/_index.tsx:152
+#: app/routes/_index.tsx:153
 msgctxt "ends [date] ([duration] days)"
 msgid "ends {0} ({1, plural, one {# day} other {# days}})"
 msgstr "ends {0} ({1, plural, one {# day} other {# days}})"
@@ -110,19 +137,19 @@ msgstr "ends {0} ({1, plural, one {# day} other {# days}})"
 msgid "Error"
 msgstr "Error"
 
-#: app/routes/_index.tsx:387
+#: app/routes/_index.tsx:391
 msgid "Europe"
 msgstr "Europe"
 
-#: app/routes/_index.tsx:366
+#: app/routes/_index.tsx:370
 msgid "Fewest to most"
 msgstr "Fewest to most"
 
-#: app/routes/_index.tsx:821
+#: app/routes/_index.tsx:936
 msgid "Fix this for me"
 msgstr "Fix this for me"
 
-#: app/routes/_index.tsx:362
+#: app/routes/_index.tsx:366
 msgid "Latest to soonest"
 msgstr "Latest to soonest"
 
@@ -135,7 +162,7 @@ msgid "Loading people you follow"
 msgstr "Loading people you follow"
 
 #: app/routes/cons.$identifier.tsx:156
-#: app/routes/_index.tsx:173
+#: app/routes/_index.tsx:174
 msgid "Location"
 msgstr "Location"
 
@@ -152,11 +179,11 @@ msgstr "Log in via {0}"
 msgid "Log in via custom PDS"
 msgstr "Log in via custom PDS"
 
-#: app/routes/_index.tsx:367
+#: app/routes/_index.tsx:371
 msgid "Most to fewest"
 msgstr "Most to fewest"
 
-#: app/routes/_index.tsx:690
+#: app/routes/_index.tsx:804
 msgid "No cons to display."
 msgstr "No cons to display."
 
@@ -164,7 +191,7 @@ msgstr "No cons to display."
 msgid "No known attendees yet."
 msgstr "No known attendees yet."
 
-#: app/routes/_index.tsx:386
+#: app/routes/_index.tsx:390
 msgid "North America"
 msgstr "North America"
 
@@ -177,15 +204,15 @@ msgstr "Not attending"
 msgid "Not found"
 msgstr "Not found"
 
-#: app/routes/_index.tsx:804
+#: app/routes/_index.tsx:919
 msgid "Not subscribed to labeler"
 msgstr "Not subscribed to labeler"
 
-#: app/routes/_index.tsx:391
+#: app/routes/_index.tsx:395
 msgid "Oceania"
 msgstr "Oceania"
 
-#: app/routes/_index.tsx:627
+#: app/routes/_index.tsx:741
 msgid "Order"
 msgstr "Order"
 
@@ -193,19 +220,19 @@ msgstr "Order"
 msgid "People you don’t follow"
 msgstr "People you don’t follow"
 
-#: app/routes/_index.tsx:490
+#: app/routes/_index.tsx:511
 msgid "Regions"
 msgstr "Regions"
 
-#: app/routes/_index.tsx:361
+#: app/routes/_index.tsx:365
 msgid "Soonest to latest"
 msgstr "Soonest to latest"
 
-#: app/routes/_index.tsx:597
+#: app/routes/_index.tsx:711
 msgid "Sort by"
 msgstr "Sort by"
 
-#: app/routes/_index.tsx:390
+#: app/routes/_index.tsx:394
 msgid "South America"
 msgstr "South America"
 
@@ -217,7 +244,7 @@ msgstr "The page you requested could not be found."
 msgid "Toggle attending"
 msgstr "Toggle attending"
 
-#: app/routes/_index.tsx:393
+#: app/routes/_index.tsx:397
 msgid "Unknown"
 msgstr "Unknown"
 
@@ -226,10 +253,10 @@ msgstr "Unknown"
 msgid "View Bluesky Post"
 msgstr "View Bluesky Post"
 
-#: app/routes/_index.tsx:753
+#: app/routes/_index.tsx:868
 msgid "Welcome!"
 msgstr "Welcome!"
 
-#: app/routes/_index.tsx:808
+#: app/routes/_index.tsx:923
 msgid "You are currently not subscribed to the labeler. That means you won’t be able to see other people’s con labels on Bluesky."
 msgstr "You are currently not subscribed to the labeler. That means you won’t be able to see other people’s con labels on Bluesky."

@@ -10,6 +10,7 @@ import {
   Group,
   Loader,
   Menu,
+  RangeSlider,
   Stack,
   Text,
   ThemeIcon,
@@ -316,6 +317,7 @@ interface TableViewOptions {
 interface FilterOptions {
   attending: boolean;
   continents: Continent[];
+  duration: [number, number];
 }
 
 interface SortOptions {
@@ -332,6 +334,7 @@ interface SortByStrings {
 const DEFAULT_FILTER: FilterOptions = {
   attending: false,
   continents: ["AF", "AS", "EU", "NA", "OC", "SA", "XX"],
+  duration: [1, 7],
 };
 
 const DEFAULT_SORT: SortOptions = {
@@ -346,7 +349,7 @@ function ConsList() {
 
   const isLoggedIn = useIsLoggedIn();
   const [viewOptions, setViewOptions] = useLocalStorage<TableViewOptions>({
-    key: "fbl:_index:viewOptions3",
+    key: "fbl:_index:viewOptions4",
     getInitialValueInEffect: false,
     defaultValue: {
       filter: DEFAULT_FILTER,
@@ -398,9 +401,20 @@ function ConsList() {
     viewOptions.filter.continents,
     DEFAULT_FILTER.continents
   );
+  const durationFiltered = !isEqual(
+    viewOptions.filter.duration,
+    DEFAULT_FILTER.duration
+  );
 
-  const filteredCons = cons.filter(
-    (con) =>
+  const filteredCons = cons.filter((con) => {
+    const duration = differenceInDays(con.end, con.start) + 1;
+    const [minDuration, tempMaxDuration] = viewOptions.filter.duration;
+    const maxDuration =
+      tempMaxDuration >= DEFAULT_FILTER.duration[1]
+        ? Infinity
+        : tempMaxDuration;
+
+    return (
       // Attending filter
       (!actuallyShowOnlyAttending || con.post.viewer?.like != null) &&
       // Continents filter
@@ -408,8 +422,12 @@ function ConsList() {
         con.geocoded != null
           ? getContinentForCountry(con.geocoded.country)
           : "XX"
-      )
-  );
+      ) &&
+      // Duration filter
+      duration >= minDuration &&
+      duration <= maxDuration
+    );
+  });
 
   return (
     <>
@@ -563,6 +581,99 @@ function ConsList() {
                   </Text>
                 </Menu.Item>
               ))}
+            </Menu.Dropdown>
+          </Menu>
+          <Menu
+            position="bottom-start"
+            withArrow
+            withinPortal={false}
+            closeOnItemClick={false}
+          >
+            <Menu.Target>
+              <Button
+                radius="lg"
+                size="xs"
+                style={{ flexShrink: 0 }}
+                rightSection={<IconChevronDown size={14} />}
+                {...(durationFiltered
+                  ? {
+                      variant: "light",
+                    }
+                  : {
+                      c: "dimmed",
+                      color: "var(--mantine-color-dimmed)",
+                      variant: "outline",
+                    })}
+              >
+                <Text span size="sm" fw={500}>
+                  {durationFiltered ? (
+                    viewOptions.filter.duration[0] ==
+                    viewOptions.filter.duration[1] ? (
+                      viewOptions.filter.duration[0] >=
+                      DEFAULT_FILTER.duration[1] ? (
+                        <Plural
+                          value={DEFAULT_FILTER.duration[1]}
+                          one="# day or longer"
+                          other="# days or longer"
+                        />
+                      ) : (
+                        <Plural
+                          value={viewOptions.filter.duration[0]}
+                          one="# day"
+                          other="# days"
+                        />
+                      )
+                    ) : viewOptions.filter.duration[1] >=
+                      DEFAULT_FILTER.duration[1] ? (
+                      <Plural
+                        value={viewOptions.filter.duration[0]}
+                        one="# day or longer"
+                        other="# days or longer"
+                      />
+                    ) : (
+                      <Trans>
+                        {viewOptions.filter.duration[0]} to{" "}
+                        {viewOptions.filter.duration[1]} days
+                      </Trans>
+                    )
+                  ) : (
+                    <Trans>Duration</Trans>
+                  )}
+                </Text>
+              </Button>
+            </Menu.Target>
+            <Menu.Dropdown>
+              <Box p="calc(var(--mantine-spacing-xs) / 1.5) var(--mantine-spacing-sm)">
+                <RangeSlider
+                  w={200}
+                  min={1}
+                  max={DEFAULT_FILTER.duration[1]}
+                  minRange={0}
+                  value={viewOptions.filter.duration}
+                  onChange={(v) => {
+                    setViewOptions({
+                      ...viewOptions,
+                      filter: { ...viewOptions.filter, duration: v },
+                    });
+                  }}
+                  label={(value) =>
+                    value < DEFAULT_FILTER.duration[1] ? (
+                      <Plural value={value} one="# day" other="# days" />
+                    ) : (
+                      <Plural
+                        value={DEFAULT_FILTER.duration[1]}
+                        one="# day or longer"
+                        other="# days or longer"
+                      />
+                    )
+                  }
+                  marks={[...Array(DEFAULT_FILTER.duration[1]).keys()].map(
+                    (v) => ({
+                      value: v + 1,
+                    })
+                  )}
+                />
+              </Box>
             </Menu.Dropdown>
           </Menu>
         </Group>
