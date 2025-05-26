@@ -30,7 +30,14 @@ import LikeButton from "~/components/LikeButton";
 import SimpleErrorBoundary from "~/components/SimpleErrorBoundary";
 import { LABELER_DID } from "~/config";
 import { Profile } from "~/endpoints";
-import { Con, useCons, useLikes, useSelf, useSelfFollowsDLE } from "~/hooks";
+import {
+  Con,
+  useCons,
+  useFollowedConAttendeesDLE,
+  useLikes,
+  useSelf,
+  useSelfFollowsDLE,
+} from "~/hooks";
 
 function ActorSkeleton() {
   return (
@@ -287,7 +294,8 @@ export default function Index() {
   const con =
     cons != null ? cons.find((con) => con.identifier == identifier) : null;
 
-  const { loading: selfFollowsIsLoading } = useSelfFollowsDLE();
+  const { data: followedConAttendees, loading: followedConAttendeesLoading } =
+    useFollowedConAttendeesDLE();
 
   useEffect(() => {
     document.title = con != null ? con.name : "";
@@ -301,9 +309,15 @@ export default function Index() {
 
   const isAttending = con.post.viewer?.like != null;
 
-  const likeCountWithoutSelf =
-    (con.post.likeCount || 0) - (isAttending ? 1 : 0);
-  const likeCount = likeCountWithoutSelf + (isAttending ? 1 : 0);
+  const likeCount = con.post.likeCount ?? 0;
+
+  const knownLikeCount =
+    (followedConAttendees != null &&
+    followedConAttendees[con.identifier] != null
+      ? followedConAttendees[con.identifier].length
+      : con.post.likeCount ?? 0) + (isAttending ? 1 : 0);
+
+  const unknownLikeCount = likeCount - knownLikeCount;
 
   return (
     <Box p="sm">
@@ -324,7 +338,7 @@ export default function Index() {
         </Title>
         <Box mt="xs">
           <SimpleErrorBoundary>
-            {selfFollowsIsLoading ? (
+            {followedConAttendeesLoading ? (
               <Group wrap="nowrap" gap={7} mt={10}>
                 <Loader size={8} color="dimmed" type="bars" />
                 <Text c="dimmed" size="xs" lh="md">
@@ -334,11 +348,29 @@ export default function Index() {
             ) : null}
             <Suspense
               fallback={
-                <SimpleGrid cols={{ base: 1, sm: 2, lg: 5 }} mt="xs">
-                  {range(Math.max(likeCount, 1)).map((i) => (
-                    <ActorSkeleton key={i} />
-                  ))}
-                </SimpleGrid>
+                <>
+                  <SimpleGrid cols={{ base: 1, sm: 2, lg: 5 }} mt="xs">
+                    {range(Math.max(knownLikeCount, 1)).map((i) => (
+                      <ActorSkeleton key={i} />
+                    ))}
+                  </SimpleGrid>
+                  <Divider
+                    label={
+                      <Plural
+                        value={unknownLikeCount}
+                        one="# person you don’t follow"
+                        other="# people you don’t follow"
+                      />
+                    }
+                    labelPosition="left"
+                    mt="xs"
+                  />
+                  <SimpleGrid cols={{ base: 1, sm: 2, lg: 5 }} mt="xs">
+                    {range(Math.max(unknownLikeCount, 1)).map((i) => (
+                      <ActorSkeleton key={i} />
+                    ))}
+                  </SimpleGrid>
+                </>
               }
             >
               <AttendeesList con={con} isSelfAttending={isAttending} />
