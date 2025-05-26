@@ -790,8 +790,8 @@ function ConsList() {
         ) : null
       ) : (
         <Box px="sm">
-          <Stack ta="center" gap="xs" py="lg">
-            <Text h={38} pt={4} fw={500}>
+          <Stack ta="center" gap="xs" py="xl">
+            <Text h={38} fw={500}>
               <Trans>No cons to display.</Trans>
             </Text>
 
