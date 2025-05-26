@@ -250,7 +250,13 @@ function AttendeesList({
       {unknownLikes.length > 0 ? (
         <>
           <Divider
-            label={<Trans>People you don’t follow</Trans>}
+            label={
+              <Plural
+                value={unknownLikes.length}
+                one="# person you don’t follow"
+                other="# people you don’t follow"
+              />
+            }
             labelPosition="left"
             mt="xs"
           />
@@ -297,9 +303,7 @@ export default function Index() {
 
   const likeCountWithoutSelf =
     (con.post.likeCount || 0) - (isAttending ? 1 : 0);
-  const likeCount = isAttending
-    ? likeCountWithoutSelf + 1
-    : likeCountWithoutSelf;
+  const likeCount = likeCountWithoutSelf + (isAttending ? 1 : 0);
 
   return (
     <Box p="sm">

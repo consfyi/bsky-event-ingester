@@ -36,11 +36,12 @@ import {
   IconLogout2,
 } from "@tabler/icons-react";
 import { Suspense, useEffect, useState } from "react";
+import Avatar from "~/components/Avatar";
 import clientMetadata from "../public/client-metadata.json";
 import { DEFAULT_PDS_HOST, startLogin } from "./bluesky";
+import { GlobalMemoProvider } from "./components/GlobalMemoContext";
 import LinguiProvider from "./components/LinguiProvider";
-import Avatar from "~/components/Avatar";
-import { useClient, useHydrated, useSelf, useSelfFollowsDLE } from "./hooks";
+import { useClient, useHydrated, useSelf } from "./hooks";
 import "./styles.css";
 
 const theme = createTheme({});
@@ -84,7 +85,6 @@ function Header() {
   const { t } = useLingui();
   const client = useClient();
   const self = useSelf();
-  useSelfFollowsDLE();
 
   return (
     <Box
@@ -353,35 +353,37 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <ColorSchemeScript defaultColorScheme="auto" />
       </head>
       <body>
-        <MantineProvider theme={theme} defaultColorScheme="auto">
-          {hydrated ? (
-            <DataProvider>
-              <Suspense
-                fallback={
-                  <Center p="lg">
-                    <Loader />
-                  </Center>
-                }
-              >
-                <LinguiProvider>
-                  <Header />
-                  <Container size="lg" px={0}>
-                    <Suspense
-                      fallback={
-                        <Center p="lg">
-                          <Loader />
-                        </Center>
-                      }
-                    >
-                      {children}
-                    </Suspense>
-                  </Container>
-                  <Footer />
-                </LinguiProvider>
-              </Suspense>
-            </DataProvider>
-          ) : null}
-        </MantineProvider>
+        <GlobalMemoProvider>
+          <MantineProvider theme={theme} defaultColorScheme="auto">
+            {hydrated ? (
+              <DataProvider>
+                <Suspense
+                  fallback={
+                    <Center p="lg">
+                      <Loader />
+                    </Center>
+                  }
+                >
+                  <LinguiProvider>
+                    <Header />
+                    <Container size="lg" px={0}>
+                      <Suspense
+                        fallback={
+                          <Center p="lg">
+                            <Loader />
+                          </Center>
+                        }
+                      >
+                        {children}
+                      </Suspense>
+                    </Container>
+                    <Footer />
+                  </LinguiProvider>
+                </Suspense>
+              </DataProvider>
+            ) : null}
+          </MantineProvider>
+        </GlobalMemoProvider>
 
         <ScrollRestoration />
         <Scripts />

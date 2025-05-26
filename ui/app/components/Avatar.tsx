@@ -16,3 +16,5 @@ export default function Avatar(props: Omit<AvatarProps, "children">) {
     </OriginalAvatar>
   );
 }
+
+Avatar.Group = OriginalAvatar.Group;

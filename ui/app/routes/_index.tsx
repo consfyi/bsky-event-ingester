@@ -47,14 +47,20 @@ import {
   setDate,
 } from "date-fns";
 import { groupBy, isEqual, sortBy } from "lodash-es";
-import { Fragment, Suspense, useMemo, useState } from "react";
+import { Fragment, Suspense, useEffect, useMemo, useState } from "react";
 import Flag from "~/components/Flag";
 import LikeButton from "~/components/LikeButton";
 import SimpleErrorBoundary from "~/components/SimpleErrorBoundary";
 import { LABELER_DID } from "~/config";
 import { Continent, getContinentForCountry } from "~/continents";
 import { useGetPreferences, usePutPreferences } from "~/endpoints";
-import { Con, useCons, useIsLoggedIn } from "~/hooks";
+import {
+  Con,
+  useCons,
+  useFollowedConAttendees,
+  useFollowedConAttendeesDLE,
+  useIsLoggedIn,
+} from "~/hooks";
 import clientMetadata from "../../public/client-metadata.json";
 
 function* monthRange(start: Date, end: Date): Generator<Date> {
@@ -77,9 +83,12 @@ function ConRow({
   showMonthInIcon: boolean;
 }) {
   const isAttending = con.post.viewer?.like != null;
+  const { data: followedConAttendees } = useFollowedConAttendeesDLE();
 
   const likeCountWithoutSelf =
     (con.post.likeCount || 0) - (isAttending ? 1 : 0);
+
+  const likeCount = likeCountWithoutSelf + (isAttending ? 1 : 0);
 
   const { i18n, t } = useLingui();
 
@@ -93,6 +102,11 @@ function ConRow({
       }),
     [i18n]
   );
+
+  const follows =
+    followedConAttendees != null
+      ? followedConAttendees[con.identifier] ?? []
+      : null;
 
   return (
     <Group gap="xs" wrap="nowrap" mb="xs" px="xs">
@@ -138,7 +152,17 @@ function ConRow({
         </Group>
         <Text size="sm" truncate>
           <IconUsers title={t`Attendees`} size={12} />{" "}
-          {likeCountWithoutSelf + (isAttending ? 1 : 0)} •{" "}
+          {follows != null ? (
+            <Trans>
+              {likeCount}{" "}
+              <Text span size="xs">
+                {follows.length} followed
+              </Text>
+            </Trans>
+          ) : (
+            <Trans>{likeCount}</Trans>
+          )}{" "}
+          •{" "}
           {showMonthInIcon ? (
             <>
               <IconCalendar title={t`Date`} size={12} />{" "}
@@ -296,17 +320,25 @@ function ConsByDate({
 function ConsByAttendees({
   cons,
   sortDesc,
+  followed,
 }: {
   cons: Con[];
   sortDesc: boolean;
+  followed: boolean;
 }) {
+  const followedConAttendees = useFollowedConAttendees();
+
   const sortedCons = useMemo(() => {
-    const sorted = sortBy(cons, (con) => con.post.likeCount);
+    const sorted = sortBy(cons, (con) =>
+      !followed || followedConAttendees == null
+        ? con.post.likeCount
+        : (followedConAttendees[con.identifier] ?? []).length
+    );
     if (sortDesc) {
       sorted.reverse();
     }
     return sorted;
-  }, [cons, sortDesc]);
+  }, [cons, followedConAttendees, followed, sortDesc]);
 
   return sortedCons.map((con) => {
     return <ConRow key={con.identifier} con={con} showMonthInIcon={true} />;
@@ -316,11 +348,13 @@ function ConsByAttendees({
 enum SortBy {
   Date = "date",
   Attendees = "attendees",
+  Followed = "followed",
 }
 
 const DEFAULT_SORT_DESC_OPTIONS = {
   [SortBy.Date]: false,
   [SortBy.Attendees]: true,
+  [SortBy.Followed]: true,
 };
 
 interface TableViewOptions {
@@ -360,6 +394,7 @@ function ConsList() {
   const cons = useCons();
 
   const { t } = useLingui();
+  const { data: followedConAttendees } = useFollowedConAttendeesDLE();
 
   const isLoggedIn = useIsLoggedIn();
   const [viewOptions, setViewOptions] = useLocalStorage<TableViewOptions>({
@@ -370,6 +405,19 @@ function ConsList() {
       sort: DEFAULT_SORT,
     },
   });
+
+  useEffect(() => {
+    if (isLoggedIn) {
+      return;
+    }
+    setViewOptions((vo) => ({
+      ...vo,
+      sort: {
+        ...vo.sort,
+        by: vo.sort.by == SortBy.Followed ? SortBy.Attendees : vo.sort.by,
+      },
+    }));
+  }, [isLoggedIn, setViewOptions]);
 
   const [continentsMenuOpen, setContinentsMenuOpen] = useState(false);
   const [durationMenuOpen, setDurationMenuOpen] = useState(false);
@@ -390,6 +438,11 @@ function ConsList() {
     },
     [SortBy.Attendees]: {
       name: t`Attendees`,
+      asc: t`Fewest to most`,
+      desc: t`Most to fewest`,
+    },
+    [SortBy.Followed]: {
+      name: t`Followed attendees`,
       asc: t`Fewest to most`,
       desc: t`Most to fewest`,
     },
@@ -759,10 +812,18 @@ function ConsList() {
             </Menu.Label>
             {Object.keys(SortBy).map((k) => {
               const sortBy = SortBy[k as keyof typeof SortBy];
+
+              if (!isLoggedIn && sortBy == SortBy.Followed) {
+                return null;
+              }
+
               const selected = viewOptions.sort.by == sortBy;
 
               return (
                 <Menu.Item
+                  disabled={
+                    sortBy == SortBy.Followed && followedConAttendees == null
+                  }
                   aria-selected={selected}
                   onClick={() => {
                     setViewOptions((vo) => ({
@@ -775,7 +836,16 @@ function ConsList() {
                   }}
                   key={k}
                   leftSection={
-                    selected ? <IconCheck size={14} /> : <EmptyIcon size={14} />
+                    sortBy != SortBy.Followed ||
+                    followedConAttendees != null ? (
+                      selected ? (
+                        <IconCheck size={14} />
+                      ) : (
+                        <EmptyIcon size={14} />
+                      )
+                    ) : (
+                      <Loader color="dimmed" size={14} />
+                    )
                   }
                 >
                   {sortByStrings[sortBy].name}
@@ -849,12 +919,12 @@ function ConsList() {
               color="red"
               icon={(props) => <IconHeartFilled {...props} />}
               label={<Trans>Attending only</Trans>}
-              onClick={() => {
+              onChange={(e) => {
                 setViewOptions({
                   ...viewOptions,
                   filter: {
                     ...viewOptions.filter,
-                    attending: !viewOptions.filter.attending,
+                    attending: e.target.checked,
                   },
                 });
               }}
@@ -871,12 +941,12 @@ function ConsList() {
           indeterminate={
             viewOptions.filter.continents.length != 0 && continentsFiltered
           }
-          onClick={() => {
+          onChange={(e) => {
             setViewOptions({
               ...viewOptions,
               filter: {
                 ...viewOptions.filter,
-                continents: continentsFiltered ? DEFAULT_FILTER.continents : [],
+                continents: e.target.checked ? DEFAULT_FILTER.continents : [],
               },
             });
           }}
@@ -890,19 +960,17 @@ function ConsList() {
           }
         />
         {sortedContinents.map((code) => {
-          const selected = viewOptions.filter.continents.includes(code);
-
           return (
             <Checkbox
               key={code}
               mb="sm"
-              checked={selected}
-              onClick={() => {
+              checked={viewOptions.filter.continents.includes(code)}
+              onChange={(e) => {
                 setViewOptions({
                   ...viewOptions,
                   filter: {
                     ...viewOptions.filter,
-                    continents: !selected
+                    continents: e.target.checked
                       ? sortBy([...viewOptions.filter.continents, code])
                       : viewOptions.filter.continents.filter((c) => c != code),
                   },
@@ -952,40 +1020,53 @@ function ConsList() {
         />
       </Drawer>
 
-      {filteredCons.length > 0 ? (
-        viewOptions.sort.by == SortBy.Attendees ? (
-          <ConsByAttendees
-            cons={filteredCons}
-            sortDesc={viewOptions.sort.desc}
-          />
-        ) : viewOptions.sort.by == SortBy.Date ? (
-          <ConsByDate
-            cons={filteredCons}
-            sortDesc={viewOptions.sort.desc}
-            hideEmptyGroups={actuallyShowOnlyAttending}
-          />
-        ) : null
-      ) : (
-        <Box px="sm">
-          <Stack ta="center" gap="xs" py="xl">
-            <Text h={38} fw={500}>
-              <Trans>No cons to display.</Trans>
-            </Text>
+      <Suspense
+        fallback={
+          <Center p="lg">
+            <Loader />
+          </Center>
+        }
+      >
+        {filteredCons.length > 0 ? (
+          viewOptions.sort.by == SortBy.Attendees ||
+          viewOptions.sort.by == SortBy.Followed ? (
+            <ConsByAttendees
+              cons={filteredCons}
+              sortDesc={viewOptions.sort.desc}
+              followed={viewOptions.sort.by == SortBy.Followed}
+            />
+          ) : viewOptions.sort.by == SortBy.Date ? (
+            <ConsByDate
+              cons={filteredCons}
+              sortDesc={viewOptions.sort.desc}
+              hideEmptyGroups={actuallyShowOnlyAttending}
+            />
+          ) : null
+        ) : (
+          <Box px="sm">
+            <Stack ta="center" gap="xs" py="xl">
+              <Text h={38} fw={500}>
+                <Trans>No cons to display.</Trans>
+              </Text>
 
-            {!isEqual(viewOptions.filter, DEFAULT_FILTER) ? (
-              <Box>
-                <Button
-                  onClick={() => {
-                    setViewOptions({ ...viewOptions, filter: DEFAULT_FILTER });
-                  }}
-                >
-                  <Trans>Clear all filters</Trans>
-                </Button>
-              </Box>
-            ) : null}
-          </Stack>
-        </Box>
-      )}
+              {!isEqual(viewOptions.filter, DEFAULT_FILTER) ? (
+                <Box>
+                  <Button
+                    onClick={() => {
+                      setViewOptions({
+                        ...viewOptions,
+                        filter: DEFAULT_FILTER,
+                      });
+                    }}
+                  >
+                    <Trans>Clear all filters</Trans>
+                  </Button>
+                </Box>
+              ) : null}
+            </Stack>
+          </Box>
+        )}
+      </Suspense>
     </>
   );
 }
