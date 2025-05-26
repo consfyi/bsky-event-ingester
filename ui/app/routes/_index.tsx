@@ -153,14 +153,14 @@ function ConRow({
         <Text size="sm" truncate>
           <IconUsers title={t`Attendees`} size={12} />{" "}
           {follows != null ? (
-            <Trans>
-              {likeCount}{" "}
+            <Trans context="attendee count, with followed">
+              {[likeCount][0]}{" "}
               <Text span size="xs">
                 {follows.length} followed
               </Text>
             </Trans>
           ) : (
-            <Trans>{likeCount}</Trans>
+            <Trans context="attendee count">{[likeCount][0]}</Trans>
           )}{" "}
           •{" "}
           {showMonthInIcon ? (
@@ -753,7 +753,7 @@ function ConsList() {
                   }}
                   label={(value) =>
                     value < DEFAULT_FILTER.duration[1] ? (
-                      <Plural value={value} one="# day" other="# days" />
+                      <Plural value={[value][0]} one="# day" other="# days" />
                     ) : (
                       <Plural
                         value={DEFAULT_FILTER.duration[1]}
@@ -1005,7 +1005,7 @@ function ConsList() {
           }}
           label={(value) =>
             value < DEFAULT_FILTER.duration[1] ? (
-              <Plural value={value} one="# day" other="# days" />
+              <Plural value={[value][0]} one="# day" other="# days" />
             ) : (
               <Plural
                 value={DEFAULT_FILTER.duration[1]}

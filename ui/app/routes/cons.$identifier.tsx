@@ -329,10 +329,10 @@ export default function Index() {
           <Text size="sm" span>
             {isAttending ? (
               <Trans context="attendee count, including you">
-                {likeCount} including you
+                {[likeCount][0]} including you
               </Trans>
             ) : (
-              <Trans context="attendee count">{likeCount}</Trans>
+              <Trans context="attendee count">{[likeCount][0]}</Trans>
             )}{" "}
           </Text>
         </Title>
@@ -357,7 +357,7 @@ export default function Index() {
                   <Divider
                     label={
                       <Plural
-                        value={unknownLikeCount}
+                        value={[unknownLikeCount][0]}
                         one="# person you don’t follow"
                         other="# people you don’t follow"
                       />
