@@ -1,9 +1,10 @@
+import type { Label } from "@atcute/atproto/types/label/defs";
+import type { Preferences as ActorPreferences } from "@atcute/bluesky/types/app/actor/defs";
 import { LabelerPolicies } from "@atcute/bluesky/types/app/labeler/defs";
 import type { ActorIdentifier, Did, ResourceUri } from "@atcute/lexicons";
 import { Endpoint, Entity, schema } from "@data-client/endpoint";
 import { useController } from "@data-client/react";
 import { useClient } from "./hooks";
-import type { Preferences as ActorPreferences } from "@atcute/bluesky/types/app/actor/defs";
 
 export class Profile extends Entity {
   static key = "Profile";
@@ -12,6 +13,7 @@ export class Profile extends Entity {
   public handle: string | undefined;
   public displayName: string | undefined;
   public avatar: string | undefined;
+  public labels: Label[] | undefined;
 
   pk() {
     return this.did;

@@ -132,6 +132,7 @@ export class Client {
   async getProfile(actor: ActorIdentifier): Promise<ProfileViewDetailed> {
     const { ok, data } = await this.rpc.get("app.bsky.actor.getProfile", {
       params: { actor },
+      headers: { "Atproto-Accept-Labelers": LABELER_DID },
     });
     if (!ok) {
       throw data.error;
@@ -192,6 +193,7 @@ export class Client {
     while (true) {
       const { ok, data } = await this.rpc.get("app.bsky.feed.getLikes", {
         params: { uri, limit: LIMIT, cursor },
+        headers: { "Atproto-Accept-Labelers": LABELER_DID },
       });
       if (!ok) {
         throw data.error;

@@ -40,7 +40,7 @@ import clientMetadata from "../public/client-metadata.json";
 import { DEFAULT_PDS_HOST, startLogin } from "./bluesky";
 import LinguiProvider from "./components/LinguiProvider";
 import Avatar from "~/components/Avatar";
-import { useClient, useHydrated, useSelf } from "./hooks";
+import { useClient, useHydrated, useSelf, useSelfFollowsDLE } from "./hooks";
 import "./styles.css";
 
 const theme = createTheme({});
@@ -84,6 +84,7 @@ function Header() {
   const { t } = useLingui();
   const client = useClient();
   const self = useSelf();
+  useSelfFollowsDLE();
 
   return (
     <Box
