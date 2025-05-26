@@ -119,7 +119,6 @@ function Header() {
               position="bottom-end"
               withArrow
               opened={menuOpen}
-              withinPortal={false}
               onChange={(value) => {
                 if (!value && pending) {
                   return;
@@ -206,7 +205,6 @@ function Header() {
                 <Menu
                   position="bottom-end"
                   withArrow
-                  withinPortal={false}
                   opened={menuOpen}
                   onChange={(value) => {
                     if (!value && pending) {

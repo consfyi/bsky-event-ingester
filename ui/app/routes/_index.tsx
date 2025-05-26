@@ -475,12 +475,7 @@ function ConsList() {
               </Text>
             </Button>
           ) : null}
-          <Menu
-            position="bottom-start"
-            withArrow
-            withinPortal={false}
-            closeOnItemClick={false}
-          >
+          <Menu position="bottom-start" withArrow closeOnItemClick={false}>
             <Menu.Target>
               <Button
                 radius="lg"
@@ -584,12 +579,7 @@ function ConsList() {
               ))}
             </Menu.Dropdown>
           </Menu>
-          <Menu
-            position="bottom-start"
-            withArrow
-            withinPortal={false}
-            closeOnItemClick={false}
-          >
+          <Menu position="bottom-start" withArrow closeOnItemClick={false}>
             <Menu.Target>
               <Button
                 radius="lg"
@@ -678,7 +668,7 @@ function ConsList() {
             </Menu.Dropdown>
           </Menu>
         </Group>
-        <Menu position="bottom-end" withArrow withinPortal={false}>
+        <Menu position="bottom-end" withArrow>
           <Menu.Target>
             <Button
               variant="subtle"
