@@ -66,7 +66,7 @@ msgid "The page you requested could not be found."
 msgstr "The page you requested could not be found."
 
 #: app/routes/_index.tsx:154
-#: app/routes/_index.tsx:440
+#: app/routes/_index.tsx:464
 #: app/routes/cons.$identifier.tsx:328
 msgid "Attendees"
 msgstr "Attendees"
@@ -86,7 +86,7 @@ msgid "{0}"
 msgstr "{0}"
 
 #: app/routes/_index.tsx:168
-#: app/routes/_index.tsx:435
+#: app/routes/_index.tsx:459
 #: app/routes/cons.$identifier.tsx:147
 msgid "Date"
 msgstr "Date"
@@ -115,146 +115,151 @@ msgstr "ends {0} ({1, plural, one {# day} other {# days}})"
 msgid "Location"
 msgstr "Location"
 
-#: app/routes/_index.tsx:436
+#: app/routes/_index.tsx:460
 msgid "Soonest to latest"
 msgstr "Soonest to latest"
 
-#: app/routes/_index.tsx:437
+#: app/routes/_index.tsx:461
 msgid "Latest to soonest"
 msgstr "Latest to soonest"
 
-#: app/routes/_index.tsx:441
-#: app/routes/_index.tsx:446
+#: app/routes/_index.tsx:465
+#: app/routes/_index.tsx:470
 msgid "Fewest to most"
 msgstr "Fewest to most"
 
-#: app/routes/_index.tsx:442
-#: app/routes/_index.tsx:447
+#: app/routes/_index.tsx:466
+#: app/routes/_index.tsx:471
 msgid "Most to fewest"
 msgstr "Most to fewest"
 
-#: app/routes/_index.tsx:445
+#: app/routes/_index.tsx:469
 msgid "Followed attendees"
 msgstr "Followed attendees"
 
-#: app/routes/_index.tsx:472
+#: app/routes/_index.tsx:496
 msgid "North America"
 msgstr "North America"
 
-#: app/routes/_index.tsx:473
+#: app/routes/_index.tsx:497
 msgid "Europe"
 msgstr "Europe"
 
-#: app/routes/_index.tsx:474
+#: app/routes/_index.tsx:498
 msgid "Antarctica"
 msgstr "Antarctica"
 
-#: app/routes/_index.tsx:475
+#: app/routes/_index.tsx:499
 msgid "Asia"
 msgstr "Asia"
 
-#: app/routes/_index.tsx:476
+#: app/routes/_index.tsx:500
 msgid "South America"
 msgstr "South America"
 
-#: app/routes/_index.tsx:477
+#: app/routes/_index.tsx:501
 msgid "Oceania"
 msgstr "Oceania"
 
-#: app/routes/_index.tsx:478
+#: app/routes/_index.tsx:502
 msgid "Africa"
 msgstr "Africa"
 
-#: app/routes/_index.tsx:479
+#: app/routes/_index.tsx:503
 msgid "Unknown"
 msgstr "Unknown"
 
-#: app/routes/_index.tsx:556
-#: app/routes/_index.tsx:921
+#: app/routes/_index.tsx:583
+#: app/routes/_index.tsx:978
 msgid "Attending only"
 msgstr "Attending only"
 
 #. placeholder {0}: viewOptions.filter.continents.length
-#: app/routes/_index.tsx:593
+#: app/routes/_index.tsx:620
 msgid "{0, plural, one {# region} other {# regions}}"
 msgstr "{0, plural, one {# region} other {# regions}}"
 
-#: app/routes/_index.tsx:600
-#: app/routes/_index.tsx:936
+#: app/routes/_index.tsx:627
+#: app/routes/_index.tsx:1009
 msgid "Regions"
 msgstr "Regions"
 
 #. placeholder {0}: viewOptions.filter.continents.length
-#: app/routes/_index.tsx:631
-#: app/routes/_index.tsx:955
+#: app/routes/_index.tsx:658
+#: app/routes/_index.tsx:1028
 msgid "{0, plural, one {# selected} other {# selected}}"
 msgstr "{0, plural, one {# selected} other {# selected}}"
 
 #. placeholder {0}: DEFAULT_FILTER.duration[1]
 #. placeholder {0}: viewOptions.filter.duration[0]
-#: app/routes/_index.tsx:709
-#: app/routes/_index.tsx:723
-#: app/routes/_index.tsx:758
-#: app/routes/_index.tsx:1010
+#: app/routes/_index.tsx:736
+#: app/routes/_index.tsx:750
+#: app/routes/_index.tsx:785
+#: app/routes/_index.tsx:1084
 msgid "{0, plural, one {# day or longer} other {# days or longer}}"
 msgstr "{0, plural, one {# day or longer} other {# days or longer}}"
 
 #. placeholder {0}: viewOptions.filter.duration[0]
 #. placeholder {0}: [value][0]
-#: app/routes/_index.tsx:715
-#: app/routes/_index.tsx:756
-#: app/routes/_index.tsx:1008
+#: app/routes/_index.tsx:742
+#: app/routes/_index.tsx:783
+#: app/routes/_index.tsx:1082
 msgid "{0, plural, one {# day} other {# days}}"
 msgstr "{0, plural, one {# day} other {# days}}"
 
 #. placeholder {0}: viewOptions.filter.duration[0]
 #. placeholder {1}: viewOptions.filter.duration[1]
-#: app/routes/_index.tsx:729
+#: app/routes/_index.tsx:756
 msgid "{0} to {1} days"
 msgstr "{0} to {1} days"
 
-#: app/routes/_index.tsx:735
-#: app/routes/_index.tsx:992
+#: app/routes/_index.tsx:762
+#: app/routes/_index.tsx:1065
 msgid "Duration"
 msgstr "Duration"
 
-#: app/routes/_index.tsx:811
+#: app/routes/_index.tsx:827
+#: app/routes/_index.tsx:993
+msgid "With followed only"
+msgstr "With followed only"
+
+#: app/routes/_index.tsx:868
 msgid "Sort by"
 msgstr "Sort by"
 
-#: app/routes/_index.tsx:856
+#: app/routes/_index.tsx:913
 msgid "Order"
 msgstr "Order"
 
-#: app/routes/_index.tsx:912
+#: app/routes/_index.tsx:969
 msgid "Filter by"
 msgstr "Filter by"
 
-#: app/routes/_index.tsx:1049
+#: app/routes/_index.tsx:1126
 msgid "No cons to display."
 msgstr "No cons to display."
 
-#: app/routes/_index.tsx:1062
+#: app/routes/_index.tsx:1139
 msgid "Clear all filters"
 msgstr "Clear all filters"
 
-#: app/routes/_index.tsx:1117
+#: app/routes/_index.tsx:1194
 msgid "Welcome!"
 msgstr "Welcome!"
 
-#: app/routes/_index.tsx:1119
+#: app/routes/_index.tsx:1196
 msgid "<0>This the website for the <1><2/> @cons.furryli.st</1> service. For the full experience, please log in. You’ll be able to:</0><3><4>Tell people which cons you’re going to (you can also do this by liking the con post on Bluesky).</4><5>See who you follow is going to a con.</5></3><6><7>Note:</7> If you’re using a self-hosted PDS, you’ll need to use the dropdown next to the Log in button to specify it.</6><8>A huge thank you to <9>FurryCons.com</9> who provides all the data on conventions!</8>"
 msgstr "<0>This the website for the <1><2/> @cons.furryli.st</1> service. For the full experience, please log in. You’ll be able to:</0><3><4>Tell people which cons you’re going to (you can also do this by liking the con post on Bluesky).</4><5>See who you follow is going to a con.</5></3><6><7>Note:</7> If you’re using a self-hosted PDS, you’ll need to use the dropdown next to the Log in button to specify it.</6><8>A huge thank you to <9>FurryCons.com</9> who provides all the data on conventions!</8>"
 
-#: app/routes/_index.tsx:1168
+#: app/routes/_index.tsx:1245
 msgid "Not subscribed to labeler"
 msgstr "Not subscribed to labeler"
 
-#: app/routes/_index.tsx:1172
+#: app/routes/_index.tsx:1249
 msgid "You are currently not subscribed to the labeler. That means you won’t be able to see other people’s con labels on Bluesky."
 msgstr "You are currently not subscribed to the labeler. That means you won’t be able to see other people’s con labels on Bluesky."
 
-#: app/routes/_index.tsx:1185
+#: app/routes/_index.tsx:1262
 msgid "Fix this for me"
 msgstr "Fix this for me"
 
@@ -270,7 +275,7 @@ msgstr "Link"
 #. placeholder {0}: unknownLikes.length
 #. placeholder {0}: [unknownLikeCount][0]
 #: app/routes/cons.$identifier.tsx:261
-#: app/routes/cons.$identifier.tsx:359
+#: app/routes/cons.$identifier.tsx:365
 msgid "{0, plural, one {# person you don’t follow} other {# people you don’t follow}}"
 msgstr "{0, plural, one {# person you don’t follow} other {# people you don’t follow}}"
 

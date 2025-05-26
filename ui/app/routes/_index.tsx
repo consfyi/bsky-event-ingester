@@ -380,12 +380,6 @@ interface TableViewOptions {
   sort: SortOptions;
 }
 
-interface FilterOptions {
-  attending: boolean;
-  continents: Continent[];
-  duration: [number, number];
-}
-
 interface SortOptions {
   by: SortBy;
   desc: boolean;
@@ -397,11 +391,22 @@ interface SortByStrings {
   desc: string;
 }
 
-const DEFAULT_FILTER: FilterOptions = {
+const DEFAULT_FILTER = {
   attending: false,
-  continents: ["AF", "AS", "EU", "NA", "OC", "SA", "XX"],
-  duration: [1, 7],
+  followed: false,
+  continents: [
+    "AF",
+    "AS",
+    "EU",
+    "NA",
+    "OC",
+    "SA",
+    "XX",
+  ] satisfies Continent[] as Continent[],
+  duration: [1, 7] satisfies [number, number],
 };
+
+type FilterOptions = typeof DEFAULT_FILTER;
 
 const DEFAULT_SORT: SortOptions = {
   by: SortBy.Date,
@@ -447,6 +452,7 @@ function ConsList() {
   });
 
   const actuallyShowOnlyAttending = isLoggedIn && viewOptions.filter.attending;
+  const actuallyShowOnlyFollowed = isLoggedIn && viewOptions.filter.followed;
 
   const sortByStrings: Record<SortBy, SortByStrings> = {
     [SortBy.Date]: {
@@ -525,7 +531,11 @@ function ConsList() {
       ) &&
       // Duration filter
       duration >= minDuration &&
-      duration <= maxDuration
+      duration <= maxDuration &&
+      // Followed filter
+      (!actuallyShowOnlyFollowed ||
+        followedConAttendees == null ||
+        (followedConAttendees[con.identifier] ?? []).length > 0)
     );
   });
 
@@ -562,7 +572,6 @@ function ConsList() {
                 ? {
                     color: "red",
                     variant: "light",
-                    leftSection: <IconHeartFilled size={14} />,
                   }
                 : {
                     c: "dimmed",
@@ -789,6 +798,36 @@ function ConsList() {
               </Box>
             </Menu.Dropdown>
           </Menu>
+          {isLoggedIn ? (
+            <Button
+              radius="lg"
+              size="xs"
+              style={{ flexShrink: 0 }}
+              loading={followedConAttendees == null}
+              onClick={() => {
+                setViewOptions({
+                  ...viewOptions,
+                  filter: {
+                    ...viewOptions.filter,
+                    followed: !viewOptions.filter.followed,
+                  },
+                });
+              }}
+              {...(actuallyShowOnlyFollowed
+                ? {
+                    variant: "light",
+                  }
+                : {
+                    c: "dimmed",
+                    color: "var(--mantine-color-dimmed)",
+                    variant: "outline",
+                  })}
+            >
+              <Text span size="sm" fw={500}>
+                <Trans>With followed only</Trans>
+              </Text>
+            </Button>
+          ) : null}
         </Group>
         <Menu
           position="bottom-end"
@@ -947,6 +986,22 @@ function ConsList() {
                 });
               }}
             />
+            <Checkbox
+              mb="sm"
+              disabled={followedConAttendees == null}
+              checked={actuallyShowOnlyFollowed}
+              label={<Trans>With followed only</Trans>}
+              onChange={(e) => {
+                setViewOptions({
+                  ...viewOptions,
+                  filter: {
+                    ...viewOptions.filter,
+                    followed: e.target.checked,
+                  },
+                });
+              }}
+            />
+
             <Divider mb="sm" mx="calc(var(--mantine-spacing-md) * -1)" />
           </>
         ) : null}
@@ -1012,6 +1067,7 @@ function ConsList() {
         <RangeSlider
           w="100%"
           min={1}
+          mb="sm"
           max={DEFAULT_FILTER.duration[1]}
           minRange={0}
           value={viewOptions.filter.duration}
