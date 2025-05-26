@@ -831,40 +831,6 @@ function ConsList() {
         </Menu>
       </Group>
 
-      {filteredCons.length > 0 ? (
-        viewOptions.sort.by == SortBy.Attendees ? (
-          <ConsByAttendees
-            cons={filteredCons}
-            sortDesc={viewOptions.sort.desc}
-          />
-        ) : viewOptions.sort.by == SortBy.Date ? (
-          <ConsByDate
-            cons={filteredCons}
-            sortDesc={viewOptions.sort.desc}
-            hideEmptyGroups={actuallyShowOnlyAttending}
-          />
-        ) : null
-      ) : (
-        <Box px="sm">
-          <Stack ta="center" gap="xs" py="xl">
-            <Text h={38} fw={500}>
-              <Trans>No cons to display.</Trans>
-            </Text>
-
-            {!isEqual(viewOptions.filter, DEFAULT_FILTER) ? (
-              <Box>
-                <Button
-                  onClick={() => {
-                    setViewOptions({ ...viewOptions, filter: DEFAULT_FILTER });
-                  }}
-                >
-                  <Trans>Clear all filters</Trans>
-                </Button>
-              </Box>
-            ) : null}
-          </Stack>
-        </Box>
-      )}
       <Drawer
         position="bottom"
         opened={continentsMenuOpen || durationMenuOpen}
@@ -985,6 +951,41 @@ function ConsList() {
           }))}
         />
       </Drawer>
+
+      {filteredCons.length > 0 ? (
+        viewOptions.sort.by == SortBy.Attendees ? (
+          <ConsByAttendees
+            cons={filteredCons}
+            sortDesc={viewOptions.sort.desc}
+          />
+        ) : viewOptions.sort.by == SortBy.Date ? (
+          <ConsByDate
+            cons={filteredCons}
+            sortDesc={viewOptions.sort.desc}
+            hideEmptyGroups={actuallyShowOnlyAttending}
+          />
+        ) : null
+      ) : (
+        <Box px="sm">
+          <Stack ta="center" gap="xs" py="xl">
+            <Text h={38} fw={500}>
+              <Trans>No cons to display.</Trans>
+            </Text>
+
+            {!isEqual(viewOptions.filter, DEFAULT_FILTER) ? (
+              <Box>
+                <Button
+                  onClick={() => {
+                    setViewOptions({ ...viewOptions, filter: DEFAULT_FILTER });
+                  }}
+                >
+                  <Trans>Clear all filters</Trans>
+                </Button>
+              </Box>
+            ) : null}
+          </Stack>
+        </Box>
+      )}
     </>
   );
 }
