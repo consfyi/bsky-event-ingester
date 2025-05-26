@@ -421,6 +421,7 @@ function ConsList() {
             zIndex: 4,
             overflowX: "scroll",
           }}
+          p="xs"
           m="calc(var(--mantine-spacing-xs) * -1)"
           gap="xs"
         >
