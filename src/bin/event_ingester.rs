@@ -477,31 +477,33 @@ async fn sync_labels(
                     ),
                     location: event.location.clone(),
                     url: event.url.clone(),
-                    geocoded: if let Some(google_maps_client) = google_maps_client.as_ref() {
-                        Some(if let Some(geocoded) = geocoded {
-                            geocoded
-                        } else {
-                            google_maps_client
-                                .geocoding()
-                                .with_address(&event.location)
-                                .execute()
-                                .await?
-                                .results
-                                .into_iter()
-                                .next()
-                                .map(|r| Geocoded {
-                                    country: r
-                                        .address_components
-                                        .into_iter()
-                                        .find(|c| {
-                                            c.types.contains(&google_maps::PlaceType::Country)
-                                        })
-                                        .map(|c| c.short_name)
-                                        .unwrap_or_else(|| "XX".to_string()),
-                                })
-                        })
+                    geocoded: if let Some(geocoded) = geocoded {
+                        Some(geocoded)
                     } else {
-                        None
+                        if let Some(google_maps_client) = google_maps_client.as_ref() {
+                            Some(
+                                google_maps_client
+                                    .geocoding()
+                                    .with_address(&event.location)
+                                    .execute()
+                                    .await?
+                                    .results
+                                    .into_iter()
+                                    .next()
+                                    .map(|r| Geocoded {
+                                        country: r
+                                            .address_components
+                                            .into_iter()
+                                            .find(|c| {
+                                                c.types.contains(&google_maps::PlaceType::Country)
+                                            })
+                                            .map(|c| c.short_name)
+                                            .unwrap_or_else(|| "XX".to_string()),
+                                    }),
+                            )
+                        } else {
+                            None
+                        }
                     },
                 },
             ),
