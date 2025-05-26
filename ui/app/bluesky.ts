@@ -114,6 +114,7 @@ export class Client {
           includePins: false,
           filter: "posts_no_replies",
         },
+        headers: { "Atproto-Accept-Labelers": LABELER_DID },
       });
       if (!ok) {
         throw data.error;
@@ -143,6 +144,7 @@ export class Client {
   async getPostThread(uri: ResourceUri): Promise<ThreadViewPost> {
     const { ok, data } = await this.rpc.get("app.bsky.feed.getPostThread", {
       params: { uri, depth: 0, parentHeight: 0 },
+      headers: { "Atproto-Accept-Labelers": LABELER_DID },
     });
     if (!ok) {
       throw data.error;
