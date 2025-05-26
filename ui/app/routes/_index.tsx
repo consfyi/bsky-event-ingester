@@ -85,7 +85,7 @@ function ConRow({
 
   const dateTimeFormat = useMemo(
     () =>
-      new Intl.DateTimeFormat(i18n.locale, {
+      new Intl.DateTimeFormat(i18n.locales, {
         weekday: "short",
         day: "numeric",
         month: "short",
