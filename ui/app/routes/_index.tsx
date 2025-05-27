@@ -1,4 +1,5 @@
 import { useController, useLoading, useSuspense } from "@data-client/react";
+import { plural } from "@lingui/core/macro";
 import { Plural, Trans, useLingui } from "@lingui/react/macro";
 import {
   Alert,
@@ -19,7 +20,6 @@ import {
   ThemeIcon,
   Title,
   Tooltip,
-  useDirection,
   useMantineTheme,
 } from "@mantine/core";
 import { useLocalStorage, useMediaQuery } from "@mantine/hooks";
@@ -65,7 +65,6 @@ import {
   useIsLoggedIn,
 } from "~/hooks";
 import clientMetadata from "../../public/client-metadata.json";
-import { plural } from "@lingui/core/macro";
 
 const MAX_AVATARS_IN_STACK = 3;
 
@@ -263,7 +262,7 @@ function ConRow({
               display="inline"
               h={8}
               w="auto"
-              mx={2}
+              ms={4}
             />
           ) : null}
         </Text>
@@ -587,8 +586,6 @@ function ConsList() {
     );
   });
 
-  const { dir } = useDirection();
-
   return (
     <>
       <Group wrap="nowrap" m="xs" justify="space-between" gap="0">
@@ -602,8 +599,8 @@ function ConsList() {
           p="xs"
           mx="calc(var(--mantine-spacing-xs) * -1)"
           my="calc(var(--mantine-spacing-xs) * -1)"
+          me="xs"
           gap="xs"
-          {...(dir == "ltr" ? { mr: "xs" } : { ml: "xs" })}
         >
           {isLoggedIn ? (
             <Button

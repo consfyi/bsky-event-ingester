@@ -178,7 +178,7 @@ function Header({ con }: { con: Con }) {
                 display="inline"
                 h={8}
                 w="auto"
-                mx={2}
+                ms={2}
               />
             ) : null}
           </Text>
