@@ -1,6 +1,0 @@
-:root {
-  @mixin dark-root {
-    --mantine-color-body: #000;
-    --mantine-color-default-hover: var(--mantine-color-dark-7);
-  }
-}
