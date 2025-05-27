@@ -39,7 +39,7 @@ struct Geocoded {
 
 struct EventsState {
     rkeys_to_ids: std::collections::HashMap<atrium_api::types::string::RecordKey, u64>,
-    event_expiries: std::collections::HashMap<u64, chrono::DateTime<chrono::Utc>>,
+    event_ends: std::collections::HashMap<u64, chrono::DateTime<chrono::Utc>>,
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -724,7 +724,7 @@ async fn sync_labels(
         })
         .collect();
 
-    events_state.event_expiries = events
+    events_state.event_ends = events
         .iter()
         .map(|(id, event)| {
             (
@@ -852,7 +852,7 @@ async fn service_jetstream_once(
                         return Ok(());
                     };
 
-                    let event_expiry = events_state.event_expiries.get(&id).unwrap();
+                    let event_end = events_state.event_ends.get(&id).unwrap();
 
                     let label: atrium_api::com::atproto::label::defs::Label =
                         atrium_api::com::atproto::label::defs::LabelData {
@@ -862,7 +862,7 @@ async fn service_jetstream_once(
                                     .fixed_offset(),
                             ),
                             exp: Some(atrium_api::types::string::Datetime::new(
-                                event_expiry.fixed_offset() + EXPIRY_DATE_GRACE_PERIOD,
+                                event_end.fixed_offset() + EXPIRY_DATE_GRACE_PERIOD,
                             )),
                             src: did.clone(),
                             cid: None,
@@ -994,7 +994,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     let events_state = std::sync::Arc::new(tokio::sync::Mutex::new(EventsState {
         rkeys_to_ids: std::collections::HashMap::new(),
-        event_expiries: std::collections::HashMap::new(),
+        event_ends: std::collections::HashMap::new(),
     }));
 
     let session = atrium_api::agent::atp_agent::CredentialSession::new(
