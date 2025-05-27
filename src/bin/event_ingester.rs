@@ -476,13 +476,7 @@ async fn sync_labels(
 
     // Create new events.
     let mut sorted_events = events.iter_mut().collect::<Vec<_>>();
-    sorted_events.sort_by_key(|(_, event)| {
-        (
-            if event.end_time() < now { 0 } else { 1 },
-            event.ics.dtstart,
-            event.ics.dtend,
-        )
-    });
+    sorted_events.sort_by_key(|(_, event)| (event.ics.dtstart, event.ics.dtend));
 
     {
         let mut created_at = now;
