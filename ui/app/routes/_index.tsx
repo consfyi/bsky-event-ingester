@@ -128,17 +128,10 @@ function ConRow({
       : null;
 
   const now = new Date();
-  const isOver = isAfter(now, addDays(con.end, 1));
-  const active = isAfter(now, con.start) && !isOver;
+  const active = isAfter(now, con.start) && !isAfter(now, addDays(con.end, 1));
 
   return (
-    <Group
-      gap="xs"
-      wrap="nowrap"
-      mb="sm"
-      px="xs"
-      style={{ opacity: isOver ? 0.5 : 1.0 }}
-    >
+    <Group gap="xs" wrap="nowrap" mb="sm" px="xs">
       <Anchor<typeof Link> component={Link} to={`/cons/${con.identifier}`}>
         <Indicator
           position="top-start"
@@ -498,6 +491,8 @@ function ConsList() {
   const { t } = useLingui();
   const { data: followedConAttendees } = useFollowedConAttendeesDLE();
 
+  const now = new Date();
+
   const isLoggedIn = useIsLoggedIn();
   const [viewOptions, setViewOptions] = useLocalStorage<TableViewOptions>({
     key: "fbl:_index:viewOptions5",
@@ -601,6 +596,8 @@ function ConsList() {
         : tempMaxDuration;
 
     return (
+      // Exclude cons that are too late.
+      !isAfter(now, addDays(con.end, 1)) &&
       // Attending filter
       (!actuallyShowOnlyAttending || con.post.viewer?.like != null) &&
       // Continents filter
