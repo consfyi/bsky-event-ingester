@@ -486,7 +486,8 @@ async fn sync_labels(
 
     // Create new events.
     let mut sorted_events = events.into_iter().collect::<Vec<_>>();
-    sorted_events.sort_by_key(|(_, event)| (event.ics.dtstart, event.ics.dtend));
+    sorted_events
+        .sort_by_key(|(_, event)| (event.ics.dtstart, std::cmp::Reverse(sevent.ics.dtend)));
 
     {
         let mut now = chrono::Utc::now();
