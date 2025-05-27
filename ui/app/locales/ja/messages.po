@@ -33,41 +33,41 @@ msgstr "エラー"
 msgid "An error occurred while attempting to load this data."
 msgstr "データの読み込み中にエラーが発生しました。"
 
-#: app/root.tsx:168
+#: app/root.tsx:173
 msgid "Log out"
 msgstr "ログアウト"
 
 #. placeholder {0}: realPdsHost.replace(/^https?:\/\//, "")
-#: app/root.tsx:199
+#: app/root.tsx:204
 msgid "Log in via {0}"
 msgstr "{0} 経由でログイン"
 
-#: app/root.tsx:203
+#: app/root.tsx:208
 msgid "Log in"
 msgstr "ログイン"
 
-#: app/root.tsx:221
+#: app/root.tsx:226
 msgid "Log in via custom PDS"
 msgstr "カスタム PDS 経由でログイン"
 
-#: app/root.tsx:229
+#: app/root.tsx:234
 msgid "Custom PDS"
 msgstr "カスタムPDS"
 
-#: app/root.tsx:236
+#: app/root.tsx:241
 msgid "Couldn’t log in with this PDS. Is the URL correct?"
 msgstr "この PDS でログインできませんでした。URL を確認してください。"
 
-#: app/root.tsx:278
+#: app/root.tsx:286
 msgid "All furry convention data courtesy of the volunteers at <0>FurryCons.com</0> – thank you! Convention missing? <1>Submit it here!</1>"
 msgstr "全てのコンベンションのデータは <0>FurryCons.com</0> のボランティアの皆様のご厚意によるものです。コンベンションが掲載されていませんか？<1>こちらから投稿してください！</1>"
 
-#: app/root.tsx:329
-#: app/root.tsx:335
+#: app/root.tsx:352
+#: app/root.tsx:358
 msgid "Not found"
 msgstr "見つかりません"
 
-#: app/root.tsx:338
+#: app/root.tsx:361
 msgid "The page you requested could not be found."
 msgstr "お探しのページが見つかりませんでした。"
 

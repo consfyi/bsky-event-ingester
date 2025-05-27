@@ -14,6 +14,7 @@ import {
   Loader,
   MantineProvider,
   Menu,
+  Select,
   Text,
   TextInput,
 } from "@mantine/core";
@@ -34,13 +35,17 @@ import {
   IconBrandBluesky,
   IconChevronDown,
   IconLogout2,
+  IconWorld,
 } from "@tabler/icons-react";
 import { Suspense, useEffect, useState } from "react";
 import Avatar from "~/components/Avatar";
 import clientMetadata from "../public/client-metadata.json";
 import { DEFAULT_PDS_HOST, startLogin } from "./bluesky";
 import { GlobalMemoProvider } from "./components/GlobalMemoContext";
-import LinguiProvider from "./components/LinguiProvider";
+import LinguiProvider, {
+  AVAILABLE_LOCALES,
+  useSetLocale,
+} from "./components/LinguiProvider";
 import { useClient, useHydrated, useSelf } from "./hooks";
 import "./styles.css";
 
@@ -257,6 +262,9 @@ function Header() {
 }
 
 function Footer() {
+  const { i18n } = useLingui();
+  const setLocale = useSetLocale();
+
   return (
     <Box
       style={{
@@ -294,7 +302,7 @@ function Footer() {
             </Anchor>
           </Trans>
         </Text>
-        <Group gap={0} justify="flex-end" wrap="nowrap">
+        <Group gap={8} justify="flex-end" wrap="nowrap" mb="sm">
           <ActionIcon
             aria-label="Bluesky"
             component="a"
@@ -308,6 +316,21 @@ function Footer() {
             <IconBrandBluesky size={18} stroke={1.5} />
           </ActionIcon>
         </Group>
+        <Select
+          leftSection={<IconWorld stroke={1.5} size={18} />}
+          size="xs"
+          mb="sm"
+          value={i18n.locale}
+          onChange={(value) => {
+            setLocale(value!);
+          }}
+          data={AVAILABLE_LOCALES.map((locale) => ({
+            value: locale,
+            label: new Intl.DisplayNames(locale, { type: "language" }).of(
+              locale
+            )!,
+          }))}
+        />
       </Container>
     </Box>
   );
