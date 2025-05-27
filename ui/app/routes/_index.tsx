@@ -180,8 +180,8 @@ function ConRow({
                     follows.length > MAX_AVATARS_IN_STACK
                       ? [
                           plural(follows.length - MAX_AVATARS_IN_STACK, {
-                            one: "# other",
-                            other: "# others",
+                            one: "# other you follow",
+                            other: "# others you follow",
                           }),
                         ]
                       : []
