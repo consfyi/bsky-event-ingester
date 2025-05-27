@@ -483,48 +483,45 @@ async fn sync_labels(
                     ),
                     location: event.location.clone(),
                     url: event.url.clone(),
-                    geocoded: if let Some(geocoded) = geocoded {
-                        Some(geocoded)
-                    } else {
-                        if let Some(google_maps_client) = google_maps_client.as_ref() {
-                            Some(
-                                if let Some(geocoding) = google_maps_client
-                                    .geocoding()
-                                    .with_address(&event.location)
-                                    .execute()
-                                    .await?
-                                    .results
-                                    .into_iter()
-                                    .next()
-                                {
-                                    let tz = google_maps_client
-                                        .time_zone(
-                                            geocoding.geometry.location,
-                                            event
-                                                .dtstart
-                                                .and_time(chrono::NaiveTime::MIN)
-                                                .and_utc(),
-                                        )
-                                        .execute()
-                                        .await?;
-
-                                    Some(Geocoded {
-                                        country: geocoding
-                                            .address_components
-                                            .into_iter()
-                                            .find(|c| {
-                                                c.types.contains(&google_maps::PlaceType::Country)
-                                            })
-                                            .map(|c| c.short_name),
-                                        timezone: tz.time_zone_name,
-                                    })
-                                } else {
-                                    None
-                                },
-                            )
+                    geocoded: if let Some(google_maps_client) = google_maps_client.as_ref() {
+                        Some(if let Some(geocoded) = geocoded {
+                            // If we already have geocoding results, don't geocode again.
+                            geocoded
                         } else {
-                            None
-                        }
+                            if let Some(geocoding) = google_maps_client
+                                .geocoding()
+                                .with_address(&event.location)
+                                .execute()
+                                .await?
+                                .results
+                                .into_iter()
+                                .next()
+                            {
+                                let tz = google_maps_client
+                                    .time_zone(
+                                        geocoding.geometry.location,
+                                        event.dtstart.and_time(chrono::NaiveTime::MIN).and_utc(),
+                                    )
+                                    .execute()
+                                    .await?;
+
+                                Some(Geocoded {
+                                    country: geocoding
+                                        .address_components
+                                        .into_iter()
+                                        .find(|c| {
+                                            c.types.contains(&google_maps::PlaceType::Country)
+                                        })
+                                        .map(|c| c.short_name),
+                                    timezone: tz.time_zone_name,
+                                })
+                            } else {
+                                None
+                            }
+                        })
+                    } else {
+                        // Delete geocoding results if we have no Google Maps client.
+                        None
                     },
                 },
             ),
