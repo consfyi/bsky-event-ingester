@@ -21,7 +21,7 @@ struct Config {
 }
 
 #[derive(Debug)]
-struct Event {
+struct ICSEvent {
     uid: String,
     url: String,
     summary: String,
@@ -30,11 +30,11 @@ struct Event {
     dtend: chrono::NaiveDate,
 }
 
-#[derive(Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct Geocoded {
     country: Option<String>,
-    timezone: Option<String>,
+    timezone: Option<chrono_tz::Tz>,
 }
 
 struct EventsState {
@@ -48,12 +48,7 @@ struct LabelerEventInfo {
     date: String,
     location: String,
     url: String,
-    #[serde(
-        default,
-        skip_serializing_if = "Option::is_none",
-        with = "::serde_with::rust::double_option"
-    )]
-    geocoded: Option<Option<Geocoded>>,
+    geocoded: Option<Geocoded>,
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -62,9 +57,9 @@ enum EventParseError {
     InvalidOrMissingField(&'static str),
 }
 
-impl Event {
-    fn from_icalendar_event(event: &icalendar::Event) -> Result<Event, EventParseError> {
-        Ok(Event {
+impl ICSEvent {
+    fn from_icalendar_event(event: &icalendar::Event) -> Result<ICSEvent, EventParseError> {
+        Ok(ICSEvent {
             uid: event
                 .get_uid()
                 .ok_or(EventParseError::InvalidOrMissingField("UID"))?
@@ -93,7 +88,7 @@ impl Event {
     }
 }
 
-fn fixup_event(mut event: Event) -> Event {
+fn fixup_event(mut event: ICSEvent) -> ICSEvent {
     event.url = htmlize::unescape(event.url).to_string();
     event.location = htmlize::unescape(event.location).to_string();
     event.summary = htmlize::unescape(event.summary).to_string();
@@ -147,47 +142,16 @@ async fn list_all_records(
     Ok(records)
 }
 
-async fn sync_labels(
+#[derive(Debug)]
+struct Event {
+    ics: ICSEvent,
+    geocoded: Option<Geocoded>,
+    rkey: Option<atrium_api::types::string::RecordKey>,
+}
+
+async fn fetch_events(
     ics_url: &str,
-    ui_endpoint: &str,
-    did: &atrium_api::types::string::Did,
-    agent: &atrium_api::agent::Agent<
-        atrium_api::agent::atp_agent::CredentialSession<
-            atrium_api::agent::atp_agent::store::MemorySessionStore,
-            atrium_xrpc_client::reqwest::ReqwestClient,
-        >,
-    >,
-    google_maps_client: Option<&google_maps::Client>,
-    events_state: std::sync::Arc<tokio::sync::Mutex<EventsState>>,
-) -> Result<(), anyhow::Error> {
-    // Lock the entire events state while labels are syncing.
-    //
-    // This means that we hold the mutex while events are being created, such that any likes on those posts must wait until the mutex is unlocked.
-    // This ensures that we don't get into a state where if someone likes a post but we haven't saved it into the events state yet we end up missing their like.
-    let mut events_state = events_state.lock().await;
-
-    const EXTRA_DATA_POST_RKEY: &str = "fbl_postRkey";
-    const EXTRA_DATA_EVENT_INFO: &str = "fbl_eventInfo";
-
-    let mut writes = vec![];
-
-    let record_rkeys = list_all_records(agent, did)
-        .await?
-        .into_iter()
-        .map(|record| {
-            let parts = record
-                .uri
-                .strip_prefix("at://")
-                .map(|v| v.splitn(3, '/').collect::<Vec<_>>());
-
-            let Some(&[_, _, rkey]) = parts.as_ref().map(|v| &v[..]) else {
-                unreachable!();
-            };
-
-            rkey.to_string()
-        })
-        .collect::<std::collections::HashSet<String>>();
-
+) -> Result<std::collections::HashMap<u64, Event>, anyhow::Error> {
     let calendar: icalendar::Calendar = reqwest::get(ics_url)
         .await?
         .text()
@@ -195,15 +159,13 @@ async fn sync_labels(
         .parse()
         .map_err(|e| anyhow::format_err!("{e}"))?;
 
-    let today = chrono::Utc::now().date_naive();
-
-    let mut events = calendar
+    Ok(calendar
         .components
         .iter()
         .flat_map(|component| {
             let event = component.as_event()?;
 
-            match Event::from_icalendar_event(event) {
+            match ICSEvent::from_icalendar_event(event) {
                 Ok(event) => Some(event),
                 Err(e) => {
                     log::error!("failed to parse {:?}, skipping: {}", event, e);
@@ -211,29 +173,44 @@ async fn sync_labels(
                 }
             }
         })
-        .filter(|e| e.dtend >= today)
-        // .filter(|_| false)
         .map(|event| {
+            let id = event
+                .uid
+                .split_once("-")
+                .ok_or(anyhow::anyhow!("malformed event uid"))?
+                .0
+                .parse()?;
             Ok::<_, anyhow::Error>((
-                event
-                    .uid
-                    .split_once("-")
-                    .ok_or(anyhow::anyhow!("malformed event uid"))?
-                    .0
-                    .parse()?,
-                fixup_event(event),
+                id,
+                Event {
+                    ics: fixup_event(event),
+                    geocoded: None,
+                    rkey: None,
+                },
             ))
         })
-        .collect::<Result<Vec<_>, _>>()?;
+        .collect::<Result<std::collections::HashMap<_, _>, _>>()?)
+}
 
-    events.sort_by_key(|(_, event)| event.dtstart);
+const EXTRA_DATA_POST_RKEY: &str = "fbl_postRkey";
+const EXTRA_DATA_EVENT_INFO: &str = "fbl_eventInfo";
 
-    let next_events = events
-        .iter()
-        .map(|(id, event)| (id, event))
-        .collect::<std::collections::HashMap<_, _>>();
+#[derive(Debug)]
+struct OldEvent {
+    rkey: atrium_api::types::string::RecordKey,
+    geocoded: Option<Geocoded>,
+}
 
-    let old_record = match agent
+async fn fetch_old_events(
+    did: &atrium_api::types::string::Did,
+    agent: &atrium_api::agent::Agent<
+        atrium_api::agent::atp_agent::CredentialSession<
+            atrium_api::agent::atp_agent::store::MemorySessionStore,
+            atrium_xrpc_client::reqwest::ReqwestClient,
+        >,
+    >,
+) -> Result<Option<std::collections::HashMap<u64, OldEvent>>, anyhow::Error> {
+    let Some(record) = match agent
         .api
         .com
         .atproto
@@ -263,9 +240,78 @@ async fn sync_labels(
     }
     .and_then(|record| {
         atrium_api::app::bsky::labeler::service::Record::try_from_unknown(record.data.value).ok()
-    });
+    }) else {
+        return Ok(None);
+    };
 
-    if old_record.is_some() {
+    Ok(record
+        .policies
+        .data
+        .label_value_definitions
+        .as_ref()
+        .map(|defs| {
+            defs.iter()
+                .flat_map(|v| {
+                    let rkey = ipld_core::serde::from_ipld::<String>(
+                        v.extra_data.get(EXTRA_DATA_POST_RKEY).ok()??.clone(),
+                    )
+                    .ok()?;
+
+                    Some((
+                        base26::decode(&v.identifier).unwrap(),
+                        OldEvent {
+                            rkey: atrium_api::types::string::RecordKey::new(rkey).unwrap(),
+                            geocoded: v
+                                .extra_data
+                                .get(EXTRA_DATA_EVENT_INFO)
+                                .ok()
+                                .flatten()
+                                .cloned()
+                                .and_then(|v| {
+                                    ipld_core::serde::from_ipld::<LabelerEventInfo>(v).ok()
+                                })
+                                .and_then(|v| v.geocoded),
+                        },
+                    ))
+                })
+                .collect::<std::collections::HashMap<_, _>>()
+        }))
+}
+
+async fn sync_labels(
+    ics_url: &str,
+    ui_endpoint: &str,
+    did: &atrium_api::types::string::Did,
+    agent: &atrium_api::agent::Agent<
+        atrium_api::agent::atp_agent::CredentialSession<
+            atrium_api::agent::atp_agent::store::MemorySessionStore,
+            atrium_xrpc_client::reqwest::ReqwestClient,
+        >,
+    >,
+    google_maps_client: Option<&google_maps::Client>,
+    events_state: std::sync::Arc<tokio::sync::Mutex<EventsState>>,
+) -> Result<(), anyhow::Error> {
+    // Lock the entire events state while labels are syncing.
+    //
+    // This means that we hold the mutex while events are being created, such that any likes on those posts must wait until the mutex is unlocked.
+    // This ensures that we don't get into a state where if someone likes a post but we haven't saved it into the events state yet we end up missing their like.
+    let mut events_state = events_state.lock().await;
+
+    let mut events = fetch_events(ics_url).await?;
+
+    // Remove events that are too late.
+    //
+    // Somewhat obnoxiously we have to do this in UTC, because otherwise we have to geocode to find the timezone.
+    let mut now = chrono::Utc::now();
+
+    events = events
+        .into_iter()
+        .filter(|(_, event)| event.ics.dtend.and_time(chrono::NaiveTime::MIN).and_utc() >= now)
+        .collect();
+
+    let mut writes = vec![];
+
+    let mut old_events = if let Some(old_events) = fetch_old_events(did, agent).await? {
         writes.push(
             atrium_api::com::atproto::repo::apply_writes::InputWritesItem::Delete(Box::new(
                 atrium_api::com::atproto::repo::apply_writes::DeleteData {
@@ -275,56 +321,101 @@ async fn sync_labels(
                 .into(),
             )),
         );
-    }
 
-    let mut old_events = old_record
+        old_events
+    } else {
+        std::collections::HashMap::new()
+    };
+
+    let record_rkeys = list_all_records(agent, did)
+        .await?
+        .into_iter()
         .map(|record| {
-            record
-                .policies
-                .data
-                .label_value_definitions
-                .as_ref()
-                .map(|defs| {
-                    defs.iter()
-                        .flat_map(|v| {
-                            let rkey = ipld_core::serde::from_ipld::<String>(
-                                v.extra_data.get(EXTRA_DATA_POST_RKEY).ok()??.clone(),
-                            )
-                            .ok()?;
+            let parts = record
+                .uri
+                .strip_prefix("at://")
+                .map(|v| v.splitn(3, '/').collect::<Vec<_>>());
 
-                            if !record_rkeys.contains(&rkey) {
-                                log::info!("could not find {rkey}, will delete");
-                                return None;
-                            }
+            let Some(&[_, _, rkey]) = parts.as_ref().map(|v| &v[..]) else {
+                unreachable!();
+            };
 
-                            Some((
-                                base26::decode(&v.identifier).unwrap(),
-                                (
-                                    atrium_api::types::string::RecordKey::new(rkey).unwrap(),
-                                    v.extra_data
-                                        .get(EXTRA_DATA_EVENT_INFO)
-                                        .ok()
-                                        .flatten()
-                                        .cloned()
-                                        .and_then(|v| {
-                                            ipld_core::serde::from_ipld::<LabelerEventInfo>(v).ok()
-                                        }),
-                                ),
-                            ))
-                        })
-                        .collect::<std::collections::HashMap<_, _>>()
-                })
-                .unwrap_or_default()
+            atrium_api::types::string::RecordKey::new(rkey.to_string()).unwrap()
         })
-        .unwrap_or_default();
+        .collect::<std::collections::HashSet<atrium_api::types::string::RecordKey>>();
+
+    old_events = old_events
+        .into_iter()
+        .filter(|(_, oe)| {
+            if !record_rkeys.contains(&oe.rkey) {
+                log::info!("could not find {}, will delete", oe.rkey.as_str());
+                return false;
+            }
+            true
+        })
+        .collect();
+
+    // Perform geocoding, if required.
+    if let Some(google_maps_client) = google_maps_client.as_ref() {
+        let old_events = &old_events;
+
+        events =
+            futures::future::try_join_all(events.into_iter().map(|(id, mut event)| async move {
+                event.geocoded = Some(
+                    if let Some(geocoded) = old_events.get(&id).and_then(|e| e.geocoded.as_ref()) {
+                        // Already have geocoding data, ignore.
+                        geocoded.clone()
+                    } else {
+                        // Need to geocode and get timezone from Google Maps.
+                        if let Some(geocoding) = google_maps_client
+                            .geocoding()
+                            .with_address(&event.ics.location)
+                            .execute()
+                            .await?
+                            .results
+                            .into_iter()
+                            .next()
+                        {
+                            let tz = google_maps_client
+                                .time_zone(
+                                    geocoding.geometry.location,
+                                    event.ics.dtstart.and_time(chrono::NaiveTime::MIN).and_utc(),
+                                )
+                                .execute()
+                                .await?;
+
+                            Geocoded {
+                                country: geocoding
+                                    .address_components
+                                    .into_iter()
+                                    .find(|c| c.types.contains(&google_maps::PlaceType::Country))
+                                    .map(|c| c.short_name),
+                                timezone: tz.time_zone_id,
+                            }
+                        } else {
+                            Geocoded {
+                                country: None,
+                                timezone: None,
+                            }
+                        }
+                    },
+                );
+
+                Ok::<_, anyhow::Error>((id, event))
+            }))
+            .await?
+            .into_iter()
+            .collect();
+    }
 
     // Delete events.
     for (id, rkey) in old_events
         .iter()
-        .map(|(id, (rkey, _))| (*id, rkey.clone()))
+        .map(|(id, oe)| (*id, oe.rkey.clone()))
         .collect::<Vec<_>>()
     {
-        if next_events.contains_key(&id) {
+        if let Some(event) = events.get_mut(&id) {
+            event.rkey = Some(rkey);
             continue;
         }
 
@@ -346,14 +437,13 @@ async fn sync_labels(
                 .into(),
             )),
         );
+
         old_events.remove(&id);
     }
 
-    let mut now = chrono::Utc::now();
-
     // Create new events.
-    for (id, event) in events.iter() {
-        if old_events.contains_key(id) {
+    for (id, event) in events.iter_mut() {
+        if event.rkey.is_some() {
             continue;
         }
 
@@ -361,6 +451,8 @@ async fn sync_labels(
             atrium_api::types::string::Tid::from_datetime(0.try_into().unwrap(), now).to_string(),
         )
         .unwrap();
+
+        event.rkey = Some(rkey.clone());
 
         {
             let record: atrium_api::app::bsky::feed::post::Record =
@@ -375,7 +467,7 @@ async fn sync_labels(
                     .unwrap()]),
                     reply: None,
                     tags: None,
-                    text: format!("{}", event.summary),
+                    text: format!("{}", event.ics.summary),
                     facets: Some(vec![atrium_api::app::bsky::richtext::facet::MainData {
                         features: vec![atrium_api::types::Union::Refs(
                             atrium_api::app::bsky::richtext::facet::MainFeaturesItem::Link(
@@ -393,7 +485,7 @@ async fn sync_labels(
                         )],
                         index: atrium_api::app::bsky::richtext::facet::ByteSliceData {
                             byte_start: 0,
-                            byte_end: event.summary.bytes().len(),
+                            byte_end: event.ics.summary.bytes().len(),
                         }
                         .into(),
                     }
@@ -457,93 +549,25 @@ async fn sync_labels(
             )
             .await?;
 
-        old_events.insert(*id, (rkey, None));
-
         // https://github.com/bluesky-social/atproto/issues/2468#issuecomment-2100947405
         now += chrono::Duration::milliseconds(1);
     }
 
-    let next_events = futures::future::try_join_all(events.iter().map(|(id, event)| async {
-        // The "DTEND" property for a "VEVENT" calendar component specifies the non-inclusive end of the event.
-        let end_date = event.dtend - chrono::Days::new(1);
-
-        let (rkey, info) = old_events.get(id).unwrap();
-
-        let geocoded = info.as_ref().and_then(|info| info.geocoded.clone());
-
-        Ok::<_, anyhow::Error>((
-            *id,
-            (
-                rkey.clone(),
-                LabelerEventInfo {
-                    date: format!(
-                        "{}/{}",
-                        event.dtstart.format("%Y-%m-%d"),
-                        end_date.format("%Y-%m-%d")
-                    ),
-                    location: event.location.clone(),
-                    url: event.url.clone(),
-                    geocoded: if let Some(google_maps_client) = google_maps_client.as_ref() {
-                        Some(if let Some(geocoded) = geocoded {
-                            // If we already have geocoding results, don't geocode again.
-                            geocoded
-                        } else {
-                            if let Some(geocoding) = google_maps_client
-                                .geocoding()
-                                .with_address(&event.location)
-                                .execute()
-                                .await?
-                                .results
-                                .into_iter()
-                                .next()
-                            {
-                                let tz = google_maps_client
-                                    .time_zone(
-                                        geocoding.geometry.location,
-                                        event.dtstart.and_time(chrono::NaiveTime::MIN).and_utc(),
-                                    )
-                                    .execute()
-                                    .await?;
-
-                                Some(Geocoded {
-                                    country: geocoding
-                                        .address_components
-                                        .into_iter()
-                                        .find(|c| {
-                                            c.types.contains(&google_maps::PlaceType::Country)
-                                        })
-                                        .map(|c| c.short_name),
-                                    timezone: tz.time_zone_name,
-                                })
-                            } else {
-                                None
-                            }
-                        })
-                    } else {
-                        // Delete geocoding results if we have no Google Maps client.
-                        None
-                    },
-                },
-            ),
-        ))
-    }))
-    .await?
-    .into_iter()
-    .collect::<std::collections::HashMap<_, _>>();
-
     {
+        let mut sorted_events = events.iter().collect::<Vec<_>>();
+        sorted_events.sort_by_key(|(_, event)| event.ics.dtstart);
+
         let record: atrium_api::app::bsky::labeler::service::Record =
             atrium_api::app::bsky::labeler::service::RecordData {
                 created_at: atrium_api::types::string::Datetime::now(),
                 labels: None,
                 policies: atrium_api::app::bsky::labeler::defs::LabelerPoliciesData {
-                    label_values: events.iter().map(|(id, _)| base26::encode(*id)).collect(),
+                    label_values: sorted_events.iter().map(|(id, _)| base26::encode(**id)).collect(),
                     label_value_definitions: Some(
-                        events
-                            .iter()
+                        sorted_events.into_iter() // TODO: Sort by dtstart
                             .map(|(id, event)| {
                                 // The "DTEND" property for a "VEVENT" calendar component specifies the non-inclusive end of the event.
-                                let end_date = event.dtend - chrono::Days::new(1);
+                                let end_date = event.ics.dtend - chrono::Days::new(1);
 
                                 let mut def: atrium_api::com::atproto::label::defs::LabelValueDefinition = atrium_api::com::atproto::label::defs::LabelValueDefinitionData {
                                     adult_only: Some(false),
@@ -555,11 +579,11 @@ async fn sync_labels(
                                             "en".to_string(),
                                         )
                                         .unwrap(),
-                                        name: event.summary.clone(),
+                                        name: event.ics.summary.clone(),
                                         description: format!(
                                             "📅 {start_date} – {end_date}\n📍 {location}",
-                                            location = event.location,
-                                            start_date = event.dtstart,
+                                            location = event.ics.location,
+                                            start_date = event.ics.dtstart,
                                             end_date = end_date
                                         ),
                                     }
@@ -573,16 +597,25 @@ async fn sync_labels(
                                     unreachable!()
                                 };
 
-                                let (rkey, info) = next_events.get(id).unwrap();
-
                                 extra_data.insert(
                                     EXTRA_DATA_POST_RKEY.to_string(),
-                                    ipld_core::serde::to_ipld(rkey.to_string()).unwrap(),
+                                    ipld_core::serde::to_ipld(event.rkey.as_ref().unwrap().to_string()).unwrap(),
                                 );
+
                                 extra_data.insert(
                                     EXTRA_DATA_EVENT_INFO.to_string(),
-                                    ipld_core::serde::to_ipld(info).unwrap(),
+                                    ipld_core::serde::to_ipld(LabelerEventInfo {
+                                        date: format!(
+                                            "{}/{}",
+                                            event.ics.dtstart.format("%Y-%m-%d"),
+                                            end_date
+                                        ),
+                                        location: event.ics.location.clone(),
+                                        url: event.ics.url.clone(),
+                                        geocoded: event.geocoded.clone(),
+                                    }).unwrap(),
                                 );
+
                                 def
                             })
                             .collect(),
@@ -627,29 +660,27 @@ async fn sync_labels(
         )
         .await?;
 
-    events_state.rkeys_to_ids = next_events
+    events_state.rkeys_to_ids = events
         .iter()
-        .map(|(id, (rkey, _))| (rkey.clone(), *id))
+        .map(|(id, event)| (event.rkey.as_ref().unwrap().clone(), *id))
         .collect();
 
     events_state.event_expiries = events
         .iter()
         .map(|(id, event)| {
-            let (_, info) = next_events.get(id).unwrap();
-
-            let tz = info
-                .geocoded
-                .as_ref()
-                .and_then(|maybe_geocoded| maybe_geocoded.as_ref())
-                .and_then(|geocoded| geocoded.timezone.as_ref())
-                .and_then(|timezone| timezone.parse().ok())
-                .unwrap_or(chrono_tz::UTC);
-
             (
                 *id,
-                (event.dtend + chrono::Days::new(1))
+                event
+                    .ics
+                    .dtend
                     .and_time(chrono::NaiveTime::MIN)
-                    .and_local_timezone(tz)
+                    .and_local_timezone(
+                        event
+                            .geocoded
+                            .as_ref()
+                            .and_then(|g| g.timezone)
+                            .unwrap_or(chrono_tz::UTC),
+                    )
                     .unwrap()
                     .to_utc(),
             )
