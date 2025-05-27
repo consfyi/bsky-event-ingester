@@ -257,16 +257,19 @@ function ConRow({
                 )
               </Trans>
             </>
-          )}{" "}
-          • <IconMapPin title={t`Location`} size={12} />{" "}
-          <Anchor
-            href={`https://www.google.com/maps?q=${con.location}`}
-            target="_blank"
-            rel="noreferrer"
-            c="var(--mantine-color-text)"
-          >
-            {con.location}
-          </Anchor>
+          )}
+          <Text span visibleFrom="xs">
+            {" "}
+            • <IconMapPin title={t`Location`} size={12} />{" "}
+            <Anchor
+              href={`https://www.google.com/maps?q=${con.location}`}
+              target="_blank"
+              rel="noreferrer"
+              c="var(--mantine-color-text)"
+            >
+              {con.location}
+            </Anchor>
+          </Text>
         </Text>
       </Box>
     </Group>
