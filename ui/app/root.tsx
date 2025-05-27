@@ -269,6 +269,7 @@ function Footer() {
         style={{
           justifyContent: "space-between",
           alignItems: "center",
+          textAlign: "center",
           flexDirection: "column",
         }}
         p="sm"

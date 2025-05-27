@@ -99,7 +99,7 @@ function ConRow({
 
   const dateTimeFormat = useMemo(
     () =>
-      new Intl.DateTimeFormat(i18n.locales, {
+      new Intl.DateTimeFormat(i18n.locale, {
         weekday: "short",
         day: "numeric",
         month: "short",
@@ -110,7 +110,7 @@ function ConRow({
 
   const listFormat = useMemo(
     () =>
-      new Intl.ListFormat(i18n.locales, {
+      new Intl.ListFormat(i18n.locale, {
         type: "conjunction",
         style: "long",
       }),

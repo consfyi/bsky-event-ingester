@@ -8,7 +8,7 @@ export default function Flag({
 }: { country: string } & Omit<ImageProps, "src">) {
   const { i18n } = useLingui();
   const countryNames = useMemo(
-    () => new Intl.DisplayNames(i18n.locales, { type: "region" }),
+    () => new Intl.DisplayNames(i18n.locale, { type: "region" }),
     [i18n]
   );
   return (
