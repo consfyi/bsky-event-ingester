@@ -36,8 +36,8 @@ import {
 import {
   IconBrandBluesky,
   IconChevronDown,
+  IconLanguage,
   IconLogout2,
-  IconWorld,
 } from "@tabler/icons-react";
 import IntlLocale from "intl-locale-textinfo-polyfill";
 import { Suspense, useEffect, useState } from "react";
@@ -321,7 +321,7 @@ function Footer() {
           </ActionIcon>
         </Group>
         <Select
-          leftSection={<IconWorld stroke={1.5} size={18} />}
+          leftSection={<IconLanguage stroke={1.5} size={18} />}
           size="xs"
           mb="sm"
           value={i18n.locale}
