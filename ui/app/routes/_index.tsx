@@ -165,7 +165,10 @@ function ConRow({
           </Text>
         </Group>
         <Text size="sm" truncate>
-          <IconUsers title={t`Attendees`} size={12} />{" "}
+          <IconUsers
+            title={t({ message: "Attendees", context: "number of attendees" })}
+            size={12}
+          />{" "}
           <Trans context="attendee count">{[likeCount][0]}</Trans>{" "}
           {follows != null && follows.length > 0 ? (
             <Tooltip
@@ -505,7 +508,7 @@ function ConsList() {
       desc: t`Latest to soonest`,
     },
     [SortBy.Attendees]: {
-      name: t`Attendees`,
+      name: t({ message: "Attendees", context: "number of attendees" }),
       asc: t`Fewest to most`,
       desc: t`Most to fewest`,
     },
