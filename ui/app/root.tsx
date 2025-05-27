@@ -165,7 +165,7 @@ function Header() {
                     })();
                   }}
                 >
-                  Log out
+                  <Trans>Log out</Trans>
                 </Button>
               </Menu.Dropdown>
             </Menu>

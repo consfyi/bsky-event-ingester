@@ -31,6 +31,10 @@ msgstr "Error"
 msgid "An error occurred while attempting to load this data."
 msgstr "An error occurred while attempting to load this data."
 
+#: app/root.tsx:168
+msgid "Log out"
+msgstr "Log out"
+
 #. placeholder {0}: realPdsHost.replace(/^https?:\/\//, "")
 #: app/root.tsx:199
 msgid "Log in via {0}"
@@ -52,16 +56,16 @@ msgstr "Custom PDS"
 msgid "Couldn’t log in with this PDS. Is the URL correct?"
 msgstr "Couldn’t log in with this PDS. Is the URL correct?"
 
-#: app/root.tsx:277
+#: app/root.tsx:278
 msgid "All furry convention data courtesy of the volunteers at <0>FurryCons.com</0> – thank you! Convention missing? <1>Submit it here!</1>"
 msgstr "All furry convention data courtesy of the volunteers at <0>FurryCons.com</0> – thank you! Convention missing? <1>Submit it here!</1>"
 
-#: app/root.tsx:328
-#: app/root.tsx:334
+#: app/root.tsx:329
+#: app/root.tsx:335
 msgid "Not found"
 msgstr "Not found"
 
-#: app/root.tsx:337
+#: app/root.tsx:338
 msgid "The page you requested could not be found."
 msgstr "The page you requested could not be found."
 
