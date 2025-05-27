@@ -198,6 +198,7 @@ const EXTRA_DATA_EVENT_INFO: &str = "fbl_eventInfo";
 #[derive(Debug)]
 struct OldEvent {
     rkey: Option<atrium_api::types::string::RecordKey>,
+    location: String,
     geocoded: Option<Geocoded>,
 }
 
@@ -264,20 +265,21 @@ async fn fetch_old_events(
                         }
                     };
 
+                    let labeler_event_info = v
+                        .extra_data
+                        .get(EXTRA_DATA_EVENT_INFO)
+                        .ok()
+                        .flatten()
+                        .cloned()
+                        .and_then(|v| ipld_core::serde::from_ipld::<LabelerEventInfo>(v).ok())
+                        .unwrap();
+
                     Some((
                         base26::decode(&v.identifier).unwrap(),
                         OldEvent {
                             rkey,
-                            geocoded: v
-                                .extra_data
-                                .get(EXTRA_DATA_EVENT_INFO)
-                                .ok()
-                                .flatten()
-                                .cloned()
-                                .and_then(|v| {
-                                    ipld_core::serde::from_ipld::<LabelerEventInfo>(v).ok()
-                                })
-                                .and_then(|v| v.geocoded),
+                            location: labeler_event_info.location,
+                            geocoded: labeler_event_info.geocoded,
                         },
                     ))
                 })
@@ -376,7 +378,11 @@ async fn sync_labels(
         events =
             futures::future::try_join_all(events.into_iter().map(|(id, mut event)| async move {
                 event.geocoded = Some(
-                    if let Some(geocoded) = old_events.get(&id).and_then(|e| e.geocoded.as_ref()) {
+                    if let Some(geocoded) = old_events
+                        .get(&id)
+                        .filter(|e| e.location == event.ics.location)
+                        .and_then(|e| e.geocoded.as_ref())
+                    {
                         // Already have geocoding data, ignore.
                         geocoded.clone()
                     } else {
