@@ -33,7 +33,8 @@ struct Event {
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct Geocoded {
-    country: String,
+    country: Option<String>,
+    timezone: Option<String>,
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -482,7 +483,7 @@ async fn sync_labels(
                     } else {
                         if let Some(google_maps_client) = google_maps_client.as_ref() {
                             Some(
-                                google_maps_client
+                                if let Some(geocoding) = google_maps_client
                                     .geocoding()
                                     .with_address(&event.location)
                                     .execute()
@@ -490,16 +491,31 @@ async fn sync_labels(
                                     .results
                                     .into_iter()
                                     .next()
-                                    .map(|r| Geocoded {
-                                        country: r
+                                {
+                                    let tz = google_maps_client
+                                        .time_zone(
+                                            geocoding.geometry.location,
+                                            event
+                                                .dtstart
+                                                .and_time(chrono::NaiveTime::MIN)
+                                                .and_utc(),
+                                        )
+                                        .execute()
+                                        .await?;
+
+                                    Some(Geocoded {
+                                        country: geocoding
                                             .address_components
                                             .into_iter()
                                             .find(|c| {
                                                 c.types.contains(&google_maps::PlaceType::Country)
                                             })
-                                            .map(|c| c.short_name)
-                                            .unwrap_or_else(|| "XX".to_string()),
-                                    }),
+                                            .map(|c| c.short_name),
+                                        timezone: tz.time_zone_name,
+                                    })
+                                } else {
+                                    None
+                                },
                             )
                         } else {
                             None
@@ -735,6 +751,7 @@ async fn service_jetstream_once(
                                     .unwrap()
                                     .fixed_offset(),
                             ),
+                            // TODO: Add timezone support, we should already know the timezone if we've geocoded it.
                             exp: Some(atrium_api::types::string::Datetime::new(
                                 (event.dtend + chrono::Duration::days(1))
                                     .and_time(chrono::NaiveTime::MIN)

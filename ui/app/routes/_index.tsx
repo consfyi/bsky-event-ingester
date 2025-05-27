@@ -13,6 +13,7 @@ import {
   Divider,
   Drawer,
   Group,
+  Indicator,
   Loader,
   Menu,
   RangeSlider,
@@ -42,11 +43,14 @@ import {
   IconUsers,
 } from "@tabler/icons-react";
 import {
+  addDays,
   addMonths,
   differenceInDays,
   getDay,
   getMonth,
   getYear,
+  isAfter,
+  isBefore,
   setDate,
 } from "date-fns";
 import { groupBy, isEqual, sortBy } from "lodash-es";
@@ -57,6 +61,7 @@ import LikeButton from "~/components/LikeButton";
 import SimpleErrorBoundary from "~/components/SimpleErrorBoundary";
 import { LABELER_DID } from "~/config";
 import { Continent, getContinentForCountry } from "~/continents";
+import { toLocalDate } from "~/date";
 import { useGetPreferences, usePutPreferences } from "~/endpoints";
 import {
   Con,
@@ -123,31 +128,42 @@ function ConRow({
       ? followedConAttendees[con.identifier] ?? []
       : null;
 
+  const now = new Date();
+  const active = isAfter(now, con.start) && isBefore(now, addDays(con.end, 1));
+
   return (
     <Group gap="xs" wrap="nowrap" mb="sm" px="xs">
       <Anchor<typeof Link> component={Link} to={`/cons/${con.identifier}`}>
-        <ThemeIcon
-          size="xl"
-          variant="light"
-          color={
-            ["red", "orange", "yellow", "green", "blue", "indigo", "violet"][
-              getDay(con.start)
-            ]
-          }
+        <Indicator
+          position="top-start"
+          color="green"
+          size={12}
+          withBorder
+          disabled={!active}
         >
-          <Stack gap={0}>
-            <Text size="md" ta="center" fw={500}>
-              {showMonthInIcon
-                ? i18n.date(con.start, { month: "short" })
-                : i18n.date(con.start, { weekday: "short" })}
-            </Text>
-            <Text size="xs" ta="center" fw={500}>
-              {i18n.date(con.start, {
-                day: "numeric",
-              })}
-            </Text>
-          </Stack>
-        </ThemeIcon>
+          <ThemeIcon
+            size="xl"
+            variant="light"
+            color={
+              ["red", "orange", "yellow", "green", "blue", "indigo", "violet"][
+                getDay(toLocalDate(con.start))
+              ]
+            }
+          >
+            <Stack gap={0}>
+              <Text size="md" ta="center" fw={500}>
+                {showMonthInIcon
+                  ? i18n.date(toLocalDate(con.start), { month: "short" })
+                  : i18n.date(toLocalDate(con.start), { weekday: "short" })}
+              </Text>
+              <Text size="xs" ta="center" fw={500}>
+                {i18n.date(toLocalDate(con.start), {
+                  day: "numeric",
+                })}
+              </Text>
+            </Stack>
+          </ThemeIcon>
+        </Indicator>
       </Anchor>
       <Box style={{ minWidth: 0 }}>
         <Group gap={7} wrap="nowrap">
@@ -158,7 +174,7 @@ function ConRow({
           <Text size="sm" truncate>
             {con.geocoded != null ? (
               <Flag
-                country={con.geocoded.country}
+                country={con.geocoded.country ?? "XX"}
                 display="inline"
                 h={10}
                 w={20}
@@ -225,7 +241,11 @@ function ConRow({
             <>
               <IconCalendar title={t`Date`} size={12} />{" "}
               <Trans context="[start date]-[end date] ([duration] days)">
-                {dateTimeFormat.formatRange(con.start, con.end)} (
+                {dateTimeFormat.formatRange(
+                  toLocalDate(con.start),
+                  toLocalDate(con.end)
+                )}{" "}
+                (
                 <Plural
                   value={differenceInDays(con.end, con.start) + 1}
                   one="# day"
@@ -239,12 +259,13 @@ function ConRow({
               <IconCalendarWeek title={t`End date`} size={12} />{" "}
               <Trans context="ends [date] ([duration] days)">
                 ends{" "}
-                {i18n.date(con.end, {
+                {i18n.date(toLocalDate(con.end), {
                   weekday: "short",
                   day: "numeric",
                   month: "short",
                   year:
-                    getYear(con.start) != getYear(con.end)
+                    getYear(toLocalDate(con.start)) !=
+                    getYear(toLocalDate(con.end))
                       ? "numeric"
                       : undefined,
                 })}{" "}
@@ -300,7 +321,7 @@ function ConsByDate({
 
   const consByMonth = useMemo(() => {
     const groups = groupBy(cons, (con) => {
-      return yearMonthKey(con.start);
+      return yearMonthKey(toLocalDate(con.start));
     });
     if (sortDesc) {
       for (const k in groups) {
@@ -525,7 +546,7 @@ function ConsList() {
     for (const con of cons) {
       const continent =
         con.geocoded != null
-          ? getContinentForCountry(con.geocoded.country)
+          ? getContinentForCountry(con.geocoded.country ?? "XX")
           : "XX";
       counts[continent] = (counts[continent] || 0) + 1;
     }
@@ -579,7 +600,7 @@ function ConsList() {
       // Continents filter
       viewOptions.filter.continents.includes(
         con.geocoded != null
-          ? getContinentForCountry(con.geocoded.country)
+          ? getContinentForCountry(con.geocoded.country ?? "XX")
           : "XX"
       ) &&
       // Duration filter

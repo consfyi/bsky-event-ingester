@@ -1,5 +1,6 @@
 import type { ResourceUri } from "@atcute/lexicons";
 import { useDLE, useSuspense } from "@data-client/react";
+import { tz, TZDate } from "@date-fns/tz";
 import { parse as parseDate } from "date-fns";
 import { sortBy } from "lodash-es";
 import { useSyncExternalStore } from "react";
@@ -84,14 +85,15 @@ function useConPosts() {
 }
 
 export interface Geocoded {
-  country: string;
+  country: string | null;
+  timezone: string | null;
 }
 
 export interface Con {
   identifier: string;
   name: string;
-  start: Date;
-  end: Date;
+  start: TZDate;
+  end: TZDate;
   location: string;
   geocoded: Geocoded | null;
   post: Post;
@@ -112,9 +114,7 @@ export function useCons() {
             fbl_eventInfo: {
               date: string;
               location: string;
-              geocoded?: {
-                country: string;
-              } | null;
+              geocoded?: Geocoded | null;
               url: string;
             };
             fbl_postRkey: string;
@@ -131,19 +131,23 @@ export function useCons() {
 
           const [strings] = def.locales;
           const [start, end] = fullDef.fbl_eventInfo.date.split("/");
+
+          const refDate =
+            fullDef.fbl_eventInfo.geocoded?.timezone != null
+              ? tz(fullDef.fbl_eventInfo.geocoded.timezone)(new TZDate())
+              : new TZDate();
+
+          const startDate = parseDate(start, "yyyy-MM-dd", refDate);
+          const endDate = parseDate(end, "yyyy-MM-dd", refDate);
+
           return [
             {
               identifier: def.identifier,
               name: strings.name,
-              start: parseDate(start, "yyyy-MM-dd", new Date()),
-              end: parseDate(end, "yyyy-MM-dd", new Date()),
+              start: startDate,
+              end: endDate,
               location: fullDef.fbl_eventInfo.location,
-              geocoded:
-                fullDef.fbl_eventInfo.geocoded != null
-                  ? {
-                      country: fullDef.fbl_eventInfo.geocoded.country,
-                    }
-                  : null,
+              geocoded: fullDef.fbl_eventInfo.geocoded ?? null,
               post: conPosts[fullDef.fbl_postRkey],
               postRkey: fullDef.fbl_postRkey,
               url: fullDef.fbl_eventInfo.url,
