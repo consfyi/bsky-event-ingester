@@ -373,7 +373,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const hydrated = useHydrated();
 
   return (
-    <html lang="en">
+    // lang is set by LinguiProvider.
+    // eslint-disable-next-line jsx-a11y/html-has-lang
+    <html>
       <head>
         <meta charSet="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />

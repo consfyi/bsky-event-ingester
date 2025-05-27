@@ -71,6 +71,7 @@ export default function LinguiProvider(props: Omit<I18nProviderProps, "i18n">) {
         (new IntlLocale(locale).textInfo.direction as Direction | undefined) ??
           "ltr"
       );
+      document.documentElement.lang = locale;
     })();
   }, [locale, setDirection]);
 
