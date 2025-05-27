@@ -40,7 +40,7 @@ msgstr "ログアウト"
 #. placeholder {0}: realPdsHost.replace(/^https?:\/\//, "")
 #: app/root.tsx:199
 msgid "Log in via {0}"
-msgstr "{0}経由でログイン"
+msgstr "{0} 経由でログイン"
 
 #: app/root.tsx:203
 msgid "Log in"
@@ -48,7 +48,7 @@ msgstr "ログイン"
 
 #: app/root.tsx:221
 msgid "Log in via custom PDS"
-msgstr "カスタムPDS経由でログイン"
+msgstr "カスタム PDS 経由でログイン"
 
 #: app/root.tsx:229
 msgid "Custom PDS"
@@ -56,7 +56,7 @@ msgstr "カスタムPDS"
 
 #: app/root.tsx:236
 msgid "Couldn’t log in with this PDS. Is the URL correct?"
-msgstr "このPDSでログインできませんでした。URL を確認してください。"
+msgstr "この PDS でログインできませんでした。URL を確認してください。"
 
 #: app/root.tsx:278
 msgid "All furry convention data courtesy of the volunteers at <0>FurryCons.com</0> – thank you! Convention missing? <1>Submit it here!</1>"
@@ -253,7 +253,7 @@ msgstr "ようこそ！"
 
 #: app/routes/_index.tsx:1240
 msgid "<0>This the website for the <1><2/> @cons.furryli.st</1> service. For the full experience, please log in. You’ll be able to:</0><3><4>Tell people which cons you’re going to (you can also do this by liking the con post on Bluesky).</4><5>See who you follow is going to a con.</5></3><6><7>Note:</7> If you’re using a self-hosted PDS, you’ll need to use the dropdown next to the Log in button to specify it.</6><8>A huge thank you to <9>FurryCons.com</9> who provides all the data on conventions!</8>"
-msgstr "<0>こちらは <1><2/> @cons.furryli.st</1> サービスのウェブサイトです。全ての機能をご利用いただくには、ログインしてください。ログインすると以下ができるようになります：</0><3><4>どのコンベンションに参加予定かを登録できます（Blueskyでそのコンベンションの投稿に「いいね」することでもできます）。</4><5>フォローしているユーザーがどのコンベンションに参加するかを確認できます。</5></3><6><7>注意：</7>セルフホスト型PDSを使用している場合は、ログインボタンの横にあるドロップダウンで指定する必要があります。</6><8>コンベンションの全データを提供してくださっている <9>FurryCons.com</9> の皆様に心から感謝いたします！</8>"
+msgstr "<0>こちらは <1><2/> @cons.furryli.st</1> サービスのウェブサイトです。全ての機能をご利用いただくには、ログインしてください。ログインすると以下ができるようになります：</0><3><4>どのコンベンションに参加予定かを登録できます（Bluesky でそのコンベンションの投稿に「いいね」することでもできます）。</4><5>フォローしているユーザーがどのコンベンションに参加するかを確認できます。</5></3><6><7>注意：</7>セルフホスト型PDSを使用している場合は、ログインボタンの横にあるドロップダウンで指定する必要があります。</6><8>コンベンションの全データを提供してくださっている <9>FurryCons.com</9> の皆様に心から感謝いたします！</8>"
 
 #: app/routes/_index.tsx:1289
 msgid "Not subscribed to labeler"
