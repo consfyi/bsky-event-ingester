@@ -266,7 +266,7 @@ function AttendeesList({
               />
             }
             labelPosition="left"
-            mb="xs"
+            mb="sm"
           />
           <SimpleGrid cols={{ base: 1, sm: 2, lg: 5 }} mb="sm">
             {unknownLikes.map((actor) => (
@@ -291,6 +291,7 @@ export default function Index() {
   const cons = useCons();
 
   const { identifier } = useParams();
+  const self = useSelf();
 
   const con =
     cons != null ? cons.find((con) => con.identifier == identifier) : null;
@@ -313,10 +314,12 @@ export default function Index() {
   const likeCount = con.post.likeCount ?? 0;
 
   const knownLikeCount =
-    (followedConAttendees != null &&
-    followedConAttendees[con.identifier] != null
-      ? followedConAttendees[con.identifier].length
-      : 0) + (isAttending ? 1 : 0);
+    self != null
+      ? (followedConAttendees != null &&
+        followedConAttendees[con.identifier] != null
+          ? followedConAttendees[con.identifier].length
+          : 0) + (isAttending ? 1 : 0)
+      : likeCount;
 
   const unknownLikeCount = likeCount - knownLikeCount;
 
