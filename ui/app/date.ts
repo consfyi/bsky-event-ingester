@@ -1,6 +1,6 @@
 import { TZDate } from "@date-fns/tz";
 
-export function toLocalDate(tzDate: TZDate) {
+export function asLocalDate(tzDate: TZDate) {
   return new Date(
     tzDate.getFullYear(),
     tzDate.getMonth(),

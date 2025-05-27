@@ -37,6 +37,11 @@ struct Geocoded {
     timezone: Option<String>,
 }
 
+struct EventsState {
+    rkeys_to_ids: std::collections::HashMap<atrium_api::types::string::RecordKey, u64>,
+    event_expiries: std::collections::HashMap<u64, chrono::DateTime<chrono::Utc>>,
+}
+
 #[derive(serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct LabelerEventInfo {
@@ -625,20 +630,38 @@ async fn sync_labels(
         )
         .await?;
 
-    events_state.events = events.into_iter().collect();
     events_state.rkeys_to_ids = next_events
         .iter()
         .map(|(id, (rkey, _))| (rkey.clone(), *id))
         .collect();
 
+    events_state.event_expiries = events
+        .iter()
+        .map(|(id, event)| {
+            let (_, info) = next_events.get(id).unwrap();
+
+            let tz = info
+                .geocoded
+                .as_ref()
+                .and_then(|maybe_geocoded| maybe_geocoded.as_ref())
+                .and_then(|geocoded| geocoded.timezone.as_ref())
+                .and_then(|timezone| timezone.parse().ok())
+                .unwrap_or(chrono_tz::UTC);
+
+            (
+                *id,
+                (event.dtend + chrono::Days::new(1))
+                    .and_time(chrono::NaiveTime::MIN)
+                    .and_local_timezone(tz)
+                    .unwrap()
+                    .to_utc(),
+            )
+        })
+        .collect();
+
     metrics::gauge!("label_sync_time").set(chrono::Utc::now().timestamp_micros() as f64);
 
     Ok(())
-}
-
-struct EventsState {
-    rkeys_to_ids: std::collections::HashMap<atrium_api::types::string::RecordKey, u64>,
-    events: std::collections::HashMap<u64, Event>,
 }
 
 async fn service_jetstream(
@@ -742,7 +765,7 @@ async fn service_jetstream_once(
                         return Ok(());
                     };
 
-                    let event = events_state.events.get(&id).unwrap();
+                    let event_expiry = events_state.event_expiries.get(&id).unwrap();
 
                     let label: atrium_api::com::atproto::label::defs::Label =
                         atrium_api::com::atproto::label::defs::LabelData {
@@ -751,12 +774,8 @@ async fn service_jetstream_once(
                                     .unwrap()
                                     .fixed_offset(),
                             ),
-                            // TODO: Add timezone support, we should already know the timezone if we've geocoded it.
                             exp: Some(atrium_api::types::string::Datetime::new(
-                                (event.dtend + chrono::Duration::days(1))
-                                    .and_time(chrono::NaiveTime::MIN)
-                                    .and_utc()
-                                    .fixed_offset(),
+                                event_expiry.fixed_offset(),
                             )),
                             src: did.clone(),
                             cid: None,
@@ -888,7 +907,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     let events_state = std::sync::Arc::new(tokio::sync::Mutex::new(EventsState {
         rkeys_to_ids: std::collections::HashMap::new(),
-        events: std::collections::HashMap::new(),
+        event_expiries: std::collections::HashMap::new(),
     }));
 
     let session = atrium_api::agent::atp_agent::CredentialSession::new(

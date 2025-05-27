@@ -29,7 +29,7 @@ import Flag from "~/components/Flag";
 import LikeButton from "~/components/LikeButton";
 import SimpleErrorBoundary from "~/components/SimpleErrorBoundary";
 import { LABELER_DID } from "~/config";
-import { toLocalDate } from "~/date";
+import { asLocalDate } from "~/date";
 import { Profile } from "~/endpoints";
 import {
   Con,
@@ -160,8 +160,8 @@ function Header({ con }: { con: Con }) {
           <Text size="sm" mb={5}>
             <Trans context="[start date]-[end date] ([duration] days)">
               {dateTimeFormat.formatRange(
-                toLocalDate(con.start),
-                toLocalDate(con.end)
+                asLocalDate(con.start),
+                asLocalDate(con.end)
               )}{" "}
               (
               <Plural

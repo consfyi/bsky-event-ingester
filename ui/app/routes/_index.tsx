@@ -61,7 +61,7 @@ import LikeButton from "~/components/LikeButton";
 import SimpleErrorBoundary from "~/components/SimpleErrorBoundary";
 import { LABELER_DID } from "~/config";
 import { Continent, getContinentForCountry } from "~/continents";
-import { toLocalDate } from "~/date";
+import { asLocalDate } from "~/date";
 import { useGetPreferences, usePutPreferences } from "~/endpoints";
 import {
   Con,
@@ -146,18 +146,18 @@ function ConRow({
             variant="light"
             color={
               ["red", "orange", "yellow", "green", "blue", "indigo", "violet"][
-                getDay(toLocalDate(con.start))
+                getDay(asLocalDate(con.start))
               ]
             }
           >
             <Stack gap={0}>
               <Text size="md" ta="center" fw={500}>
                 {showMonthInIcon
-                  ? i18n.date(toLocalDate(con.start), { month: "short" })
-                  : i18n.date(toLocalDate(con.start), { weekday: "short" })}
+                  ? i18n.date(asLocalDate(con.start), { month: "short" })
+                  : i18n.date(asLocalDate(con.start), { weekday: "short" })}
               </Text>
               <Text size="xs" ta="center" fw={500}>
-                {i18n.date(toLocalDate(con.start), {
+                {i18n.date(asLocalDate(con.start), {
                   day: "numeric",
                 })}
               </Text>
@@ -242,8 +242,8 @@ function ConRow({
               <IconCalendar title={t`Date`} size={12} />{" "}
               <Trans context="[start date]-[end date] ([duration] days)">
                 {dateTimeFormat.formatRange(
-                  toLocalDate(con.start),
-                  toLocalDate(con.end)
+                  asLocalDate(con.start),
+                  asLocalDate(con.end)
                 )}{" "}
                 (
                 <Plural
@@ -259,13 +259,13 @@ function ConRow({
               <IconCalendarWeek title={t`End date`} size={12} />{" "}
               <Trans context="ends [date] ([duration] days)">
                 ends{" "}
-                {i18n.date(toLocalDate(con.end), {
+                {i18n.date(asLocalDate(con.end), {
                   weekday: "short",
                   day: "numeric",
                   month: "short",
                   year:
-                    getYear(toLocalDate(con.start)) !=
-                    getYear(toLocalDate(con.end))
+                    getYear(asLocalDate(con.start)) !=
+                    getYear(asLocalDate(con.end))
                       ? "numeric"
                       : undefined,
                 })}{" "}
@@ -321,7 +321,7 @@ function ConsByDate({
 
   const consByMonth = useMemo(() => {
     const groups = groupBy(cons, (con) => {
-      return yearMonthKey(toLocalDate(con.start));
+      return yearMonthKey(asLocalDate(con.start));
     });
     if (sortDesc) {
       for (const k in groups) {
