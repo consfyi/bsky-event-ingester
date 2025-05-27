@@ -587,7 +587,7 @@ function ConsList() {
     );
   });
 
-  const { direction } = useDirection();
+  const { dir } = useDirection();
 
   return (
     <>
@@ -603,7 +603,7 @@ function ConsList() {
           mx="calc(var(--mantine-spacing-xs) * -1)"
           my="calc(var(--mantine-spacing-xs) * -1)"
           gap="xs"
-          {...(direction == "ltr" ? { ml: "xs" } : { mr: "xs" })}
+          {...(dir == "ltr" ? { ml: "xs" } : { mr: "xs" })}
         >
           {isLoggedIn ? (
             <Button
