@@ -117,7 +117,7 @@ function Header({ con }: { con: Con }) {
   );
 
   return (
-    <Box>
+    <Box mb="sm">
       <Group gap={7} wrap="nowrap" align="top">
         {con.post.viewer != null ? (
           <Box mt={2} mb={-2}>
@@ -247,7 +247,7 @@ function AttendeesList({
   return likes!.length > 0 ? (
     <>
       {knownLikes.length > 0 ? (
-        <SimpleGrid cols={{ base: 1, sm: 2, lg: 5 }} mt="xs">
+        <SimpleGrid cols={{ base: 1, sm: 2, lg: 5 }} mb="sm">
           {knownLikes.map((actor) => (
             <div key={actor.did}>
               <Actor actor={actor} />
@@ -266,9 +266,9 @@ function AttendeesList({
               />
             }
             labelPosition="left"
-            mt="xs"
+            mb="xs"
           />
-          <SimpleGrid cols={{ base: 1, sm: 2, lg: 5 }} mt="xs">
+          <SimpleGrid cols={{ base: 1, sm: 2, lg: 5 }} mb="sm">
             {unknownLikes.map((actor) => (
               <div key={actor.did}>
                 <Actor actor={actor} />
@@ -324,8 +324,8 @@ export default function Index() {
     <Box p="sm">
       <Header con={con} />
 
-      <Box mt="sm">
-        <Title order={2} size="h5" fw={500}>
+      <Box>
+        <Title order={2} size="h5" fw={500} mb="sm">
           <Trans>Attendees</Trans>{" "}
           <Text size="sm" span>
             {isAttending ? (
@@ -337,10 +337,10 @@ export default function Index() {
             )}{" "}
           </Text>
         </Title>
-        <Box mt="xs">
+        <Box>
           <SimpleErrorBoundary>
             {followedConAttendeesLoading ? (
-              <Group wrap="nowrap" gap={7} mt={10}>
+              <Group wrap="nowrap" gap={7} mb="sm">
                 <Loader size={8} color="dimmed" type="bars" />
                 <Text c="dimmed" size="xs" lh="md">
                   <Trans>Loading people you follow</Trans>
@@ -351,7 +351,7 @@ export default function Index() {
               fallback={
                 <>
                   {knownLikeCount > 0 || unknownLikeCount == 0 ? (
-                    <SimpleGrid cols={{ base: 1, sm: 2, lg: 5 }} mt="xs">
+                    <SimpleGrid cols={{ base: 1, sm: 2, lg: 5 }}>
                       {range(knownLikeCount > 0 ? knownLikeCount : 1).map(
                         (i) => (
                           <ActorSkeleton key={i} />
@@ -370,9 +370,9 @@ export default function Index() {
                           />
                         }
                         labelPosition="left"
-                        mt="xs"
+                        mb="sm"
                       />
-                      <SimpleGrid cols={{ base: 1, sm: 2, lg: 5 }} mt="xs">
+                      <SimpleGrid cols={{ base: 1, sm: 2, lg: 5 }} mb="sm">
                         {range(unknownLikeCount).map((i) => (
                           <ActorSkeleton key={i} />
                         ))}
