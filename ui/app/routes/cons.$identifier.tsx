@@ -113,7 +113,7 @@ function Header({ con }: { con: Con }) {
         month: "short",
         year: "numeric",
       }),
-    [i18n]
+    [i18n.locale]
   );
 
   return (
