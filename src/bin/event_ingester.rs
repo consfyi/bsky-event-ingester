@@ -315,7 +315,7 @@ async fn sync_labels(
             .filter(|(_, event)| {
                 // Somewhat obnoxiously we have to do this in UTC, because otherwise we have to geocode to find the timezone.
                 now < event.ics.dtend.and_time(chrono::NaiveTime::MIN).and_utc()
-                    + chrono::Days::new(1)
+                    + chrono::Days::new(1) // Add an extra day to compensate for very ahead timezones, like Pacific/Auckland.
                     + EXPIRY_DATE_GRACE_PERIOD
             })
             .collect();
@@ -361,7 +361,7 @@ async fn sync_labels(
         .filter(|(_, oe)| {
             if let Some(rkey) = oe.rkey.as_ref() {
                 if !record_rkeys.contains(rkey) {
-                    log::info!("could not find {}, will delete", rkey.as_str());
+                    log::info!("could not find {}, will recreate", rkey.as_str());
                     return false;
                 }
             }
@@ -576,23 +576,6 @@ async fn sync_labels(
                     ),
                 );
             }
-
-            agent
-                .api
-                .com
-                .atproto
-                .repo
-                .delete_record(
-                    atrium_api::com::atproto::repo::delete_record::InputData {
-                        collection: atrium_api::app::bsky::feed::Post::nsid(),
-                        repo: did.clone().into(),
-                        rkey: rkey.clone(),
-                        swap_commit: None,
-                        swap_record: None,
-                    }
-                    .into(),
-                )
-                .await?;
 
             // https://github.com/bluesky-social/atproto/issues/2468#issuecomment-2100947405
             now += chrono::Duration::milliseconds(1);
