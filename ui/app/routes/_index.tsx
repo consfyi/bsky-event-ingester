@@ -124,7 +124,7 @@ function ConRow({
       : null;
 
   return (
-    <Group gap="xs" wrap="nowrap" mb="xs" px="xs">
+    <Group gap="xs" wrap="nowrap" mb="sm" px="xs">
       <Anchor<typeof Link> component={Link} to={`/cons/${con.identifier}`}>
         <ThemeIcon
           size="xl"
@@ -336,7 +336,7 @@ function ConsByDate({
     return (
       <Fragment key={groupKey}>
         <Title
-          mb="xs"
+          mb="sm"
           mx={{ base: 0, lg: "xs" }}
           px={{ base: "xs", lg: 0 }}
           mt={{ base: -4, lg: -8 }}
