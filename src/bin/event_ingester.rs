@@ -146,7 +146,7 @@ async fn list_all_records(
 struct Event {
     ics: ICSEvent,
     geocoded: Option<Geocoded>,
-    rkey: Option<atrium_api::types::string::RecordKey>,
+    rkey: Option<Option<atrium_api::types::string::RecordKey>>,
 }
 
 async fn fetch_events(
@@ -197,9 +197,11 @@ const EXTRA_DATA_EVENT_INFO: &str = "fbl_eventInfo";
 
 #[derive(Debug)]
 struct OldEvent {
-    rkey: atrium_api::types::string::RecordKey,
+    rkey: Option<atrium_api::types::string::RecordKey>,
     geocoded: Option<Geocoded>,
 }
+
+const EXPIRY_DATE_GRACE_PERIOD: chrono::Days = chrono::Days::new(7);
 
 async fn fetch_old_events(
     did: &atrium_api::types::string::Did,
@@ -252,15 +254,20 @@ async fn fetch_old_events(
         .map(|defs| {
             defs.iter()
                 .flat_map(|v| {
-                    let rkey = ipld_core::serde::from_ipld::<String>(
-                        v.extra_data.get(EXTRA_DATA_POST_RKEY).ok()??.clone(),
-                    )
-                    .ok()?;
+                    let rkey = match v.extra_data.get(EXTRA_DATA_POST_RKEY).unwrap().unwrap() {
+                        ipld_core::ipld::Ipld::Null => None,
+                        ipld_core::ipld::Ipld::String(s) => {
+                            Some(atrium_api::types::string::RecordKey::new(s.clone()).unwrap())
+                        }
+                        _ => {
+                            unreachable!();
+                        }
+                    };
 
                     Some((
                         base26::decode(&v.identifier).unwrap(),
                         OldEvent {
-                            rkey: atrium_api::types::string::RecordKey::new(rkey).unwrap(),
+                            rkey,
                             geocoded: v
                                 .extra_data
                                 .get(EXTRA_DATA_EVENT_INFO)
@@ -299,15 +306,20 @@ async fn sync_labels(
 
     let mut events = fetch_events(ics_url).await?;
 
-    // Remove events that are too late.
-    //
-    // Somewhat obnoxiously we have to do this in UTC, because otherwise we have to geocode to find the timezone.
-    let mut now = chrono::Utc::now();
+    {
+        // Remove events that are definitely too late.
+        let now = chrono::Utc::now();
 
-    events = events
-        .into_iter()
-        .filter(|(_, event)| event.ics.dtend.and_time(chrono::NaiveTime::MIN).and_utc() >= now)
-        .collect();
+        events = events
+            .into_iter()
+            .filter(|(_, event)| {
+                // Somewhat obnoxiously we have to do this in UTC, because otherwise we have to geocode to find the timezone.
+                now < event.ics.dtend.and_time(chrono::NaiveTime::MIN).and_utc()
+                    + chrono::Days::new(1)
+                    + EXPIRY_DATE_GRACE_PERIOD
+            })
+            .collect();
+    }
 
     let mut writes = vec![];
 
@@ -347,9 +359,11 @@ async fn sync_labels(
     old_events = old_events
         .into_iter()
         .filter(|(_, oe)| {
-            if !record_rkeys.contains(&oe.rkey) {
-                log::info!("could not find {}, will delete", oe.rkey.as_str());
-                return false;
+            if let Some(rkey) = oe.rkey.as_ref() {
+                if !record_rkeys.contains(rkey) {
+                    log::info!("could not find {}, will delete", rkey.as_str());
+                    return false;
+                }
             }
             true
         })
@@ -409,160 +423,194 @@ async fn sync_labels(
     }
 
     // Delete events.
-    for (id, rkey) in old_events
-        .iter()
-        .map(|(id, oe)| (*id, oe.rkey.clone()))
-        .collect::<Vec<_>>()
     {
-        if let Some(event) = events.get_mut(&id) {
-            event.rkey = Some(rkey);
-            continue;
+        let now = chrono::Utc::now();
+
+        for (id, oe) in old_events.into_iter() {
+            if let Some(event) = events.get_mut(&id) {
+                let expiry = event
+                    .ics
+                    .dtend
+                    .and_time(chrono::NaiveTime::MIN)
+                    .and_local_timezone(
+                        event
+                            .geocoded
+                            .as_ref()
+                            .and_then(|g| g.timezone)
+                            .unwrap_or(chrono_tz::UTC),
+                    )
+                    .unwrap()
+                    .to_utc();
+
+                if now < expiry + EXPIRY_DATE_GRACE_PERIOD {
+                    // Event hasn't expired, no need to delete.
+                    event.rkey = Some(oe.rkey);
+                    continue;
+                }
+
+                event.rkey = Some(None);
+            }
+
+            if let Some(rkey) = oe.rkey {
+                writes.push(
+                    atrium_api::com::atproto::repo::apply_writes::InputWritesItem::Delete(
+                        Box::new(
+                            atrium_api::com::atproto::repo::apply_writes::DeleteData {
+                                collection: atrium_api::app::bsky::feed::Post::nsid(),
+                                rkey: rkey.clone(),
+                            }
+                            .into(),
+                        ),
+                    ),
+                );
+                writes.push(
+                    atrium_api::com::atproto::repo::apply_writes::InputWritesItem::Delete(
+                        Box::new(
+                            atrium_api::com::atproto::repo::apply_writes::DeleteData {
+                                collection: atrium_api::app::bsky::feed::Threadgate::nsid(),
+                                rkey: rkey.clone(),
+                            }
+                            .into(),
+                        ),
+                    ),
+                );
+            }
         }
-
-        writes.push(
-            atrium_api::com::atproto::repo::apply_writes::InputWritesItem::Delete(Box::new(
-                atrium_api::com::atproto::repo::apply_writes::DeleteData {
-                    collection: atrium_api::app::bsky::feed::Post::nsid(),
-                    rkey: rkey.clone(),
-                }
-                .into(),
-            )),
-        );
-        writes.push(
-            atrium_api::com::atproto::repo::apply_writes::InputWritesItem::Delete(Box::new(
-                atrium_api::com::atproto::repo::apply_writes::DeleteData {
-                    collection: atrium_api::app::bsky::feed::Threadgate::nsid(),
-                    rkey: rkey.clone(),
-                }
-                .into(),
-            )),
-        );
-
-        old_events.remove(&id);
     }
 
     // Create new events.
-    for (id, event) in events.iter_mut() {
-        if event.rkey.is_some() {
-            continue;
-        }
+    {
+        let mut now = chrono::Utc::now();
 
-        let rkey = atrium_api::types::string::RecordKey::new(
-            atrium_api::types::string::Tid::from_datetime(0.try_into().unwrap(), now).to_string(),
-        )
-        .unwrap();
+        for (id, event) in events.iter_mut() {
+            if event.rkey.is_some() {
+                continue;
+            }
 
-        event.rkey = Some(rkey.clone());
-
-        {
-            let record: atrium_api::app::bsky::feed::post::Record =
-                atrium_api::app::bsky::feed::post::RecordData {
-                    created_at: atrium_api::types::string::Datetime::new(now.fixed_offset()),
-                    embed: None,
-                    entities: None,
-                    labels: None,
-                    langs: Some(vec![atrium_api::types::string::Language::new(
-                        "en".to_string(),
-                    )
-                    .unwrap()]),
-                    reply: None,
-                    tags: None,
-                    text: format!("{}", event.ics.summary),
-                    facets: Some(vec![atrium_api::app::bsky::richtext::facet::MainData {
-                        features: vec![atrium_api::types::Union::Refs(
-                            atrium_api::app::bsky::richtext::facet::MainFeaturesItem::Link(
-                                Box::new(
-                                    atrium_api::app::bsky::richtext::facet::LinkData {
-                                        uri: format!(
-                                            "{}/cons/{}",
-                                            ui_endpoint,
-                                            base26::encode(*id)
-                                        ),
-                                    }
-                                    .into(),
-                                ),
-                            ),
-                        )],
-                        index: atrium_api::app::bsky::richtext::facet::ByteSliceData {
-                            byte_start: 0,
-                            byte_end: event.ics.summary.bytes().len(),
-                        }
-                        .into(),
-                    }
-                    .into()]),
-                }
-                .into();
-
-            writes.push(
-                atrium_api::com::atproto::repo::apply_writes::InputWritesItem::Create(Box::new(
-                    atrium_api::com::atproto::repo::apply_writes::CreateData {
-                        collection: atrium_api::app::bsky::feed::Post::nsid(),
-                        rkey: Some(rkey.clone()),
-                        value: record.try_into_unknown().unwrap(),
-                    }
-                    .into(),
-                )),
-            );
-        }
-
-        {
-            let record: atrium_api::app::bsky::feed::threadgate::Record =
-                atrium_api::app::bsky::feed::threadgate::RecordData {
-                    created_at: atrium_api::types::string::Datetime::new(now.fixed_offset()),
-                    allow: Some(vec![]),
-                    hidden_replies: None,
-                    post: format!(
-                        "at://{}/{}/{}",
-                        did.to_string(),
-                        atrium_api::app::bsky::feed::Post::NSID,
-                        rkey.to_string()
-                    ),
-                }
-                .into();
-
-            writes.push(
-                atrium_api::com::atproto::repo::apply_writes::InputWritesItem::Create(Box::new(
-                    atrium_api::com::atproto::repo::apply_writes::CreateData {
-                        collection: atrium_api::app::bsky::feed::Threadgate::nsid(),
-                        rkey: Some(rkey.clone()),
-                        value: record.try_into_unknown().unwrap(),
-                    }
-                    .into(),
-                )),
-            );
-        }
-
-        agent
-            .api
-            .com
-            .atproto
-            .repo
-            .delete_record(
-                atrium_api::com::atproto::repo::delete_record::InputData {
-                    collection: atrium_api::app::bsky::feed::Post::nsid(),
-                    repo: did.clone().into(),
-                    rkey: rkey.clone(),
-                    swap_commit: None,
-                    swap_record: None,
-                }
-                .into(),
+            let rkey = atrium_api::types::string::RecordKey::new(
+                atrium_api::types::string::Tid::from_datetime(0.try_into().unwrap(), now)
+                    .to_string(),
             )
-            .await?;
+            .unwrap();
 
-        // https://github.com/bluesky-social/atproto/issues/2468#issuecomment-2100947405
-        now += chrono::Duration::milliseconds(1);
+            event.rkey = Some(Some(rkey.clone()));
+
+            {
+                let record: atrium_api::app::bsky::feed::post::Record =
+                    atrium_api::app::bsky::feed::post::RecordData {
+                        created_at: atrium_api::types::string::Datetime::new(now.fixed_offset()),
+                        embed: None,
+                        entities: None,
+                        labels: None,
+                        langs: Some(vec![atrium_api::types::string::Language::new(
+                            "en".to_string(),
+                        )
+                        .unwrap()]),
+                        reply: None,
+                        tags: None,
+                        text: format!("{}", event.ics.summary),
+                        facets: Some(vec![atrium_api::app::bsky::richtext::facet::MainData {
+                            features: vec![atrium_api::types::Union::Refs(
+                                atrium_api::app::bsky::richtext::facet::MainFeaturesItem::Link(
+                                    Box::new(
+                                        atrium_api::app::bsky::richtext::facet::LinkData {
+                                            uri: format!(
+                                                "{}/cons/{}",
+                                                ui_endpoint,
+                                                base26::encode(*id)
+                                            ),
+                                        }
+                                        .into(),
+                                    ),
+                                ),
+                            )],
+                            index: atrium_api::app::bsky::richtext::facet::ByteSliceData {
+                                byte_start: 0,
+                                byte_end: event.ics.summary.bytes().len(),
+                            }
+                            .into(),
+                        }
+                        .into()]),
+                    }
+                    .into();
+
+                writes.push(
+                    atrium_api::com::atproto::repo::apply_writes::InputWritesItem::Create(
+                        Box::new(
+                            atrium_api::com::atproto::repo::apply_writes::CreateData {
+                                collection: atrium_api::app::bsky::feed::Post::nsid(),
+                                rkey: Some(rkey.clone()),
+                                value: record.try_into_unknown().unwrap(),
+                            }
+                            .into(),
+                        ),
+                    ),
+                );
+            }
+
+            {
+                let record: atrium_api::app::bsky::feed::threadgate::Record =
+                    atrium_api::app::bsky::feed::threadgate::RecordData {
+                        created_at: atrium_api::types::string::Datetime::new(now.fixed_offset()),
+                        allow: Some(vec![]),
+                        hidden_replies: None,
+                        post: format!(
+                            "at://{}/{}/{}",
+                            did.to_string(),
+                            atrium_api::app::bsky::feed::Post::NSID,
+                            rkey.to_string()
+                        ),
+                    }
+                    .into();
+
+                writes.push(
+                    atrium_api::com::atproto::repo::apply_writes::InputWritesItem::Create(
+                        Box::new(
+                            atrium_api::com::atproto::repo::apply_writes::CreateData {
+                                collection: atrium_api::app::bsky::feed::Threadgate::nsid(),
+                                rkey: Some(rkey.clone()),
+                                value: record.try_into_unknown().unwrap(),
+                            }
+                            .into(),
+                        ),
+                    ),
+                );
+            }
+
+            agent
+                .api
+                .com
+                .atproto
+                .repo
+                .delete_record(
+                    atrium_api::com::atproto::repo::delete_record::InputData {
+                        collection: atrium_api::app::bsky::feed::Post::nsid(),
+                        repo: did.clone().into(),
+                        rkey: rkey.clone(),
+                        swap_commit: None,
+                        swap_record: None,
+                    }
+                    .into(),
+                )
+                .await?;
+
+            // https://github.com/bluesky-social/atproto/issues/2468#issuecomment-2100947405
+            now += chrono::Duration::milliseconds(1);
+        }
     }
 
     {
         let mut sorted_events = events.iter().collect::<Vec<_>>();
-        sorted_events.sort_by_key(|(_, event)| event.ics.dtstart);
+        sorted_events.sort_by_key(|(_, event)| (event.ics.dtstart, event.ics.dtend));
 
         let record: atrium_api::app::bsky::labeler::service::Record =
             atrium_api::app::bsky::labeler::service::RecordData {
                 created_at: atrium_api::types::string::Datetime::now(),
                 labels: None,
                 policies: atrium_api::app::bsky::labeler::defs::LabelerPoliciesData {
-                    label_values: sorted_events.iter().map(|(id, _)| base26::encode(**id)).collect(),
+                    label_values: sorted_events.iter().filter(|(_, event)| {
+                        event.rkey.as_ref().unwrap().is_some()
+                    }).map(|(id, _)| base26::encode(**id)).collect(),
                     label_value_definitions: Some(
                         sorted_events.into_iter() // TODO: Sort by dtstart
                             .map(|(id, event)| {
@@ -599,8 +647,13 @@ async fn sync_labels(
 
                                 extra_data.insert(
                                     EXTRA_DATA_POST_RKEY.to_string(),
-                                    ipld_core::serde::to_ipld(event.rkey.as_ref().unwrap().to_string()).unwrap(),
+                                    if let Some(rkey) = event.rkey.as_ref().unwrap() {
+                                        ipld_core::serde::to_ipld(rkey.to_string()).unwrap()
+                                    } else {
+                                        ipld_core::ipld::Ipld::Null
+                                    },
                                 );
+
 
                                 extra_data.insert(
                                     EXTRA_DATA_EVENT_INFO.to_string(),
@@ -662,7 +715,13 @@ async fn sync_labels(
 
     events_state.rkeys_to_ids = events
         .iter()
-        .map(|(id, event)| (event.rkey.as_ref().unwrap().clone(), *id))
+        .flat_map(|(id, event)| {
+            event
+                .rkey
+                .as_ref()
+                .and_then(|rkey| rkey.as_ref())
+                .map(|rkey| (rkey.clone(), *id))
+        })
         .collect();
 
     events_state.event_expiries = events
@@ -803,7 +862,7 @@ async fn service_jetstream_once(
                                     .fixed_offset(),
                             ),
                             exp: Some(atrium_api::types::string::Datetime::new(
-                                event_expiry.fixed_offset(),
+                                event_expiry.fixed_offset() + EXPIRY_DATE_GRACE_PERIOD,
                             )),
                             src: did.clone(),
                             cid: None,
