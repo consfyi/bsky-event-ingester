@@ -9,6 +9,8 @@ import {
   ColorSchemeScript,
   Container,
   createTheme,
+  Direction,
+  DirectionProvider,
   Group,
   Image,
   Loader,
@@ -37,6 +39,7 @@ import {
   IconLogout2,
   IconWorld,
 } from "@tabler/icons-react";
+import IntlLocale from "intl-locale-textinfo-polyfill";
 import { Suspense, useEffect, useState } from "react";
 import Avatar from "~/components/Avatar";
 import clientMetadata from "../public/client-metadata.json";
@@ -44,6 +47,7 @@ import { DEFAULT_PDS_HOST, startLogin } from "./bluesky";
 import { GlobalMemoProvider } from "./components/GlobalMemoContext";
 import LinguiProvider, {
   AVAILABLE_LOCALES,
+  INITIAL_LOCALE,
   useSetLocale,
 } from "./components/LinguiProvider";
 import { useClient, useHydrated, useSelf } from "./hooks";
@@ -380,31 +384,39 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <GlobalMemoProvider>
           <MantineProvider theme={theme} defaultColorScheme="auto">
             {hydrated ? (
-              <DataProvider>
-                <Suspense
-                  fallback={
-                    <Center p="lg">
-                      <Loader />
-                    </Center>
-                  }
-                >
-                  <LinguiProvider>
-                    <Header />
-                    <Container size="lg" px={0}>
-                      <Suspense
-                        fallback={
-                          <Center p="lg">
-                            <Loader />
-                          </Center>
-                        }
-                      >
-                        {children}
-                      </Suspense>
-                    </Container>
-                    <Footer />
-                  </LinguiProvider>
-                </Suspense>
-              </DataProvider>
+              <DirectionProvider
+                initialDirection={
+                  (new IntlLocale(INITIAL_LOCALE).textInfo.direction as
+                    | Direction
+                    | undefined) ?? "ltr"
+                }
+              >
+                <DataProvider>
+                  <Suspense
+                    fallback={
+                      <Center p="lg">
+                        <Loader />
+                      </Center>
+                    }
+                  >
+                    <LinguiProvider>
+                      <Header />
+                      <Container size="lg" px={0}>
+                        <Suspense
+                          fallback={
+                            <Center p="lg">
+                              <Loader />
+                            </Center>
+                          }
+                        >
+                          {children}
+                        </Suspense>
+                      </Container>
+                      <Footer />
+                    </LinguiProvider>
+                  </Suspense>
+                </DataProvider>
+              </DirectionProvider>
             ) : null}
           </MantineProvider>
         </GlobalMemoProvider>

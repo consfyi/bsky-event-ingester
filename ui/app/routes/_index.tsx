@@ -19,6 +19,7 @@ import {
   ThemeIcon,
   Title,
   Tooltip,
+  useDirection,
   useMantineTheme,
 } from "@mantine/core";
 import { useLocalStorage, useMediaQuery } from "@mantine/hooks";
@@ -262,7 +263,7 @@ function ConRow({
               display="inline"
               h={8}
               w="auto"
-              ml={2}
+              mx={2}
             />
           ) : null}
         </Text>
@@ -586,6 +587,8 @@ function ConsList() {
     );
   });
 
+  const { direction } = useDirection();
+
   return (
     <>
       <Group wrap="nowrap" m="xs" justify="space-between" gap="0">
@@ -597,9 +600,10 @@ function ConsList() {
             overflowX: "scroll",
           }}
           p="xs"
-          m="calc(var(--mantine-spacing-xs) * -1)"
-          mr="xs"
+          mx="calc(var(--mantine-spacing-xs) * -1)"
+          my="calc(var(--mantine-spacing-xs) * -1)"
           gap="xs"
+          {...(direction == "ltr" ? { ml: "xs" } : { mr: "xs" })}
         >
           {isLoggedIn ? (
             <Button
@@ -968,14 +972,14 @@ function ConsList() {
                 }));
               }}
               leftSection={
-                <>
+                <Group gap={6}>
                   {!viewOptions.sort.desc ? (
-                    <IconCheck size={14} style={{ marginRight: "6px" }} />
+                    <IconCheck size={14} />
                   ) : (
-                    <EmptyIcon size={14} style={{ marginRight: "6px" }} />
+                    <EmptyIcon size={14} />
                   )}
                   <IconSortAscending size={14} />
-                </>
+                </Group>
               }
             >
               {sortByStrings[viewOptions.sort.by].asc}
@@ -989,14 +993,14 @@ function ConsList() {
                 }));
               }}
               leftSection={
-                <>
+                <Group gap={6}>
                   {viewOptions.sort.desc ? (
-                    <IconCheck size={14} style={{ marginRight: "6px" }} />
+                    <IconCheck size={14} />
                   ) : (
-                    <EmptyIcon size={14} style={{ marginRight: "6px" }} />
+                    <EmptyIcon size={14} />
                   )}
                   <IconSortDescending size={14} />
-                </>
+                </Group>
               }
             >
               {sortByStrings[viewOptions.sort.by].desc}

@@ -31,6 +31,7 @@
     "@remix-run/serve": "^2.16.6",
     "@tabler/icons-react": "^3.31.0",
     "date-fns": "^4.1.0",
+    "intl-locale-textinfo-polyfill": "^2.1.1",
     "isbot": "^4.1.0",
     "lodash-es": "^4.17.21",
     "pigeon-maps": "^0.22.1",

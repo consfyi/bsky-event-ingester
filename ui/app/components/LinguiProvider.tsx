@@ -1,8 +1,10 @@
 import { negotiateLanguages } from "@fluent/langneg";
 import { i18n, Locale } from "@lingui/core";
 import { I18nProvider, I18nProviderProps } from "@lingui/react";
+import { Direction, useDirection } from "@mantine/core";
 import { createContext, useContext, useEffect, useState } from "react";
 import { hookifyPromise } from "~/hooks";
+import IntlLocale from "intl-locale-textinfo-polyfill";
 
 export const AVAILABLE_LOCALES = Object.keys(
   import.meta.glob("../locales/*/messages.po")
@@ -42,7 +44,7 @@ async function loadAndActivate(locale: string) {
   window.localStorage.setItem(LOCALE_KEY, locale);
 }
 
-const INITIAL_LOCALE = getNegotiatedBrowserLocale();
+export const INITIAL_LOCALE = getNegotiatedBrowserLocale();
 
 const useInitialLoad = hookifyPromise(loadAndActivate(INITIAL_LOCALE));
 
@@ -57,11 +59,17 @@ export default function LinguiProvider(props: Omit<I18nProviderProps, "i18n">) {
 
   const [locale, setLocale] = useState(INITIAL_LOCALE);
 
+  const { setDirection } = useDirection();
+
   useEffect(() => {
     (async () => {
       await loadAndActivate(locale);
+      setDirection(
+        (new IntlLocale(locale).textInfo.direction as Direction | undefined) ??
+          "ltr"
+      );
     })();
-  }, [locale]);
+  }, [locale, setDirection]);
 
   return (
     <LinguiContext.Provider value={{ locale, setLocale }}>
