@@ -1,6 +1,6 @@
 import type { ResourceUri } from "@atcute/lexicons";
 import { useDLE, useSuspense } from "@data-client/react";
-import { tz, TZDate } from "@date-fns/tz";
+import { TZDate } from "@date-fns/tz";
 import { parse as parseDate } from "date-fns";
 import { sortBy } from "lodash-es";
 import { useSyncExternalStore } from "react";
@@ -132,10 +132,10 @@ export function useCons() {
           const [strings] = def.locales;
           const [start, end] = fullDef.fbl_eventInfo.date.split("/");
 
-          const refDate =
-            fullDef.fbl_eventInfo.geocoded?.timezone != null
-              ? tz(fullDef.fbl_eventInfo.geocoded.timezone)(new TZDate())
-              : new TZDate();
+          const refDate = new TZDate(
+            new Date(),
+            fullDef.fbl_eventInfo.geocoded?.timezone ?? "UTC"
+          );
 
           const startDate = parseDate(start, "yyyy-MM-dd", refDate);
           const endDate = parseDate(end, "yyyy-MM-dd", refDate);
