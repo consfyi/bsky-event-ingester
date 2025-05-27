@@ -351,7 +351,7 @@ export default function Index() {
               fallback={
                 <>
                   {knownLikeCount > 0 || unknownLikeCount == 0 ? (
-                    <SimpleGrid cols={{ base: 1, sm: 2, lg: 5 }}>
+                    <SimpleGrid cols={{ base: 1, sm: 2, lg: 5 }} mb="sm">
                       {range(knownLikeCount > 0 ? knownLikeCount : 1).map(
                         (i) => (
                           <ActorSkeleton key={i} />
