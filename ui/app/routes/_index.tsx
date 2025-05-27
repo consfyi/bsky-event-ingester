@@ -155,6 +155,16 @@ function ConRow({
           ) : null}
 
           <Text size="sm" truncate>
+            {con.geocoded != null ? (
+              <Flag
+                country={con.geocoded.country}
+                display="inline"
+                h={10}
+                w={20}
+                me={6}
+                fit="contain"
+              />
+            ) : null}
             <Anchor<typeof Link>
               fw={500}
               component={Link}
@@ -255,16 +265,7 @@ function ConRow({
             c="var(--mantine-color-text)"
           >
             {con.location}
-          </Anchor>{" "}
-          {con.geocoded != null ? (
-            <Flag
-              country={con.geocoded.country}
-              display="inline"
-              h={8}
-              w="auto"
-              ms={4}
-            />
-          ) : null}
+          </Anchor>
         </Text>
       </Box>
     </Group>
