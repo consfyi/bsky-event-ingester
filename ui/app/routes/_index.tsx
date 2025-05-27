@@ -4,6 +4,7 @@ import { Plural, Trans, useLingui } from "@lingui/react/macro";
 import {
   Alert,
   Anchor,
+  Badge,
   Box,
   Button,
   Center,
@@ -20,12 +21,12 @@ import {
   ThemeIcon,
   Title,
   Tooltip,
-  useMantineTheme,
 } from "@mantine/core";
-import { useLocalStorage, useMediaQuery } from "@mantine/hooks";
+import { useLocalStorage } from "@mantine/hooks";
 import type { MetaFunction } from "@remix-run/node";
 import { Link } from "@remix-run/react";
 import {
+  IconAdjustmentsHorizontal,
   IconAlertTriangle,
   IconBrandBluesky,
   IconCalendar,
@@ -469,7 +470,7 @@ function ConsList() {
 
   const isLoggedIn = useIsLoggedIn();
   const [viewOptions, setViewOptions] = useLocalStorage<TableViewOptions>({
-    key: "fbl:_index:viewOptions4",
+    key: "fbl:_index:viewOptions5",
     getInitialValueInEffect: false,
     defaultValue: {
       filter: DEFAULT_FILTER,
@@ -490,14 +491,8 @@ function ConsList() {
     }));
   }, [isLoggedIn, setViewOptions]);
 
-  const [continentsMenuOpen, setContinentsMenuOpen] = useState(false);
-  const [durationMenuOpen, setDurationMenuOpen] = useState(false);
   const [sortMenuOpen, setSortMenuOpen] = useState(false);
-
-  const theme = useMantineTheme();
-  const isLg = useMediaQuery(`(min-width: ${theme.breakpoints.lg})`, false, {
-    getInitialValueInEffect: false,
-  });
+  const [filterDrawerOpen, setFilterDrawerOpen] = useState(false);
 
   const actuallyShowOnlyAttending = isLoggedIn && viewOptions.filter.attending;
   const actuallyShowOnlyFollowed = isLoggedIn && viewOptions.filter.followed;
@@ -560,6 +555,13 @@ function ConsList() {
     DEFAULT_FILTER.duration
   );
 
+  const numFilters = [
+    actuallyShowOnlyFollowed,
+    actuallyShowOnlyAttending,
+    !isEqual(viewOptions.filter.continents, DEFAULT_FILTER.continents),
+    !isEqual(viewOptions.filter.duration, DEFAULT_FILTER.duration),
+  ].reduce((acc, v) => acc + (v ? 1 : 0), 0);
+
   const filteredCons = cons.filter((con) => {
     const duration = differenceInDays(con.end, con.start) + 1;
     const [minDuration, tempMaxDuration] = viewOptions.filter.duration;
@@ -590,6 +592,23 @@ function ConsList() {
   return (
     <>
       <Group wrap="nowrap" m="xs" justify="space-between" gap="0">
+        <Button
+          size="xs"
+          c="dimmed"
+          color="dimmed"
+          style={{ zIndex: 4, flexShrink: 0 }}
+          variant="subtle"
+          leftSection={<IconAdjustmentsHorizontal size={14} />}
+          hiddenFrom="lg"
+          onClick={() => {
+            setFilterDrawerOpen(!filterDrawerOpen);
+          }}
+        >
+          <Text span size="sm" fw={500}>
+            <Trans>Filters</Trans>{" "}
+            {numFilters > 0 ? <Badge ms={6}>{numFilters}</Badge> : null}
+          </Text>
+        </Button>
         <Group
           wrap="nowrap"
           style={{
@@ -602,6 +621,7 @@ function ConsList() {
           my="calc(var(--mantine-spacing-xs) * -1)"
           me="xs"
           gap="xs"
+          visibleFrom="lg"
         >
           {isLoggedIn ? (
             <Button
@@ -633,18 +653,7 @@ function ConsList() {
               </Text>
             </Button>
           ) : null}
-          <Menu
-            position="bottom-start"
-            withArrow
-            closeOnItemClick={false}
-            opened={continentsMenuOpen}
-            onChange={(v) => {
-              if (!v && !isLg) {
-                return;
-              }
-              setContinentsMenuOpen(v);
-            }}
-          >
+          <Menu position="bottom-start" withArrow closeOnItemClick={false}>
             <Menu.Target>
               <Button
                 radius="lg"
@@ -748,18 +757,7 @@ function ConsList() {
               })}
             </Menu.Dropdown>
           </Menu>
-          <Menu
-            position="bottom-start"
-            withArrow
-            closeOnItemClick={false}
-            opened={durationMenuOpen}
-            onChange={(v) => {
-              if (!v && !isLg) {
-                return;
-              }
-              setDurationMenuOpen(v);
-            }}
-          >
+          <Menu position="bottom-start" withArrow closeOnItemClick={false}>
             <Menu.Target>
               <Button
                 radius="lg"
@@ -1009,13 +1007,12 @@ function ConsList() {
 
       <Drawer
         position="bottom"
-        opened={continentsMenuOpen || durationMenuOpen}
+        opened={filterDrawerOpen}
         onClose={() => {
-          setContinentsMenuOpen(false);
-          setDurationMenuOpen(false);
+          setFilterDrawerOpen(false);
         }}
         hiddenFrom="lg"
-        title={<Trans>Filter by</Trans>}
+        title={<Trans>Filters</Trans>}
       >
         {isLoggedIn ? (
           <>
