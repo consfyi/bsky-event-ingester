@@ -359,10 +359,10 @@ export function ErrorBoundary() {
 
   return (
     <Box p={50} ta="center">
-      <Text size="xl" fw={500}>
+      <Text size="xl" fw={500} mb="sm">
         <Trans>Not found</Trans>
       </Text>
-      <Text mt="sm">
+      <Text>
         <Trans>The page you requested could not be found.</Trans>
       </Text>
     </Box>
