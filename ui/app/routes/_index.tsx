@@ -603,7 +603,7 @@ function ConsList() {
           mx="calc(var(--mantine-spacing-xs) * -1)"
           my="calc(var(--mantine-spacing-xs) * -1)"
           gap="xs"
-          {...(dir == "ltr" ? { ml: "xs" } : { mr: "xs" })}
+          {...(dir == "ltr" ? { mr: "xs" } : { ml: "xs" })}
         >
           {isLoggedIn ? (
             <Button
