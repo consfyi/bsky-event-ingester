@@ -321,6 +321,7 @@ function Footer() {
           </ActionIcon>
         </Group>
         <Select
+          withCheckIcon={false}
           leftSection={<IconLanguage stroke={1.5} size={18} />}
           size="xs"
           mb="sm"
