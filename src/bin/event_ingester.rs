@@ -479,10 +479,13 @@ async fn sync_labels(
     }
 
     // Create new events.
+    let mut sorted_events = events.into_iter().collect::<Vec<_>>();
+    sorted_events.sort_by_key(|(_, event)| (event.ics.dtstart, event.ics.dtend));
+
     {
         let mut now = chrono::Utc::now();
 
-        for (id, event) in events.iter_mut() {
+        for (id, event) in sorted_events.iter_mut() {
             if event.rkey.is_some() {
                 continue;
             }
@@ -583,9 +586,6 @@ async fn sync_labels(
     }
 
     {
-        let mut sorted_events = events.iter().collect::<Vec<_>>();
-        sorted_events.sort_by_key(|(_, event)| (event.ics.dtstart, event.ics.dtend));
-
         let record: atrium_api::app::bsky::labeler::service::Record =
             atrium_api::app::bsky::labeler::service::RecordData {
                 created_at: atrium_api::types::string::Datetime::now(),
@@ -593,9 +593,9 @@ async fn sync_labels(
                 policies: atrium_api::app::bsky::labeler::defs::LabelerPoliciesData {
                     label_values: sorted_events.iter().filter(|(_, event)| {
                         event.rkey.as_ref().unwrap().is_some()
-                    }).map(|(id, _)| base26::encode(**id)).collect(),
+                    }).map(|(id, _)| base26::encode(*id)).collect(),
                     label_value_definitions: Some(
-                        sorted_events.into_iter() // TODO: Sort by dtstart
+                        sorted_events.iter()
                             .map(|(id, event)| {
                                 // The "DTEND" property for a "VEVENT" calendar component specifies the non-inclusive end of the event.
                                 let end_date = event.ics.dtend - chrono::Days::new(1);
@@ -696,7 +696,7 @@ async fn sync_labels(
         )
         .await?;
 
-    events_state.rkeys_to_ids = events
+    events_state.rkeys_to_ids = sorted_events
         .iter()
         .flat_map(|(id, event)| {
             event
@@ -707,7 +707,7 @@ async fn sync_labels(
         })
         .collect();
 
-    events_state.event_ends = events
+    events_state.event_ends = sorted_events
         .iter()
         .map(|(id, event)| {
             (
