@@ -39,7 +39,7 @@ struct Geocoded {
 
 struct EventsState {
     rkeys_to_ids: std::collections::HashMap<atrium_api::types::string::RecordKey, u64>,
-    event_ends: std::collections::HashMap<u64, chrono::DateTime<chrono::Utc>>,
+    events: std::collections::HashMap<u64, Event>,
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -147,6 +147,21 @@ struct Event {
     ics: ICSEvent,
     geocoded: Option<Geocoded>,
     rkey: Option<Option<atrium_api::types::string::RecordKey>>,
+}
+
+impl Event {
+    fn end_time(&self) -> chrono::DateTime<chrono_tz::Tz> {
+        self.ics
+            .dtend
+            .and_time(chrono::NaiveTime::MIN)
+            .and_local_timezone(
+                self.geocoded
+                    .as_ref()
+                    .and_then(|g| g.timezone)
+                    .unwrap_or(chrono_tz::UTC),
+            )
+            .unwrap()
+    }
 }
 
 async fn fetch_events(
@@ -306,22 +321,19 @@ async fn sync_labels(
     // This ensures that we don't get into a state where if someone likes a post but we haven't saved it into the events state yet we end up missing their like.
     let mut events_state = events_state.lock().await;
 
+    let now = chrono::Utc::now();
+
     let mut events = fetch_events(ics_url).await?;
 
-    {
-        // Remove events that are definitely too late.
-        let now = chrono::Utc::now();
-
-        events = events
-            .into_iter()
-            .filter(|(_, event)| {
-                // Somewhat obnoxiously we have to do this in UTC, because otherwise we have to geocode to find the timezone.
-                now < event.ics.dtend.and_time(chrono::NaiveTime::MIN).and_utc()
+    events = events
+        .into_iter()
+        .filter(|(_, event)| {
+            // Somewhat obnoxiously we have to do this in UTC, because otherwise we have to geocode to find the timezone.
+            now < event.ics.dtend.and_time(chrono::NaiveTime::MIN).and_utc()
                     + chrono::Days::new(1) // Add an extra day to compensate for very ahead timezones, like Pacific/Auckland.
                     + EXPIRY_DATE_GRACE_PERIOD
-            })
-            .collect();
-    }
+        })
+        .collect();
 
     let mut writes = vec![];
 
@@ -429,67 +441,51 @@ async fn sync_labels(
     }
 
     // Delete events.
-    {
-        let now = chrono::Utc::now();
-
-        for (id, oe) in old_events.into_iter() {
-            if let Some(event) = events.get_mut(&id) {
-                let expiry = event
-                    .ics
-                    .dtend
-                    .and_time(chrono::NaiveTime::MIN)
-                    .and_local_timezone(
-                        event
-                            .geocoded
-                            .as_ref()
-                            .and_then(|g| g.timezone)
-                            .unwrap_or(chrono_tz::UTC),
-                    )
-                    .unwrap()
-                    .to_utc();
-
-                if now < expiry + EXPIRY_DATE_GRACE_PERIOD {
-                    // Event hasn't expired, no need to delete.
-                    event.rkey = Some(oe.rkey);
-                    continue;
-                }
-
-                event.rkey = Some(None);
+    for (id, oe) in old_events.into_iter() {
+        if let Some(event) = events.get_mut(&id) {
+            if now < event.end_time() + EXPIRY_DATE_GRACE_PERIOD {
+                // Event hasn't expired, no need to delete.
+                event.rkey = Some(oe.rkey);
+                continue;
             }
 
-            if let Some(rkey) = oe.rkey {
-                writes.push(
-                    atrium_api::com::atproto::repo::apply_writes::InputWritesItem::Delete(
-                        Box::new(
-                            atrium_api::com::atproto::repo::apply_writes::DeleteData {
-                                collection: atrium_api::app::bsky::feed::Post::nsid(),
-                                rkey: rkey.clone(),
-                            }
-                            .into(),
-                        ),
-                    ),
-                );
-                writes.push(
-                    atrium_api::com::atproto::repo::apply_writes::InputWritesItem::Delete(
-                        Box::new(
-                            atrium_api::com::atproto::repo::apply_writes::DeleteData {
-                                collection: atrium_api::app::bsky::feed::Threadgate::nsid(),
-                                rkey: rkey.clone(),
-                            }
-                            .into(),
-                        ),
-                    ),
-                );
-            }
+            event.rkey = Some(None);
+        }
+
+        if let Some(rkey) = oe.rkey {
+            writes.push(
+                atrium_api::com::atproto::repo::apply_writes::InputWritesItem::Delete(Box::new(
+                    atrium_api::com::atproto::repo::apply_writes::DeleteData {
+                        collection: atrium_api::app::bsky::feed::Post::nsid(),
+                        rkey: rkey.clone(),
+                    }
+                    .into(),
+                )),
+            );
+            writes.push(
+                atrium_api::com::atproto::repo::apply_writes::InputWritesItem::Delete(Box::new(
+                    atrium_api::com::atproto::repo::apply_writes::DeleteData {
+                        collection: atrium_api::app::bsky::feed::Threadgate::nsid(),
+                        rkey: rkey.clone(),
+                    }
+                    .into(),
+                )),
+            );
         }
     }
 
     // Create new events.
-    let mut sorted_events = events.into_iter().collect::<Vec<_>>();
-    sorted_events.sort_by_key(|(_, event)| (event.ics.dtstart, event.ics.dtend));
+    let mut sorted_events = events.iter_mut().collect::<Vec<_>>();
+    sorted_events.sort_by_key(|(_, event)| {
+        (
+            if event.end_time() < now { 0 } else { 1 },
+            event.ics.dtstart,
+            event.ics.dtend,
+        )
+    });
 
     {
-        let mut now = chrono::Utc::now();
+        let mut created_at = now;
 
         for (id, event) in sorted_events.iter_mut() {
             if event.rkey.is_some() {
@@ -497,7 +493,7 @@ async fn sync_labels(
             }
 
             let rkey = atrium_api::types::string::RecordKey::new(
-                atrium_api::types::string::Tid::from_datetime(0.try_into().unwrap(), now)
+                atrium_api::types::string::Tid::from_datetime(0.try_into().unwrap(), created_at)
                     .to_string(),
             )
             .unwrap();
@@ -507,7 +503,9 @@ async fn sync_labels(
             {
                 let record: atrium_api::app::bsky::feed::post::Record =
                     atrium_api::app::bsky::feed::post::RecordData {
-                        created_at: atrium_api::types::string::Datetime::new(now.fixed_offset()),
+                        created_at: atrium_api::types::string::Datetime::new(
+                            created_at.fixed_offset(),
+                        ),
                         embed: None,
                         entities: None,
                         labels: None,
@@ -526,7 +524,7 @@ async fn sync_labels(
                                             uri: format!(
                                                 "{}/cons/{}",
                                                 ui_endpoint,
-                                                base26::encode(*id)
+                                                base26::encode(**id)
                                             ),
                                         }
                                         .into(),
@@ -587,19 +585,19 @@ async fn sync_labels(
             }
 
             // https://github.com/bluesky-social/atproto/issues/2468#issuecomment-2100947405
-            now += chrono::Duration::milliseconds(1);
+            created_at += chrono::Duration::milliseconds(1);
         }
     }
 
     {
         let record: atrium_api::app::bsky::labeler::service::Record =
             atrium_api::app::bsky::labeler::service::RecordData {
-                created_at: atrium_api::types::string::Datetime::now(),
+                created_at: atrium_api::types::string::Datetime::new(now.fixed_offset()),
                 labels: None,
                 policies: atrium_api::app::bsky::labeler::defs::LabelerPoliciesData {
                     label_values: sorted_events.iter().filter(|(_, event)| {
                         event.rkey.as_ref().unwrap().is_some()
-                    }).map(|(id, _)| base26::encode(*id)).collect(),
+                    }).map(|(id, _)| base26::encode(**id)).collect(),
                     label_value_definitions: Some(
                         sorted_events.iter()
                             .map(|(id, event)| {
@@ -610,7 +608,7 @@ async fn sync_labels(
                                     adult_only: Some(false),
                                     blurs: "none".to_string(),
                                     default_setting: Some("warn".to_string()),
-                                    identifier: base26::encode(*id),
+                                    identifier: base26::encode(**id),
                                     locales: vec![atrium_api::com::atproto::label::defs::LabelValueDefinitionStringsData {
                                         lang: atrium_api::types::string::Language::new(
                                             "en".to_string(),
@@ -709,31 +707,11 @@ async fn sync_labels(
                 .rkey
                 .as_ref()
                 .and_then(|rkey| rkey.as_ref())
-                .map(|rkey| (rkey.clone(), *id))
+                .map(|rkey| (rkey.clone(), **id))
         })
         .collect();
 
-    events_state.event_ends = sorted_events
-        .iter()
-        .map(|(id, event)| {
-            (
-                *id,
-                event
-                    .ics
-                    .dtend
-                    .and_time(chrono::NaiveTime::MIN)
-                    .and_local_timezone(
-                        event
-                            .geocoded
-                            .as_ref()
-                            .and_then(|g| g.timezone)
-                            .unwrap_or(chrono_tz::UTC),
-                    )
-                    .unwrap()
-                    .to_utc(),
-            )
-        })
-        .collect();
+    events_state.events = events;
 
     metrics::gauge!("label_sync_time").set(chrono::Utc::now().timestamp_micros() as f64);
 
@@ -841,7 +819,7 @@ async fn service_jetstream_once(
                         return Ok(());
                     };
 
-                    let event_end = events_state.event_ends.get(&id).unwrap();
+                    let event = events_state.events.get(&id).unwrap();
 
                     let label: atrium_api::com::atproto::label::defs::Label =
                         atrium_api::com::atproto::label::defs::LabelData {
@@ -851,7 +829,7 @@ async fn service_jetstream_once(
                                     .fixed_offset(),
                             ),
                             exp: Some(atrium_api::types::string::Datetime::new(
-                                event_end.fixed_offset() + EXPIRY_DATE_GRACE_PERIOD,
+                                (event.end_time() + EXPIRY_DATE_GRACE_PERIOD).fixed_offset(),
                             )),
                             src: did.clone(),
                             cid: None,
@@ -983,7 +961,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     let events_state = std::sync::Arc::new(tokio::sync::Mutex::new(EventsState {
         rkeys_to_ids: std::collections::HashMap::new(),
-        event_ends: std::collections::HashMap::new(),
+        events: std::collections::HashMap::new(),
     }));
 
     let session = atrium_api::agent::atp_agent::CredentialSession::new(

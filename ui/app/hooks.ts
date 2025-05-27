@@ -156,7 +156,7 @@ export function useCons() {
         }
       );
 
-      return sortBy(cons, (con) => con.start);
+      return cons;
     },
     [labelerView, conPosts]
   );

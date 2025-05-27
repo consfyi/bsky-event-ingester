@@ -50,7 +50,6 @@ import {
   getMonth,
   getYear,
   isAfter,
-  isBefore,
   setDate,
 } from "date-fns";
 import { groupBy, isEqual, sortBy } from "lodash-es";
@@ -129,10 +128,17 @@ function ConRow({
       : null;
 
   const now = new Date();
-  const active = isAfter(now, con.start) && isBefore(now, addDays(con.end, 1));
+  const isOver = isAfter(now, addDays(con.end, 1));
+  const active = isAfter(now, con.start) && !isOver;
 
   return (
-    <Group gap="xs" wrap="nowrap" mb="sm" px="xs">
+    <Group
+      gap="xs"
+      wrap="nowrap"
+      mb="sm"
+      px="xs"
+      style={{ opacity: isOver ? 0.5 : 1.0 }}
+    >
       <Anchor<typeof Link> component={Link} to={`/cons/${con.identifier}`}>
         <Indicator
           position="top-start"
