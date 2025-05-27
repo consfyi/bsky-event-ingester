@@ -73,7 +73,10 @@ import clientMetadata from "../../public/client-metadata.json";
 
 const MAX_AVATARS_IN_STACK = 3;
 
-function* monthRange(start: Date, end: Date): Generator<Date> {
+function* monthRange<DateType extends Date>(
+  start: DateType,
+  end: DateType
+): Generator<DateType> {
   while (start < end) {
     yield start;
     start = addMonths(start, 1);
@@ -340,8 +343,11 @@ function ConsByDate({
     }
     const months = [];
     for (const d of monthRange(
-      setDate(cons![0].start, 1),
-      addMonths(setDate(cons![cons!.length - 1].start, 1), 1)
+      setDate(reinterpretAsLocalDate(cons![0].start), 1),
+      addMonths(
+        setDate(reinterpretAsLocalDate(cons![cons!.length - 1].start), 1),
+        1
+      )
     )) {
       if (hideEmptyGroups && (consByMonth[yearMonthKey(d)] ?? []).length == 0) {
         continue;
