@@ -47,6 +47,7 @@ import {
 } from "date-fns";
 import { groupBy, isEqual, sortBy } from "lodash-es";
 import { Fragment, Suspense, useEffect, useMemo, useState } from "react";
+import { z } from "zod/v4";
 import Avatar from "~/components/Avatar";
 import Flag from "~/components/Flag";
 import LikeButton from "~/components/LikeButton";
@@ -423,26 +424,27 @@ const DEFAULT_SORT_DESC_OPTIONS = {
   [SortBy.Followed]: true,
 };
 
-interface ViewOptions {
-  version: 1;
-  filter: FilterOptions;
-  sort: SortOptions;
-}
+const FilterOptions = z.object({
+  attending: z.boolean(),
+  followed: z.boolean(),
+  continents: z.array(Continent),
+  duration: z.tuple([z.number(), z.number()]),
+});
+type FilterOptions = z.infer<typeof FilterOptions>;
 
-interface SortOptions {
-  by: SortBy;
-  desc: boolean;
-}
+const SortOptions = z.object({
+  by: z.enum(SortBy),
+  desc: z.boolean(),
+});
+type SortOptions = z.infer<typeof SortOptions>;
 
-interface FilterOptions {
-  attending: boolean;
-  followed: boolean;
-  continents: Continent[];
-  duration: [number, number];
-}
+const ViewOptions = z.object({
+  filter: FilterOptions,
+  sort: SortOptions,
+});
+type ViewOptions = z.infer<typeof ViewOptions>;
 
 const DEFAULT_VIEW_OPTIONS: ViewOptions = {
-  version: 1,
   filter: {
     attending: false,
     followed: false,
@@ -474,13 +476,14 @@ export default function ConsList({ cons }: { cons: Con[] }) {
     key: "fbl:_index:viewOptions",
     getInitialValueInEffect: false,
     defaultValue: DEFAULT_VIEW_OPTIONS,
+    deserialize(v) {
+      if (v == undefined) {
+        return DEFAULT_VIEW_OPTIONS;
+      }
+      const result = ViewOptions.safeParse(JSON.parse(v));
+      return result.success ? result.data : DEFAULT_VIEW_OPTIONS;
+    },
   });
-
-  useEffect(() => {
-    if (viewOptions.version != DEFAULT_VIEW_OPTIONS.version) {
-      setViewOptions(DEFAULT_VIEW_OPTIONS);
-    }
-  }, [viewOptions, setViewOptions]);
 
   useEffect(() => {
     if (isLoggedIn) {
