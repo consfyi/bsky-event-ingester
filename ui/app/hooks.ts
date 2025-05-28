@@ -201,14 +201,8 @@ export function useSelfFollowsDLE() {
   return { data: follows, loading, error };
 }
 
-export function useFollowedConAttendees() {
-  const client = useClient();
-  const data = useSuspense(
-    useGetFollows(),
-    client.did != null ? { actor: client.did } : null
-  );
-
-  const byCon = useGlobalMemo(
+function useFollowedConAttendeesGlobalMemo(data: Profile[] | undefined) {
+  return useGlobalMemo(
     "followedConAttendees",
     () => {
       if (data == null) {
@@ -230,8 +224,15 @@ export function useFollowedConAttendees() {
     },
     [data]
   );
+}
 
-  return byCon;
+export function useFollowedConAttendees() {
+  const client = useClient();
+  const data = useSuspense(
+    useGetFollows(),
+    client.did != null ? { actor: client.did } : null
+  );
+  return useFollowedConAttendeesGlobalMemo(data);
 }
 
 export function useFollowedConAttendeesDLE() {
@@ -240,31 +241,7 @@ export function useFollowedConAttendeesDLE() {
     useGetFollows(),
     client.did != null ? { actor: client.did } : null
   );
-
-  const byCon = useGlobalMemo(
-    "followedConAttendees",
-    () => {
-      if (data == null) {
-        return null;
-      }
-      const cons: Record<string, Profile[]> = {};
-      for (const follow of data) {
-        for (const label of follow.labels!) {
-          if (label.src != LABELER_DID) {
-            continue;
-          }
-          cons[label.val] = [...(cons[label.val] ?? []), follow];
-        }
-      }
-      for (const k in cons) {
-        cons[k] = sortBy(cons[k], (v) => v.handle);
-      }
-      return cons;
-    },
-    [data]
-  );
-
-  return { data: byCon, loading, error };
+  return { data: useFollowedConAttendeesGlobalMemo(data), loading, error };
 }
 
 export function useIsLoggedIn() {
