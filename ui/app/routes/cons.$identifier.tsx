@@ -154,7 +154,7 @@ function Header({ con }: { con: Con }) {
         <Group wrap="nowrap" gap="xs" align="top">
           <Box>
             <Indicator
-              position="top-end"
+              position="top-start"
               color="green"
               processing
               size={12}
