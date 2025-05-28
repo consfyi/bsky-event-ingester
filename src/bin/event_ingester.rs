@@ -828,7 +828,9 @@ async fn service_jetstream_once(
                                     .fixed_offset(),
                             ),
                             exp: Some(atrium_api::types::string::Datetime::new(
-                                (event.end_time() + EXPIRY_DATE_GRACE_PERIOD).fixed_offset(),
+                                (event.end_time() + EXPIRY_DATE_GRACE_PERIOD)
+                                    .with_timezone(&chrono_tz::UTC)
+                                    .fixed_offset(),
                             )),
                             src: did.clone(),
                             cid: None,
