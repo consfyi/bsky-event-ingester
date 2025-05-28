@@ -13,9 +13,10 @@ export default function Flag({
   );
   return (
     <Image
-      src={`https://flagcdn.com/${country.toLowerCase()}.svg`}
+      src={`https://cdn.jsdelivr.net/npm/flagpack@latest/flags/4x3/${country.toLowerCase()}.svg`}
       title={countryNames.of(country)}
       alt={countryNames.of(country)}
+      fit="contain"
       {...props}
     />
   );

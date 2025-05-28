@@ -130,10 +130,9 @@ function Header({ con }: { con: Con }) {
             <Flag
               country={con.geocoded.country ?? "XX"}
               display="inline"
-              h={13}
-              w={26}
+              h={15}
+              w={20}
               me={6}
-              fit="contain"
             />
           ) : null}{" "}
           {con.name}{" "}
