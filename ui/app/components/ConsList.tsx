@@ -448,16 +448,8 @@ const DEFAULT_VIEW_OPTIONS: ViewOptions = {
   filter: {
     attending: false,
     followed: false,
-    continents: [
-      "AF",
-      "AS",
-      "EU",
-      "NA",
-      "OC",
-      "SA",
-      "XX",
-    ] satisfies Continent[] as Continent[],
-    duration: [1, 7] satisfies [number, number],
+    continents: ["AF", "AS", "EU", "NA", "OC", "SA", "XX"],
+    duration: [1, 7],
   },
   sort: {
     by: SortBy.Date,
