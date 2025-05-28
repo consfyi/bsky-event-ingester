@@ -12,6 +12,8 @@ export default function SimpleErrorBoundary({
     <ErrorBoundary
       fallbackRender={({ error }) => (
         <Alert
+          mt={{ lg: "xs" }}
+          mx={{ base: 0, lg: "xs" }}
           color="red"
           title={<Trans>Error</Trans>}
           icon={<IconExclamationCircle />}
