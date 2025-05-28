@@ -13,6 +13,184 @@ msgstr ""
 "Language-Team: \n"
 "Plural-Forms: \n"
 
+#: app/components/ConsList.tsx:168
+#: app/components/ConsList.tsx:506
+msgctxt "number of attendees"
+msgid "Attendees"
+msgstr "参加者数"
+
+#. placeholder {0}: [likeCount][0]
+#: app/components/ConsList.tsx:171
+#: app/routes/cons.$identifier.tsx:337
+msgctxt "attendee count"
+msgid "{0}"
+msgstr "{0}人"
+
+#. placeholder {0}: follows.length - MAX_AVATARS_IN_STACK
+#: app/components/ConsList.tsx:181
+msgid "{0, plural, one {# other you follow} other {# others you follow}}"
+msgstr "フォロー中の他の{0}人"
+
+#: app/components/ConsList.tsx:214
+#: app/components/ConsList.tsx:501
+#: app/routes/cons.$identifier.tsx:151
+msgid "Date"
+msgstr "開催日"
+
+#. placeholder {0}: dateTimeFormat.formatRange( reinterpretAsLocalDate(con.start), reinterpretAsLocalDate(con.end) )
+#. placeholder {0}: dateTimeFormat.formatRange( reinterpretAsLocalDate(con.start), reinterpretAsLocalDate(con.end) )
+#. placeholder {1}: differenceInDays(con.end, con.start) + 1
+#: app/components/ConsList.tsx:215
+#: app/routes/cons.$identifier.tsx:154
+msgctxt "[start date]-[end date] ([duration] days)"
+msgid "{0} ({1, plural, one {# day} other {# days}})"
+msgstr "{0} ({1}日)"
+
+#: app/components/ConsList.tsx:231
+msgid "End date"
+msgstr "終了日"
+
+#. placeholder {0}: i18n.date(reinterpretAsLocalDate(con.end), { weekday: "short", day: "numeric", month: "short", year: getYear(reinterpretAsLocalDate(con.start)) != getYear(reinterpretAsLocalDate(con.end)) ? "numeric" : undefined, })
+#. placeholder {1}: differenceInDays(con.end, con.start) + 1
+#: app/components/ConsList.tsx:232
+msgctxt "ends [date] ([duration] days)"
+msgid "ends {0} ({1, plural, one {# day} other {# days}})"
+msgstr "{0}終了 ({1}日)"
+
+#: app/components/ConsList.tsx:256
+#: app/routes/cons.$identifier.tsx:172
+msgid "Location"
+msgstr "開催地"
+
+#: app/components/ConsList.tsx:502
+msgid "Soonest to latest"
+msgstr "早い順"
+
+#: app/components/ConsList.tsx:503
+msgid "Latest to soonest"
+msgstr "遅い順"
+
+#: app/components/ConsList.tsx:507
+#: app/components/ConsList.tsx:512
+msgid "Fewest to most"
+msgstr "少ない順"
+
+#: app/components/ConsList.tsx:508
+#: app/components/ConsList.tsx:513
+msgid "Most to fewest"
+msgstr "多い順"
+
+#: app/components/ConsList.tsx:511
+msgid "Followed attendees"
+msgstr "フォロー中の参加者数"
+
+#: app/components/ConsList.tsx:538
+msgid "North America"
+msgstr "北アメリカ"
+
+#: app/components/ConsList.tsx:539
+msgid "Europe"
+msgstr "ヨーロッパ"
+
+#: app/components/ConsList.tsx:540
+msgid "Antarctica"
+msgstr "南極"
+
+#: app/components/ConsList.tsx:541
+msgid "Asia"
+msgstr "アジア"
+
+#: app/components/ConsList.tsx:542
+msgid "South America"
+msgstr "南アメリカ"
+
+#: app/components/ConsList.tsx:543
+msgid "Oceania"
+msgstr "オセアニア"
+
+#: app/components/ConsList.tsx:544
+msgid "Africa"
+msgstr "アフリカ"
+
+#: app/components/ConsList.tsx:545
+msgid "Unknown"
+msgstr "不明"
+
+#: app/components/ConsList.tsx:609
+#: app/components/ConsList.tsx:1016
+msgid "Filters"
+msgstr "絞り込み"
+
+#: app/components/ConsList.tsx:653
+#: app/components/ConsList.tsx:1025
+msgid "Attending only"
+msgstr "参加予定のみ"
+
+#. placeholder {0}: viewOptions.filter.continents.length
+#: app/components/ConsList.tsx:679
+msgid "{0, plural, one {# region} other {# regions}}"
+msgstr "{0}地域"
+
+#: app/components/ConsList.tsx:686
+#: app/components/ConsList.tsx:1056
+msgid "Regions"
+msgstr "地域"
+
+#. placeholder {0}: viewOptions.filter.continents.length
+#: app/components/ConsList.tsx:717
+#: app/components/ConsList.tsx:1075
+msgid "{0, plural, one {# selected} other {# selected}}"
+msgstr "{0}地域選択中"
+
+#. placeholder {0}: DEFAULT_FILTER.duration[1]
+#. placeholder {0}: viewOptions.filter.duration[0]
+#: app/components/ConsList.tsx:784
+#: app/components/ConsList.tsx:798
+#: app/components/ConsList.tsx:833
+#: app/components/ConsList.tsx:1131
+msgid "{0, plural, one {# day or longer} other {# days or longer}}"
+msgstr "{0}日以上"
+
+#. placeholder {0}: viewOptions.filter.duration[0]
+#. placeholder {0}: [value][0]
+#: app/components/ConsList.tsx:790
+#: app/components/ConsList.tsx:831
+#: app/components/ConsList.tsx:1129
+msgid "{0, plural, one {# day} other {# days}}"
+msgstr "{0}日"
+
+#. placeholder {0}: viewOptions.filter.duration[0]
+#. placeholder {1}: viewOptions.filter.duration[1]
+#: app/components/ConsList.tsx:804
+msgid "{0} to {1} days"
+msgstr "{0}〜{1}日"
+
+#: app/components/ConsList.tsx:810
+#: app/components/ConsList.tsx:1112
+msgid "Duration"
+msgstr "開催期間"
+
+#: app/components/ConsList.tsx:875
+#: app/components/ConsList.tsx:1040
+msgid "With followed only"
+msgstr "フォロー中のユーザーのみ"
+
+#: app/components/ConsList.tsx:916
+msgid "Sort by"
+msgstr "並び替え"
+
+#: app/components/ConsList.tsx:961
+msgid "Order"
+msgstr "順序"
+
+#: app/components/ConsList.tsx:1173
+msgid "No cons to display."
+msgstr "表示するコンベンションがありません。"
+
+#: app/components/ConsList.tsx:1186
+msgid "Clear all filters"
+msgstr "全ての絞り込みを解除"
+
 #: app/components/LikeButton.tsx:32
 msgid "Attending"
 msgstr "参加予定"
@@ -25,11 +203,11 @@ msgstr "参加しない"
 msgid "Toggle attending"
 msgstr "参加状況を切り替え"
 
-#: app/components/SimpleErrorBoundary.tsx:16
+#: app/components/SimpleErrorBoundary.tsx:18
 msgid "Error"
 msgstr "エラー"
 
-#: app/components/SimpleErrorBoundary.tsx:20
+#: app/components/SimpleErrorBoundary.tsx:22
 msgid "An error occurred while attempting to load this data."
 msgstr "データの読み込み中にエラーが発生しました。"
 
@@ -71,233 +249,56 @@ msgstr "見つかりません"
 msgid "The page you requested could not be found."
 msgstr "お探しのページが見つかりませんでした。"
 
-#: app/routes/_index.tsx:180
-#: app/routes/_index.tsx:507
-msgctxt "number of attendees"
-msgid "Attendees"
-msgstr "参加者数"
-
-#. placeholder {0}: [likeCount][0]
-#: app/routes/_index.tsx:183
-#: app/routes/cons.$identifier.tsx:336
-msgctxt "attendee count"
-msgid "{0}"
-msgstr "{0}人"
-
-#. placeholder {0}: follows.length - MAX_AVATARS_IN_STACK
-#: app/routes/_index.tsx:193
-msgid "{0, plural, one {# other you follow} other {# others you follow}}"
-msgstr "フォロー中の他の{0}人"
-
-#: app/routes/_index.tsx:226
-#: app/routes/_index.tsx:502
-#: app/routes/cons.$identifier.tsx:157
-msgid "Date"
-msgstr "開催日"
-
-#. placeholder {0}: dateTimeFormat.formatRange(con.start, con.end)
-#. placeholder {1}: differenceInDays(con.end, con.start) + 1
-#: app/routes/_index.tsx:227
-#: app/routes/cons.$identifier.tsx:160
-msgctxt "[start date]-[end date] ([duration] days)"
-msgid "{0} ({1, plural, one {# day} other {# days}})"
-msgstr "{0} ({1}日)"
-
-#: app/routes/_index.tsx:239
-msgid "End date"
-msgstr "終了日"
-
-#. placeholder {0}: i18n.date(con.end, { weekday: "short", day: "numeric", month: "short", year: getYear(con.start) != getYear(con.end) ? "numeric" : undefined, })
-#. placeholder {1}: differenceInDays(con.end, con.start) + 1
-#: app/routes/_index.tsx:240
-msgctxt "ends [date] ([duration] days)"
-msgid "ends {0} ({1, plural, one {# day} other {# days}})"
-msgstr "{0}終了 ({1}日)"
-
-#: app/routes/_index.tsx:261
-#: app/routes/cons.$identifier.tsx:174
-msgid "Location"
-msgstr "開催地"
-
-#: app/routes/_index.tsx:503
-msgid "Soonest to latest"
-msgstr "早い順"
-
-#: app/routes/_index.tsx:504
-msgid "Latest to soonest"
-msgstr "遅い順"
-
-#: app/routes/_index.tsx:508
-#: app/routes/_index.tsx:513
-msgid "Fewest to most"
-msgstr "少ない順"
-
-#: app/routes/_index.tsx:509
-#: app/routes/_index.tsx:514
-msgid "Most to fewest"
-msgstr "多い順"
-
-#: app/routes/_index.tsx:512
-msgid "Followed attendees"
-msgstr "フォロー中の参加者数"
-
-#: app/routes/_index.tsx:539
-msgid "North America"
-msgstr "北アメリカ"
-
-#: app/routes/_index.tsx:540
-msgid "Europe"
-msgstr "ヨーロッパ"
-
-#: app/routes/_index.tsx:541
-msgid "Antarctica"
-msgstr "南極"
-
-#: app/routes/_index.tsx:542
-msgid "Asia"
-msgstr "アジア"
-
-#: app/routes/_index.tsx:543
-msgid "South America"
-msgstr "南アメリカ"
-
-#: app/routes/_index.tsx:544
-msgid "Oceania"
-msgstr "オセアニア"
-
-#: app/routes/_index.tsx:545
-msgid "Africa"
-msgstr "アフリカ"
-
-#: app/routes/_index.tsx:546
-msgid "Unknown"
-msgstr "不明"
-
-#: app/routes/_index.tsx:608
-#: app/routes/_index.tsx:1015
-msgid "Filters"
-msgstr "絞り込み"
-
-#: app/routes/_index.tsx:652
-#: app/routes/_index.tsx:1024
-msgid "Attending only"
-msgstr "参加予定のみ"
-
-#. placeholder {0}: viewOptions.filter.continents.length
-#: app/routes/_index.tsx:678
-msgid "{0, plural, one {# region} other {# regions}}"
-msgstr "{0}地域"
-
-#: app/routes/_index.tsx:685
-#: app/routes/_index.tsx:1055
-msgid "Regions"
-msgstr "地域"
-
-#. placeholder {0}: viewOptions.filter.continents.length
-#: app/routes/_index.tsx:716
-#: app/routes/_index.tsx:1074
-msgid "{0, plural, one {# selected} other {# selected}}"
-msgstr "{0}地域選択中"
-
-#. placeholder {0}: DEFAULT_FILTER.duration[1]
-#. placeholder {0}: viewOptions.filter.duration[0]
-#: app/routes/_index.tsx:783
-#: app/routes/_index.tsx:797
-#: app/routes/_index.tsx:832
-#: app/routes/_index.tsx:1130
-msgid "{0, plural, one {# day or longer} other {# days or longer}}"
-msgstr "{0}日以上"
-
-#. placeholder {0}: viewOptions.filter.duration[0]
-#. placeholder {0}: [value][0]
-#: app/routes/_index.tsx:789
-#: app/routes/_index.tsx:830
-#: app/routes/_index.tsx:1128
-msgid "{0, plural, one {# day} other {# days}}"
-msgstr "{0}日"
-
-#. placeholder {0}: viewOptions.filter.duration[0]
-#. placeholder {1}: viewOptions.filter.duration[1]
-#: app/routes/_index.tsx:803
-msgid "{0} to {1} days"
-msgstr "{0}〜{1}日"
-
-#: app/routes/_index.tsx:809
-#: app/routes/_index.tsx:1111
-msgid "Duration"
-msgstr "開催期間"
-
-#: app/routes/_index.tsx:874
-#: app/routes/_index.tsx:1039
-msgid "With followed only"
-msgstr "フォロー中のユーザーのみ"
-
-#: app/routes/_index.tsx:915
-msgid "Sort by"
-msgstr "並び替え"
-
-#: app/routes/_index.tsx:960
-msgid "Order"
-msgstr "順序"
-
-#: app/routes/_index.tsx:1172
-msgid "No cons to display."
-msgstr "表示するコンベンションがありません。"
-
-#: app/routes/_index.tsx:1185
-msgid "Clear all filters"
-msgstr "全ての絞り込みを解除"
-
-#: app/routes/_index.tsx:1240
+#: app/routes/_index.tsx:76
 msgid "Welcome!"
 msgstr "ようこそ！"
 
-#: app/routes/_index.tsx:1242
+#: app/routes/_index.tsx:78
 msgid "<0>This the website for the <1><2/> @cons.furryli.st</1> service. For the full experience, please log in. You’ll be able to:</0><3><4>Tell people which cons you’re going to (you can also do this by liking the con post on Bluesky).</4><5>See who you follow is going to a con.</5></3><6><7>Note:</7> If you’re using a self-hosted PDS, you’ll need to use the dropdown next to the Log in button to specify it.</6><8>A huge thank you to <9>FurryCons.com</9> who provides all the data on conventions!</8>"
 msgstr "<0>こちらは <1><2/> @cons.furryli.st</1> サービスのウェブサイトです。全ての機能をご利用いただくには、ログインしてください。ログインすると以下ができるようになります：</0><3><4>どのコンベンションに参加予定かを登録できます（Bluesky でそのコンベンションの投稿に「いいね」することでもできます）。</4><5>フォローしているユーザーがどのコンベンションに参加するかを確認できます。</5></3><6><7>注意：</7>セルフホスト型PDSを使用している場合は、ログインボタンの横にあるドロップダウンで指定する必要があります。</6><8>コンベンションの全データを提供してくださっている <9>FurryCons.com</9> の皆様に心から感謝いたします！</8>"
 
-#: app/routes/_index.tsx:1291
+#: app/routes/_index.tsx:127
 msgid "Not subscribed to labeler"
 msgstr "ラベラーに登録されていません"
 
-#: app/routes/_index.tsx:1295
+#: app/routes/_index.tsx:131
 msgid "You are currently not subscribed to the labeler. That means you won’t be able to see other people’s con labels on Bluesky."
 msgstr "現在ラベラーに登録されていません。これにより、Bluesky 上で他の人のコンベンションラベルを見ることができません。"
 
-#: app/routes/_index.tsx:1308
+#: app/routes/_index.tsx:144
 msgid "Fix this for me"
 msgstr "修正する"
 
-#: app/routes/cons.$identifier.tsx:139
-#: app/routes/cons.$identifier.tsx:146
+#: app/routes/cons.$identifier.tsx:133
+#: app/routes/cons.$identifier.tsx:140
 msgid "View Bluesky Post"
 msgstr "Bluesky の投稿を見る"
 
-#: app/routes/cons.$identifier.tsx:190
+#: app/routes/cons.$identifier.tsx:188
 msgid "Link"
 msgstr "リンク"
 
 #. placeholder {0}: unknownLikes.length
 #. placeholder {0}: [unknownLikeCount][0]
-#: app/routes/cons.$identifier.tsx:262
-#: app/routes/cons.$identifier.tsx:366
+#: app/routes/cons.$identifier.tsx:260
+#: app/routes/cons.$identifier.tsx:367
 msgid "{0, plural, one {# person you don’t follow} other {# people you don’t follow}}"
 msgstr "フォローしていないユーザー{0}人"
 
-#: app/routes/cons.$identifier.tsx:284
+#: app/routes/cons.$identifier.tsx:282
 msgid "No known attendees yet."
 msgstr "まだ参加者情報がありません。"
 
-#: app/routes/cons.$identifier.tsx:329
+#: app/routes/cons.$identifier.tsx:330
 msgid "Attendees"
 msgstr "参加者"
 
 #. placeholder {0}: [likeCount][0]
-#: app/routes/cons.$identifier.tsx:332
+#: app/routes/cons.$identifier.tsx:333
 msgctxt "attendee count, including you"
 msgid "{0} including you"
 msgstr "{0}人（あなたを含む）"
 
-#: app/routes/cons.$identifier.tsx:346
+#: app/routes/cons.$identifier.tsx:347
 msgid "Loading people you follow"
 msgstr "フォロー中のユーザーを読み込み中"
