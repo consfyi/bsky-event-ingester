@@ -47,7 +47,7 @@ import {
 } from "date-fns";
 import { groupBy, isEqual, sortBy } from "lodash-es";
 import { Fragment, Suspense, useEffect, useMemo, useState } from "react";
-import { z } from "zod/v4";
+import { z } from "zod/v4-mini";
 import Avatar from "~/components/Avatar";
 import Flag from "~/components/Flag";
 import LikeButton from "~/components/LikeButton";
@@ -422,37 +422,29 @@ const DEFAULT_SORT_DESC_OPTIONS: Record<SortBy, boolean> = {
 };
 
 const FilterOptions = z.object({
-  attending: z.boolean(),
-  followed: z.boolean(),
-  continents: z.array(Continent),
-  duration: z.tuple([z.number(), z.number()]),
+  attending: z._default(z.boolean(), false),
+  followed: z._default(z.boolean(), false),
+  continents: z._default(z.array(Continent), () => []),
+  duration: z._default(
+    z.tuple([z.number(), z.number()]),
+    () => [1, 7] satisfies [number, number]
+  ),
 });
 type FilterOptions = z.infer<typeof FilterOptions>;
 
 const SortOptions = z.object({
-  by: SortBy,
-  desc: z.boolean(),
+  by: z._default(SortBy, "date"),
+  desc: z._default(z.boolean(), false),
 });
 type SortOptions = z.infer<typeof SortOptions>;
 
 const ViewOptions = z.object({
-  filter: FilterOptions,
-  sort: SortOptions,
+  filter: z._default(FilterOptions, () => FilterOptions.parse({})),
+  sort: z._default(SortOptions, () => SortOptions.parse({})),
 });
 type ViewOptions = z.infer<typeof ViewOptions>;
 
-const DEFAULT_VIEW_OPTIONS: ViewOptions = {
-  filter: {
-    attending: false,
-    followed: false,
-    continents: ["AF", "AS", "EU", "NA", "OC", "SA", "XX"],
-    duration: [1, 7],
-  },
-  sort: {
-    by: "date",
-    desc: false,
-  },
-};
+const DEFAULT_VIEW_OPTIONS: ViewOptions = ViewOptions.parse({});
 
 export default function ConsList({ cons }: { cons: Con[] }) {
   const { t } = useLingui();
@@ -924,7 +916,7 @@ export default function ConsList({ cons }: { cons: Con[] }) {
             <Menu.Label>
               <Trans>Sort by</Trans>
             </Menu.Label>
-            {SortBy.options.map((sortBy) => {
+            {Object.values(SortBy.def.entries).map((sortBy) => {
               if (!isLoggedIn && sortBy == "followed") {
                 return null;
               }

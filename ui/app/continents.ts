@@ -1,4 +1,4 @@
-import { z } from "zod/v4";
+import { z } from "zod/v4-mini";
 
 export const Continent = z.enum(["AF", "AS", "EU", "NA", "OC", "SA", "XX"]);
 export type Continent = z.infer<typeof Continent>;
