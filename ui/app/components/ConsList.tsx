@@ -424,7 +424,9 @@ const DEFAULT_SORT_DESC_OPTIONS: Record<SortBy, boolean> = {
 const FilterOptions = z.object({
   attending: z._default(z.boolean(), false),
   followed: z._default(z.boolean(), false),
-  continents: z._default(z.array(Continent), () => []),
+  continents: z._default(z.array(Continent), () =>
+    Object.values(Continent.def.entries)
+  ),
   duration: z._default(
     z.tuple([z.number(), z.number()]),
     () => [1, 7] satisfies [number, number]
