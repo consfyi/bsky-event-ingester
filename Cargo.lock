@@ -1474,7 +1474,7 @@ checksum = "a8d1add55171497b4705a648c6b583acafb01d58050a51727785f0b2c8e0a2b2"
 [[package]]
 name = "google_maps"
 version = "3.8.3"
-source = "git+https://github.com/tolfdog/google_maps?branch=patch-1#0805392857f8558039a7b056dd1ebf0e0762155e"
+source = "git+https://github.com/leontoeides/google_maps#fb9f38aecc7be83609b1a59c7ac316c83ccc7aec"
 dependencies = [
  "backon",
  "bon",
