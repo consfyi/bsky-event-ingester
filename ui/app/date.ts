@@ -1,4 +1,5 @@
 import { TZDate } from "@date-fns/tz";
+import { addMonths } from "date-fns";
 
 export function reinterpretAsLocalDate(tzDate: TZDate) {
   return new Date(
@@ -10,4 +11,14 @@ export function reinterpretAsLocalDate(tzDate: TZDate) {
     tzDate.getSeconds(),
     tzDate.getMilliseconds()
   );
+}
+
+export function* monthRange<DateType extends Date>(
+  start: DateType,
+  end: DateType
+): Generator<DateType> {
+  while (start < end) {
+    yield start;
+    start = addMonths(start, 1);
+  }
 }
