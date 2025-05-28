@@ -1,9 +1,11 @@
 import { Plural, Trans, useLingui } from "@lingui/react/macro";
 import {
   Anchor,
+  Badge,
   Box,
   Divider,
   Group,
+  Indicator,
   Loader,
   Popover,
   SimpleGrid,
@@ -21,7 +23,7 @@ import {
   IconLink,
   IconMapPin,
 } from "@tabler/icons-react";
-import { differenceInDays } from "date-fns";
+import { addDays, differenceInDays, isAfter } from "date-fns";
 import { range, sortBy } from "lodash-es";
 import { Suspense, useEffect, useMemo } from "react";
 import Avatar from "~/components/Avatar";
@@ -117,6 +119,9 @@ function Header({ con }: { con: Con }) {
     [i18n.locale]
   );
 
+  const now = new Date();
+  const active = isAfter(now, con.start) && !isAfter(now, addDays(con.end, 1));
+
   return (
     <Box mb="sm">
       <Group gap={7} wrap="nowrap" align="top">
@@ -148,7 +153,16 @@ function Header({ con }: { con: Con }) {
       <Box mt={4}>
         <Group wrap="nowrap" gap="xs" align="top">
           <Box>
-            <IconCalendar title={t`Date`} size={16} stroke={1.5} />
+            <Indicator
+              position="top-end"
+              color="green"
+              processing
+              size={12}
+              withBorder
+              disabled={!active}
+            >
+              <IconCalendar title={t`Date`} size={16} stroke={1.5} />
+            </Indicator>
           </Box>
           <Text size="sm" mb={5}>
             <Trans context="[start date]-[end date] ([duration] days)">
