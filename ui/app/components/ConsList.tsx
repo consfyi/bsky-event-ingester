@@ -113,6 +113,7 @@ function ConRow({
         <Indicator
           position="top-start"
           color="green"
+          processing
           size={12}
           withBorder
           disabled={!active}
