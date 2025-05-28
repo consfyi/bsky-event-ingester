@@ -2,7 +2,7 @@ use furcons_bsky_labeler::*;
 
 use atrium_api::types::{Collection as _, TryFromUnknown as _, TryIntoUnknown as _};
 use futures::StreamExt as _;
-use icalendar::{Component as _, EventLike};
+use icalendar::{Component as _, EventLike as _};
 use sqlx::Acquire as _;
 
 #[derive(serde::Deserialize)]
@@ -108,6 +108,7 @@ async fn list_all_records(
     atrium_api::xrpc::Error<atrium_api::com::atproto::repo::list_records::Error>,
 > {
     let mut cursor = None;
+
     let mut records = vec![];
 
     loop {
@@ -128,9 +129,7 @@ async fn list_all_records(
             )
             .await?;
 
-        for record in resp.data.records {
-            records.push(record);
-        }
+        records.extend(resp.data.records);
 
         if resp.data.cursor.is_none() {
             break;
@@ -174,7 +173,7 @@ async fn fetch_events(
         .parse()
         .map_err(|e| anyhow::format_err!("{e}"))?;
 
-    Ok(calendar
+    let events = calendar
         .components
         .iter()
         .flat_map(|component| {
@@ -204,7 +203,13 @@ async fn fetch_events(
                 },
             ))
         })
-        .collect::<Result<std::collections::HashMap<_, _>, _>>()?)
+        .collect::<Result<std::collections::HashMap<_, _>, _>>()?;
+
+    if events.is_empty() {
+        return Err(anyhow::anyhow!("calendar is empty"));
+    }
+
+    Ok(events)
 }
 
 const EXTRA_DATA_POST_RKEY: &str = "fbl_postRkey";
