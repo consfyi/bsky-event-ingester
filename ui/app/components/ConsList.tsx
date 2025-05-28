@@ -441,12 +441,6 @@ interface FilterOptions {
   duration: [number, number];
 }
 
-interface SortByStrings {
-  name: string;
-  asc: string;
-  desc: string;
-}
-
 const DEFAULT_VIEW_OPTIONS: ViewOptions = {
   version: 1,
   filter: {
@@ -507,7 +501,14 @@ export default function ConsList({ cons }: { cons: Con[] }) {
   const actuallyShowOnlyAttending = isLoggedIn && viewOptions.filter.attending;
   const actuallyShowOnlyFollowed = isLoggedIn && viewOptions.filter.followed;
 
-  const sortByStrings: Record<SortBy, SortByStrings> = {
+  const sortByStrings: Record<
+    SortBy,
+    {
+      name: string;
+      asc: string;
+      desc: string;
+    }
+  > = {
     [SortBy.Date]: {
       name: t`Date`,
       asc: t`Soonest to latest`,
