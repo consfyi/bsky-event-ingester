@@ -412,16 +412,13 @@ function ConsByFollowed({
   });
 }
 
-enum SortBy {
-  Date = "date",
-  Attendees = "attendees",
-  Followed = "followed",
-}
+const SortBy = z.enum(["date", "attendees", "followed"]);
+type SortBy = z.infer<typeof SortBy>;
 
-const DEFAULT_SORT_DESC_OPTIONS = {
-  [SortBy.Date]: false,
-  [SortBy.Attendees]: true,
-  [SortBy.Followed]: true,
+const DEFAULT_SORT_DESC_OPTIONS: Record<SortBy, boolean> = {
+  date: false,
+  attendees: true,
+  followed: true,
 };
 
 const FilterOptions = z.object({
@@ -433,7 +430,7 @@ const FilterOptions = z.object({
 type FilterOptions = z.infer<typeof FilterOptions>;
 
 const SortOptions = z.object({
-  by: z.enum(SortBy),
+  by: SortBy,
   desc: z.boolean(),
 });
 type SortOptions = z.infer<typeof SortOptions>;
@@ -452,7 +449,7 @@ const DEFAULT_VIEW_OPTIONS: ViewOptions = {
     duration: [1, 7],
   },
   sort: {
-    by: SortBy.Date,
+    by: "date",
     desc: false,
   },
 };
@@ -485,7 +482,7 @@ export default function ConsList({ cons }: { cons: Con[] }) {
       ...vo,
       sort: {
         ...vo.sort,
-        by: vo.sort.by == SortBy.Followed ? SortBy.Attendees : vo.sort.by,
+        by: vo.sort.by == "followed" ? "attendees" : vo.sort.by,
       },
     }));
   }, [isLoggedIn, setViewOptions]);
@@ -504,17 +501,17 @@ export default function ConsList({ cons }: { cons: Con[] }) {
       desc: string;
     }
   > = {
-    [SortBy.Date]: {
+    date: {
       name: t`Date`,
       asc: t`Soonest to latest`,
       desc: t`Latest to soonest`,
     },
-    [SortBy.Attendees]: {
+    attendees: {
       name: t({ message: "Attendees", context: "number of attendees" }),
       asc: t`Fewest to most`,
       desc: t`Most to fewest`,
     },
-    [SortBy.Followed]: {
+    followed: {
       name: t`Followed attendees`,
       asc: t`Fewest to most`,
       desc: t`Most to fewest`,
@@ -927,10 +924,8 @@ export default function ConsList({ cons }: { cons: Con[] }) {
             <Menu.Label>
               <Trans>Sort by</Trans>
             </Menu.Label>
-            {Object.keys(SortBy).map((k) => {
-              const sortBy = SortBy[k as keyof typeof SortBy];
-
-              if (!isLoggedIn && sortBy == SortBy.Followed) {
+            {SortBy.options.map((sortBy) => {
+              if (!isLoggedIn && sortBy == "followed") {
                 return null;
               }
 
@@ -939,7 +934,7 @@ export default function ConsList({ cons }: { cons: Con[] }) {
               return (
                 <Menu.Item
                   disabled={
-                    sortBy == SortBy.Followed && followedConAttendees == null
+                    sortBy == "followed" && followedConAttendees == null
                   }
                   aria-selected={selected}
                   onClick={() => {
@@ -951,10 +946,9 @@ export default function ConsList({ cons }: { cons: Con[] }) {
                       },
                     }));
                   }}
-                  key={k}
+                  key={sortBy}
                   leftSection={
-                    sortBy != SortBy.Followed ||
-                    followedConAttendees != null ? (
+                    sortBy != "followed" || followedConAttendees != null ? (
                       selected ? (
                         <IconCheck size={14} />
                       ) : (
@@ -1165,17 +1159,17 @@ export default function ConsList({ cons }: { cons: Con[] }) {
         }
       >
         {filteredCons.length > 0 ? (
-          viewOptions.sort.by == SortBy.Attendees ? (
+          viewOptions.sort.by == "attendees" ? (
             <ConsByAttendees
               cons={filteredCons}
               sortDesc={viewOptions.sort.desc}
             />
-          ) : viewOptions.sort.by == SortBy.Followed ? (
+          ) : viewOptions.sort.by == "followed" ? (
             <ConsByFollowed
               cons={filteredCons}
               sortDesc={viewOptions.sort.desc}
             />
-          ) : viewOptions.sort.by == SortBy.Date ? (
+          ) : viewOptions.sort.by == "date" ? (
             <ConsByDate
               cons={filteredCons}
               sortDesc={viewOptions.sort.desc}
