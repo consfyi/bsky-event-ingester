@@ -423,7 +423,8 @@ const DEFAULT_SORT_DESC_OPTIONS = {
   [SortBy.Followed]: true,
 };
 
-interface TableViewOptions {
+interface ViewOptions {
+  version: 1;
   filter: FilterOptions;
   sort: SortOptions;
 }
@@ -433,32 +434,39 @@ interface SortOptions {
   desc: boolean;
 }
 
+interface FilterOptions {
+  attending: boolean;
+  followed: boolean;
+  continents: Continent[];
+  duration: [number, number];
+}
+
 interface SortByStrings {
   name: string;
   asc: string;
   desc: string;
 }
 
-const DEFAULT_FILTER = {
-  attending: false,
-  followed: false,
-  continents: [
-    "AF",
-    "AS",
-    "EU",
-    "NA",
-    "OC",
-    "SA",
-    "XX",
-  ] satisfies Continent[] as Continent[],
-  duration: [1, 7] satisfies [number, number],
-};
-
-type FilterOptions = typeof DEFAULT_FILTER;
-
-const DEFAULT_SORT: SortOptions = {
-  by: SortBy.Date,
-  desc: false,
+const DEFAULT_VIEW_OPTIONS: ViewOptions = {
+  version: 1,
+  filter: {
+    attending: false,
+    followed: false,
+    continents: [
+      "AF",
+      "AS",
+      "EU",
+      "NA",
+      "OC",
+      "SA",
+      "XX",
+    ] satisfies Continent[] as Continent[],
+    duration: [1, 7] satisfies [number, number],
+  },
+  sort: {
+    by: SortBy.Date,
+    desc: false,
+  },
 };
 
 export default function ConsList({ cons }: { cons: Con[] }) {
@@ -468,14 +476,17 @@ export default function ConsList({ cons }: { cons: Con[] }) {
   const now = new Date();
 
   const isLoggedIn = useIsLoggedIn();
-  const [viewOptions, setViewOptions] = useLocalStorage<TableViewOptions>({
-    key: "fbl:_index:viewOptions5",
+  const [viewOptions, setViewOptions] = useLocalStorage<ViewOptions>({
+    key: "fbl:_index:viewOptions",
     getInitialValueInEffect: false,
-    defaultValue: {
-      filter: DEFAULT_FILTER,
-      sort: DEFAULT_SORT,
-    },
+    defaultValue: DEFAULT_VIEW_OPTIONS,
   });
+
+  useEffect(() => {
+    if (viewOptions.version != DEFAULT_VIEW_OPTIONS.version) {
+      setViewOptions(DEFAULT_VIEW_OPTIONS);
+    }
+  }, [viewOptions, setViewOptions]);
 
   useEffect(() => {
     if (isLoggedIn) {
@@ -530,7 +541,10 @@ export default function ConsList({ cons }: { cons: Con[] }) {
 
   const sortedContinents = useMemo(
     () =>
-      sortBy(DEFAULT_FILTER.continents, (code) => -(continentCount[code] ?? 0)),
+      sortBy(
+        DEFAULT_VIEW_OPTIONS.filter.continents,
+        (code) => -(continentCount[code] ?? 0)
+      ),
     [continentCount]
   );
 
@@ -546,25 +560,28 @@ export default function ConsList({ cons }: { cons: Con[] }) {
 
   const continentsFiltered = !isEqual(
     viewOptions.filter.continents,
-    DEFAULT_FILTER.continents
+    DEFAULT_VIEW_OPTIONS.filter.continents
   );
   const durationFiltered = !isEqual(
     viewOptions.filter.duration,
-    DEFAULT_FILTER.duration
+    DEFAULT_VIEW_OPTIONS.filter.duration
   );
 
   const numFilters = [
     actuallyShowOnlyFollowed,
     actuallyShowOnlyAttending,
-    !isEqual(viewOptions.filter.continents, DEFAULT_FILTER.continents),
-    !isEqual(viewOptions.filter.duration, DEFAULT_FILTER.duration),
+    !isEqual(
+      viewOptions.filter.continents,
+      DEFAULT_VIEW_OPTIONS.filter.continents
+    ),
+    !isEqual(viewOptions.filter.duration, DEFAULT_VIEW_OPTIONS.filter.duration),
   ].reduce((acc, v) => acc + (v ? 1 : 0), 0);
 
   const filteredCons = cons.filter((con) => {
     const duration = differenceInDays(con.end, con.start) + 1;
     const [minDuration, tempMaxDuration] = viewOptions.filter.duration;
     const maxDuration =
-      tempMaxDuration >= DEFAULT_FILTER.duration[1]
+      tempMaxDuration >= DEFAULT_VIEW_OPTIONS.filter.duration[1]
         ? Infinity
         : tempMaxDuration;
 
@@ -706,7 +723,7 @@ export default function ConsList({ cons }: { cons: Con[] }) {
                     filter: {
                       ...viewOptions.filter,
                       continents: continentsFiltered
-                        ? DEFAULT_FILTER.continents
+                        ? DEFAULT_VIEW_OPTIONS.filter.continents
                         : [],
                     },
                   });
@@ -779,9 +796,9 @@ export default function ConsList({ cons }: { cons: Con[] }) {
                     viewOptions.filter.duration[0] ==
                     viewOptions.filter.duration[1] ? (
                       viewOptions.filter.duration[0] >=
-                      DEFAULT_FILTER.duration[1] ? (
+                      DEFAULT_VIEW_OPTIONS.filter.duration[1] ? (
                         <Plural
-                          value={DEFAULT_FILTER.duration[1]}
+                          value={DEFAULT_VIEW_OPTIONS.filter.duration[1]}
                           one="# day or longer"
                           other="# days or longer"
                         />
@@ -793,7 +810,7 @@ export default function ConsList({ cons }: { cons: Con[] }) {
                         />
                       )
                     ) : viewOptions.filter.duration[1] >=
-                      DEFAULT_FILTER.duration[1] ? (
+                      DEFAULT_VIEW_OPTIONS.filter.duration[1] ? (
                       <Plural
                         value={viewOptions.filter.duration[0]}
                         one="# day or longer"
@@ -816,7 +833,7 @@ export default function ConsList({ cons }: { cons: Con[] }) {
                 <RangeSlider
                   w={200}
                   min={1}
-                  max={DEFAULT_FILTER.duration[1]}
+                  max={DEFAULT_VIEW_OPTIONS.filter.duration[1]}
                   minRange={0}
                   value={viewOptions.filter.duration}
                   onChange={(v) => {
@@ -826,21 +843,21 @@ export default function ConsList({ cons }: { cons: Con[] }) {
                     });
                   }}
                   label={(value) =>
-                    value < DEFAULT_FILTER.duration[1] ? (
+                    value < DEFAULT_VIEW_OPTIONS.filter.duration[1] ? (
                       <Plural value={[value][0]} one="# day" other="# days" />
                     ) : (
                       <Plural
-                        value={DEFAULT_FILTER.duration[1]}
+                        value={DEFAULT_VIEW_OPTIONS.filter.duration[1]}
                         one="# day or longer"
                         other="# days or longer"
                       />
                     )
                   }
-                  marks={[...Array(DEFAULT_FILTER.duration[1]).keys()].map(
-                    (v) => ({
-                      value: v + 1,
-                    })
-                  )}
+                  marks={[
+                    ...Array(DEFAULT_VIEW_OPTIONS.filter.duration[1]).keys(),
+                  ].map((v) => ({
+                    value: v + 1,
+                  }))}
                 />
               </Box>
             </Menu.Dropdown>
@@ -1065,7 +1082,9 @@ export default function ConsList({ cons }: { cons: Con[] }) {
               ...viewOptions,
               filter: {
                 ...viewOptions.filter,
-                continents: e.target.checked ? DEFAULT_FILTER.continents : [],
+                continents: e.target.checked
+                  ? DEFAULT_VIEW_OPTIONS.filter.continents
+                  : [],
               },
             });
           }}
@@ -1114,7 +1133,7 @@ export default function ConsList({ cons }: { cons: Con[] }) {
           w="100%"
           min={1}
           mb="sm"
-          max={DEFAULT_FILTER.duration[1]}
+          max={DEFAULT_VIEW_OPTIONS.filter.duration[1]}
           minRange={0}
           value={viewOptions.filter.duration}
           onChange={(v) => {
@@ -1124,19 +1143,21 @@ export default function ConsList({ cons }: { cons: Con[] }) {
             });
           }}
           label={(value) =>
-            value < DEFAULT_FILTER.duration[1] ? (
+            value < DEFAULT_VIEW_OPTIONS.filter.duration[1] ? (
               <Plural value={[value][0]} one="# day" other="# days" />
             ) : (
               <Plural
-                value={DEFAULT_FILTER.duration[1]}
+                value={DEFAULT_VIEW_OPTIONS.filter.duration[1]}
                 one="# day or longer"
                 other="# days or longer"
               />
             )
           }
-          marks={[...Array(DEFAULT_FILTER.duration[1]).keys()].map((v) => ({
-            value: v + 1,
-          }))}
+          marks={[...Array(DEFAULT_VIEW_OPTIONS.filter.duration[1]).keys()].map(
+            (v) => ({
+              value: v + 1,
+            })
+          )}
         />
       </Drawer>
 
@@ -1172,13 +1193,13 @@ export default function ConsList({ cons }: { cons: Con[] }) {
                 <Trans>No cons to display.</Trans>
               </Text>
 
-              {!isEqual(viewOptions.filter, DEFAULT_FILTER) ? (
+              {!isEqual(viewOptions.filter, DEFAULT_VIEW_OPTIONS.filter) ? (
                 <Box>
                   <Button
                     onClick={() => {
                       setViewOptions({
                         ...viewOptions,
-                        filter: DEFAULT_FILTER,
+                        filter: DEFAULT_VIEW_OPTIONS.filter,
                       });
                     }}
                   >
