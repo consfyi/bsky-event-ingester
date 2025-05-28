@@ -17,6 +17,7 @@ export default function Flag({
       title={countryNames.of(country)}
       alt={countryNames.of(country)}
       fit="contain"
+      radius={1.5}
       {...props}
     />
   );
