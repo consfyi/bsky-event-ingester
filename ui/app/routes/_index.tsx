@@ -182,8 +182,7 @@ function ConRow({
               <Flag
                 country={con.geocoded.country ?? "XX"}
                 display="inline"
-                h={12}
-                w={16}
+                size={10}
                 me={6}
               />
             ) : null}

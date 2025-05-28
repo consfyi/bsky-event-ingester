@@ -4,8 +4,9 @@ import { useMemo } from "react";
 
 export default function Flag({
   country,
+  size,
   ...props
-}: { country: string } & Omit<ImageProps, "src">) {
+}: { country: string; size: number } & Omit<ImageProps, "src" | "w" | "h">) {
   const { i18n } = useLingui();
   const countryNames = useMemo(
     () => new Intl.DisplayNames(i18n.locale, { type: "region" }),
@@ -17,6 +18,8 @@ export default function Flag({
       title={countryNames.of(country)}
       alt={countryNames.of(country)}
       fit="contain"
+      h={size}
+      w={(size / 3) * 4}
       radius={1.5}
       {...props}
     />
