@@ -537,7 +537,6 @@ export default function ConsList({ cons }: { cons: Con[] }) {
   const continentStrings: Record<Continent, string> = {
     NA: t`North America`,
     EU: t`Europe`,
-    AN: t`Antarctica`,
     AS: t`Asia`,
     SA: t`South America`,
     OC: t`Oceania`,
@@ -576,8 +575,8 @@ export default function ConsList({ cons }: { cons: Con[] }) {
       (!actuallyShowOnlyAttending || con.post.viewer?.like != null) &&
       // Continents filter
       viewOptions.filter.continents.includes(
-        con.geocoded != null
-          ? getContinentForCountry(con.geocoded.country ?? "XX")
+        con.geocoded != null && con.geocoded.country != null
+          ? getContinentForCountry(con.geocoded.country)
           : "XX"
       ) &&
       // Duration filter

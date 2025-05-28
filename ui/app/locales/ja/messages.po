@@ -93,101 +93,97 @@ msgid "Europe"
 msgstr "ヨーロッパ"
 
 #: app/components/ConsList.tsx:540
-msgid "Antarctica"
-msgstr "南極"
-
-#: app/components/ConsList.tsx:541
 msgid "Asia"
 msgstr "アジア"
 
-#: app/components/ConsList.tsx:542
+#: app/components/ConsList.tsx:541
 msgid "South America"
 msgstr "南アメリカ"
 
-#: app/components/ConsList.tsx:543
+#: app/components/ConsList.tsx:542
 msgid "Oceania"
 msgstr "オセアニア"
 
-#: app/components/ConsList.tsx:544
+#: app/components/ConsList.tsx:543
 msgid "Africa"
 msgstr "アフリカ"
 
-#: app/components/ConsList.tsx:545
+#: app/components/ConsList.tsx:544
 msgid "Unknown"
 msgstr "不明"
 
-#: app/components/ConsList.tsx:609
-#: app/components/ConsList.tsx:1016
+#: app/components/ConsList.tsx:608
+#: app/components/ConsList.tsx:1015
 msgid "Filters"
 msgstr "絞り込み"
 
-#: app/components/ConsList.tsx:653
-#: app/components/ConsList.tsx:1025
+#: app/components/ConsList.tsx:652
+#: app/components/ConsList.tsx:1024
 msgid "Attending only"
 msgstr "参加予定のみ"
 
 #. placeholder {0}: viewOptions.filter.continents.length
-#: app/components/ConsList.tsx:679
+#: app/components/ConsList.tsx:678
 msgid "{0, plural, one {# region} other {# regions}}"
 msgstr "{0}地域"
 
-#: app/components/ConsList.tsx:686
-#: app/components/ConsList.tsx:1056
+#: app/components/ConsList.tsx:685
+#: app/components/ConsList.tsx:1055
 msgid "Regions"
 msgstr "地域"
 
 #. placeholder {0}: viewOptions.filter.continents.length
-#: app/components/ConsList.tsx:717
-#: app/components/ConsList.tsx:1075
+#: app/components/ConsList.tsx:716
+#: app/components/ConsList.tsx:1074
 msgid "{0, plural, one {# selected} other {# selected}}"
 msgstr "{0}地域選択中"
 
 #. placeholder {0}: DEFAULT_FILTER.duration[1]
 #. placeholder {0}: viewOptions.filter.duration[0]
-#: app/components/ConsList.tsx:784
-#: app/components/ConsList.tsx:798
-#: app/components/ConsList.tsx:833
-#: app/components/ConsList.tsx:1131
+#: app/components/ConsList.tsx:783
+#: app/components/ConsList.tsx:797
+#: app/components/ConsList.tsx:832
+#: app/components/ConsList.tsx:1130
 msgid "{0, plural, one {# day or longer} other {# days or longer}}"
 msgstr "{0}日以上"
 
 #. placeholder {0}: viewOptions.filter.duration[0]
 #. placeholder {0}: [value][0]
-#: app/components/ConsList.tsx:790
-#: app/components/ConsList.tsx:831
-#: app/components/ConsList.tsx:1129
+#: app/components/ConsList.tsx:789
+#: app/components/ConsList.tsx:830
+#: app/components/ConsList.tsx:1128
 msgid "{0, plural, one {# day} other {# days}}"
 msgstr "{0}日"
 
 #. placeholder {0}: viewOptions.filter.duration[0]
 #. placeholder {1}: viewOptions.filter.duration[1]
-#: app/components/ConsList.tsx:804
+#: app/components/ConsList.tsx:803
 msgid "{0} to {1} days"
 msgstr "{0}〜{1}日"
 
-#: app/components/ConsList.tsx:810
-#: app/components/ConsList.tsx:1112
+#: app/components/ConsList.tsx:809
+#: app/components/ConsList.tsx:1111
 msgid "Duration"
 msgstr "開催期間"
 
-#: app/components/ConsList.tsx:875
-#: app/components/ConsList.tsx:1040
+#: app/components/ConsList.tsx:874
+#: app/components/ConsList.tsx:1039
 msgid "With followed only"
 msgstr "フォロー中のユーザーのみ"
 
-#: app/components/ConsList.tsx:916
+#: app/components/ConsList.tsx:915
 msgid "Sort by"
 msgstr "並び替え"
 
-#: app/components/ConsList.tsx:961
+#: app/components/ConsList.tsx:960
 msgid "Order"
 msgstr "順序"
 
-#: app/components/ConsList.tsx:1173
+#: app/components/ConsList.tsx:1172
 msgid "No cons to display."
 msgstr "表示するコンベンションがありません。"
 
-#: app/components/ConsList.tsx:1186
+#: app/components/ConsList.tsx:1185
 msgid "Clear all filters"
 msgstr "全ての絞り込みを解除"
 

@@ -1,4 +1,4 @@
-export type Continent = "AF" | "AS" | "EU" | "NA" | "OC" | "SA" | "AN" | "XX";
+export type Continent = "AF" | "AS" | "EU" | "NA" | "OC" | "SA" | "XX";
 
 const COUNTRIES: Record<string, Continent> = {
   AF: "AS",
