@@ -127,12 +127,7 @@ function Header({ con }: { con: Con }) {
         ) : null}
         <Title size="h4" fw={500}>
           {con.geocoded != null ? (
-            <Flag
-              country={con.geocoded.country ?? "XX"}
-              display="inline"
-              size={14}
-              me={6}
-            />
+            <Flag country={con.geocoded.country ?? "XX"} size={14} me={6} />
           ) : null}{" "}
           {con.name}{" "}
           <Tooltip label={<Trans>View Bluesky Post</Trans>} position="bottom">

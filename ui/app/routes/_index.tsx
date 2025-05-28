@@ -179,12 +179,7 @@ function ConRow({
 
           <Text size="sm" truncate>
             {con.geocoded != null ? (
-              <Flag
-                country={con.geocoded.country ?? "XX"}
-                display="inline"
-                size={10}
-                me={6}
-              />
+              <Flag country={con.geocoded.country ?? "XX"} size={10} me={6} />
             ) : null}
             <Anchor<typeof Link>
               fw={500}
