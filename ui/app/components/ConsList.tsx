@@ -621,8 +621,6 @@ export default function ConsList({ cons }: { cons: ConWithPost[] }) {
         : tempMaxDuration;
 
     return (
-      // Exclude cons that are too late.
-      !isAfter(now, addDays(con.end, 1)) &&
       // Attending filter
       (!actuallyShowOnlyAttending || con.post.viewer?.like != null) &&
       // Continents filter

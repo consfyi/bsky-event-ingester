@@ -1,7 +1,7 @@
 import type { ActorIdentifier, Did, ResourceUri } from "@atcute/lexicons";
 import { useDLE, useSuspense } from "@data-client/react";
 import { TZDate } from "@date-fns/tz";
-import { parse as parseDate } from "date-fns";
+import { addDays, isAfter, parse as parseDate } from "date-fns";
 import { sortBy } from "lodash-es";
 import { useSyncExternalStore } from "react";
 import { LABELER_DID } from "~/config";
@@ -109,6 +109,8 @@ export function useCons() {
   const cons = useGlobalMemo(
     "cons",
     () => {
+      const now = new Date();
+
       const cons = labelerView.policies!.labelValueDefinitions!.flatMap(
         (def) => {
           const fullDef = def as typeof def & {
@@ -129,8 +131,12 @@ export function useCons() {
             fullDef.fbl_eventInfo.geocoded?.timezone ?? "UTC"
           );
 
-          const startDate = parseDate(start, "yyyy-MM-dd", refDate);
           const endDate = parseDate(end, "yyyy-MM-dd", refDate);
+          if (isAfter(now, addDays(endDate, 1))) {
+            return [];
+          }
+
+          const startDate = parseDate(start, "yyyy-MM-dd", refDate);
 
           return [
             {
