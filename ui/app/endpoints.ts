@@ -84,9 +84,11 @@ export function useGetAuthorPosts() {
   const client = useClient();
 
   return new Endpoint(
-    async ({ actor }: { actor: ActorIdentifier }) => {
+    async function ({ actor }: { actor: ActorIdentifier }) {
       const posts = [];
-      for await (const postView of client.getAuthorPosts(actor)) {
+      for await (const postView of client.getAuthorPosts(actor, {
+        signal: this.signal,
+      })) {
         posts.push(Post.fromJS(postView));
       }
       return posts;
@@ -94,6 +96,7 @@ export function useGetAuthorPosts() {
     {
       name: "getAuthorPosts",
       schema: new schema.Collection([Post]),
+      signal: undefined as AbortSignal | undefined,
     }
   );
 }
@@ -102,12 +105,17 @@ export function useGetProfile() {
   const client = useClient();
 
   return new Endpoint(
-    async ({ actor }: { actor: ActorIdentifier }) => {
-      return Profile.fromJS(await client.getProfile(actor));
+    async function ({ actor }: { actor: ActorIdentifier }) {
+      return Profile.fromJS(
+        await client.getProfile(actor, {
+          signal: this.signal,
+        })
+      );
     },
     {
       name: "getProfile",
       schema: Profile,
+      signal: undefined as AbortSignal | undefined,
     }
   );
 }
@@ -116,9 +124,9 @@ export function useGetLikes() {
   const client = useClient();
 
   return new Endpoint(
-    async ({ uri }: { uri: ResourceUri }) => {
+    async function ({ uri }: { uri: ResourceUri }) {
       const likes = [];
-      for await (const like of client.getLikes(uri)) {
+      for await (const like of client.getLikes(uri, { signal: this.signal })) {
         likes.push(Like.fromJS({ ...like, actor: Profile.fromJS(like.actor) }));
       }
       return likes;
@@ -126,6 +134,7 @@ export function useGetLikes() {
     {
       name: "getLikes",
       schema: new schema.Collection([Like]),
+      signal: undefined as AbortSignal | undefined,
     }
   );
 }
@@ -134,9 +143,11 @@ export function useGetFollows() {
   const client = useClient();
 
   return new Endpoint(
-    async ({ actor }: { actor: ActorIdentifier }) => {
+    async function ({ actor }: { actor: ActorIdentifier }) {
       const follows = [];
-      for await (const follow of client.getFollows(actor)) {
+      for await (const follow of client.getFollows(actor, {
+        signal: this.signal,
+      })) {
         follows.push(Profile.fromJS(follow));
       }
       return follows;
@@ -144,6 +155,7 @@ export function useGetFollows() {
     {
       name: "getFollows",
       schema: new schema.Collection([Profile]),
+      signal: undefined as AbortSignal | undefined,
     }
   );
 }
@@ -152,12 +164,15 @@ export function useGetLabelerView() {
   const client = useClient();
 
   return new Endpoint(
-    async ({ did }: { did: Did }) => {
-      return LabelerView.fromJS(await client.getLabelerView(did));
+    async function ({ did }: { did: Did }) {
+      return LabelerView.fromJS(
+        await client.getLabelerView(did, { signal: this.signal })
+      );
     },
     {
       name: "getLabelerView",
       schema: LabelerView,
+      signal: undefined as AbortSignal | undefined,
     }
   );
 }
@@ -167,7 +182,7 @@ export function useLikePost() {
   const ctrl = useController();
 
   return new Endpoint(
-    async ({ uri }: { uri: ResourceUri }) => {
+    async function ({ uri }: { uri: ResourceUri }) {
       const post = ctrl.get(Post, { uri }, ctrl.getState());
       if (post == null) {
         throw "post not found";
@@ -177,7 +192,9 @@ export function useLikePost() {
         return;
       }
 
-      post.viewer.like = await client.like(uri, post.cid!);
+      post.viewer.like = await client.like(uri, post.cid!, {
+        signal: this.signal,
+      });
       post.likeCount = (post.likeCount ?? 0) + 1;
 
       ctrl.set(Post, { uri }, post);
@@ -185,6 +202,7 @@ export function useLikePost() {
     {
       name: "likePost",
       sideEffect: true,
+      signal: undefined as AbortSignal | undefined,
     }
   );
 }
@@ -194,7 +212,7 @@ export function useUnlikePost() {
   const ctrl = useController();
 
   return new Endpoint(
-    async ({ uri }: { uri: ResourceUri }) => {
+    async function ({ uri }: { uri: ResourceUri }) {
       const post = ctrl.get(Post, { uri }, ctrl.getState());
       if (post == null) {
         throw "post not found";
@@ -204,7 +222,7 @@ export function useUnlikePost() {
         return;
       }
 
-      await client.deleteRecord(post.viewer.like);
+      await client.deleteRecord(post.viewer.like, { signal: this.signal });
 
       post.viewer.like = undefined;
       post.likeCount = (post.likeCount ?? 0) - 1;
@@ -214,6 +232,7 @@ export function useUnlikePost() {
     {
       name: "unlikePost",
       sideEffect: true,
+      signal: undefined as AbortSignal | undefined,
     }
   );
 }
@@ -222,16 +241,19 @@ export function useGetPreferences() {
   const client = useClient();
 
   return new Endpoint(
-    async () => {
+    async function () {
       if (client.did == null) {
         return Preferences.fromJS({});
       }
 
-      return Preferences.fromJS({ preferences: await client.getPreferences() });
+      return Preferences.fromJS({
+        preferences: await client.getPreferences({ signal: this.signal }),
+      });
     },
     {
       name: "getPreferences",
       schema: Preferences,
+      signal: undefined as AbortSignal | undefined,
     }
   );
 }
@@ -240,14 +262,15 @@ export function usePutPreferences() {
   const client = useClient();
 
   return new Endpoint(
-    async ({ preferences }: { preferences: ActorPreferences }) => {
-      await client.putPreferences(preferences);
+    async function ({ preferences }: { preferences: ActorPreferences }) {
+      await client.putPreferences(preferences, { signal: this.signal });
       return Preferences.fromJS({ preferences });
     },
     {
       name: "putPreferences",
       sideEffect: true,
       schema: Preferences,
+      signal: undefined as AbortSignal | undefined,
     }
   );
 }
@@ -256,9 +279,11 @@ export function useGetLabels() {
   const client = useClient();
 
   return new Endpoint(
-    async ({ did }: { did: Did }) => {
+    async function ({ did }: { did: Did }) {
       const labels = [];
-      for await (const label of client.getLabels(did)) {
+      for await (const label of client.getLabels(did, {
+        signal: this.signal,
+      })) {
         labels.push(label);
       }
       return ProfileLabels.fromJS({ did, labels });
@@ -266,6 +291,7 @@ export function useGetLabels() {
     {
       name: "getLabels",
       schema: ProfileLabels,
+      signal: undefined as AbortSignal | undefined,
     }
   );
 }

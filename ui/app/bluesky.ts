@@ -50,6 +50,10 @@ export async function startLogin(pdsHost: string = DEFAULT_PDS_HOST) {
   window.location.assign(authUrl);
 }
 
+interface RequestOptions {
+  signal?: AbortSignal;
+}
+
 export class Client {
   private oauthUserAgent: OAuthUserAgent | null;
   private rpc: AtcuteClient;
@@ -83,9 +87,10 @@ export class Client {
     }
   }
 
-  async getPreferences(): Promise<Preferences> {
+  async getPreferences({ signal }: RequestOptions = {}): Promise<Preferences> {
     const { ok, data } = await this.rpc.get("app.bsky.actor.getPreferences", {
       params: {},
+      signal,
     });
     if (!ok) {
       throw data.error;
@@ -93,17 +98,24 @@ export class Client {
     return data.preferences;
   }
 
-  async putPreferences(preferences: Preferences): Promise<void> {
+  async putPreferences(
+    preferences: Preferences,
+    { signal }: RequestOptions = {}
+  ): Promise<void> {
     const { ok, data } = await this.rpc.post("app.bsky.actor.putPreferences", {
       input: { preferences },
       as: null,
+      signal,
     });
     if (!ok) {
       throw data.error;
     }
   }
 
-  async *getAuthorPosts(actor: ActorIdentifier): AsyncGenerator<PostView> {
+  async *getAuthorPosts(
+    actor: ActorIdentifier,
+    { signal }: RequestOptions = {}
+  ): AsyncGenerator<PostView> {
     const LIMIT = 100;
     let cursor = "";
     while (true) {
@@ -116,6 +128,7 @@ export class Client {
           filter: "posts_no_replies",
         },
         headers: { "Atproto-Accept-Labelers": LABELER_DID },
+        signal,
       });
       if (!ok) {
         throw data.error;
@@ -131,10 +144,14 @@ export class Client {
     }
   }
 
-  async getProfile(actor: ActorIdentifier): Promise<ProfileViewDetailed> {
+  async getProfile(
+    actor: ActorIdentifier,
+    { signal }: RequestOptions = {}
+  ): Promise<ProfileViewDetailed> {
     const { ok, data } = await this.rpc.get("app.bsky.actor.getProfile", {
       params: { actor },
       headers: { "Atproto-Accept-Labelers": LABELER_DID },
+      signal,
     });
     if (!ok) {
       throw data.error;
@@ -142,10 +159,14 @@ export class Client {
     return data;
   }
 
-  async getPostThread(uri: ResourceUri): Promise<ThreadViewPost> {
+  async getPostThread(
+    uri: ResourceUri,
+    { signal }: RequestOptions = {}
+  ): Promise<ThreadViewPost> {
     const { ok, data } = await this.rpc.get("app.bsky.feed.getPostThread", {
       params: { uri, depth: 0, parentHeight: 0 },
       headers: { "Atproto-Accept-Labelers": LABELER_DID },
+      signal,
     });
     if (!ok) {
       throw data.error;
@@ -156,9 +177,13 @@ export class Client {
     return data.thread;
   }
 
-  async getLabelerView(did: Did): Promise<LabelerViewDetailed> {
+  async getLabelerView(
+    did: Did,
+    { signal }: RequestOptions = {}
+  ): Promise<LabelerViewDetailed> {
     const { ok, data } = await this.rpc.get("app.bsky.labeler.getServices", {
       params: { dids: [did], detailed: true },
+      signal,
     });
 
     if (!ok) {
@@ -170,13 +195,17 @@ export class Client {
     return view as LabelerViewDetailed;
   }
 
-  async *getFollows(actor: ActorIdentifier): AsyncGenerator<ProfileView> {
+  async *getFollows(
+    actor: ActorIdentifier,
+    { signal }: RequestOptions = {}
+  ): AsyncGenerator<ProfileView> {
     const LIMIT = 100;
     let cursor = "";
     while (true) {
       const { ok, data } = await this.rpc.get("app.bsky.graph.getFollows", {
         params: { actor, limit: LIMIT, cursor },
         headers: { "Atproto-Accept-Labelers": LABELER_DID },
+        signal,
       });
       if (!ok) {
         throw data.error;
@@ -190,7 +219,10 @@ export class Client {
     }
   }
 
-  async *getLabels(did: Did): AsyncGenerator<Label> {
+  async *getLabels(
+    did: Did,
+    { signal }: RequestOptions = {}
+  ): AsyncGenerator<Label> {
     const LIMIT = 250;
     let cursor = "";
     while (true) {
@@ -201,6 +233,7 @@ export class Client {
           limit: LIMIT,
           cursor,
         },
+        signal,
       });
       if (!ok) {
         throw data.error;
@@ -214,13 +247,17 @@ export class Client {
     }
   }
 
-  async *getLikes(uri: ResourceUri): AsyncGenerator<Like> {
+  async *getLikes(
+    uri: ResourceUri,
+    { signal }: RequestOptions = {}
+  ): AsyncGenerator<Like> {
     const LIMIT = 100;
     let cursor = "";
     while (true) {
       const { ok, data } = await this.rpc.get("app.bsky.feed.getLikes", {
         params: { uri, limit: LIMIT, cursor },
         headers: { "Atproto-Accept-Labelers": LABELER_DID },
+        signal,
       });
       if (!ok) {
         throw data.error;
@@ -234,7 +271,7 @@ export class Client {
     }
   }
 
-  async deleteRecord(uri: ResourceUri) {
+  async deleteRecord(uri: ResourceUri, { signal }: RequestOptions = {}) {
     const [repo, collection, rkey] = uri.replace(/^at:\/\//, "").split("/");
 
     const { ok, data } = await this.rpc.post("com.atproto.repo.deleteRecord", {
@@ -243,13 +280,14 @@ export class Client {
         repo: repo as Did,
         rkey,
       },
+      signal,
     });
     if (!ok) {
       throw data.error;
     }
   }
 
-  async like(uri: ResourceUri, cid: Cid) {
+  async like(uri: ResourceUri, cid: Cid, { signal }: RequestOptions = {}) {
     if (this.did == null) {
       return;
     }
@@ -267,6 +305,7 @@ export class Client {
           createdAt: new Date().toISOString(),
         } satisfies AppBskyFeedLike.Main,
       },
+      signal,
     });
     if (!ok) {
       throw data.error;
