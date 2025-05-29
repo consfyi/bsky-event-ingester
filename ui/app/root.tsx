@@ -22,6 +22,12 @@ import {
 } from "@mantine/core";
 import "@mantine/core/styles.css";
 import { useLocalStorage } from "@mantine/hooks";
+import {
+  completeNavigationProgress,
+  NavigationProgress,
+  startNavigationProgress,
+} from "@mantine/nprogress";
+import "@mantine/nprogress/styles.css";
 import { LinksFunction } from "@remix-run/node";
 import {
   Link,
@@ -31,6 +37,7 @@ import {
   Outlet,
   Scripts,
   ScrollRestoration,
+  useNavigation,
   useRouteError,
 } from "@remix-run/react";
 import {
@@ -369,6 +376,18 @@ export function ErrorBoundary() {
   );
 }
 
+function LoadingIndicator() {
+  const { state } = useNavigation();
+  useEffect(() => {
+    if (state === "idle") {
+      completeNavigationProgress();
+    } else {
+      startNavigationProgress();
+    }
+  }, [state]);
+  return <NavigationProgress />;
+}
+
 export function Layout({ children }: { children: React.ReactNode }) {
   const hydrated = useHydrated();
 
@@ -386,6 +405,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
       <body>
         <GlobalMemoProvider>
           <MantineProvider theme={theme} defaultColorScheme="auto">
+            <LoadingIndicator />
             {hydrated ? (
               <DirectionProvider
                 initialDirection={
