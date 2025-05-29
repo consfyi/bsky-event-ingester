@@ -5,6 +5,7 @@ import {
   Box,
   Center,
   Divider,
+  Flex,
   Group,
   Loader,
   SimpleGrid,
@@ -125,11 +126,16 @@ export default function Index() {
   return (
     <Box p="sm">
       <Box mb="sm">
-        <Group>
+        <Flex
+          wrap="nowrap"
+          align={{ base: "flex-start", md: "center" }}
+          gap="md"
+          direction={{ base: "column", md: "row" }}
+        >
           <Avatar src={profile.avatar} size="xl" />
           <Box>
             <Title size="h4" fw={500}>
-              {profile.displayName}{" "}
+              {profile.displayName}
             </Title>
             <Text>
               <Anchor
@@ -142,7 +148,7 @@ export default function Index() {
               </Anchor>
             </Text>
           </Box>
-        </Group>
+        </Flex>
       </Box>
 
       <Suspense
