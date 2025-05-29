@@ -12,7 +12,7 @@ import {
   Title,
 } from "@mantine/core";
 import { useParams } from "@remix-run/react";
-import { Suspense } from "react";
+import { Suspense, useEffect } from "react";
 import Avatar from "~/components/Avatar";
 import { ConRow } from "~/components/ConsList";
 import { Profile } from "~/endpoints";
@@ -106,6 +106,15 @@ export default function Index() {
   const { actor } = useParams();
 
   const profile = useProfile(actor as ActorIdentifier);
+
+  useEffect(() => {
+    document.title =
+      profile != null
+        ? profile.displayName != null
+          ? `${profile.displayName} (@${profile.handle})`
+          : `@${profile.handle}`
+        : "";
+  }, [profile]);
 
   if (profile == null) {
     throw new Response(null, {
