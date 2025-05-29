@@ -830,8 +830,8 @@ export default function ConsList({ cons }: { cons: ConWithPost[] }) {
                       DEFAULT_VIEW_OPTIONS.filter.duration[1] ? (
                         <Plural
                           value={DEFAULT_VIEW_OPTIONS.filter.duration[1]}
-                          one="# day or longer"
-                          other="# days or longer"
+                          one="# day or more"
+                          other="# days or more"
                         />
                       ) : (
                         <Plural
@@ -844,8 +844,8 @@ export default function ConsList({ cons }: { cons: ConWithPost[] }) {
                       DEFAULT_VIEW_OPTIONS.filter.duration[1] ? (
                       <Plural
                         value={viewOptions.filter.duration[0]}
-                        one="# day or longer"
-                        other="# days or longer"
+                        one="# day or more"
+                        other="# days or more"
                       />
                     ) : (
                       <Trans>
@@ -854,7 +854,7 @@ export default function ConsList({ cons }: { cons: ConWithPost[] }) {
                       </Trans>
                     )
                   ) : (
-                    <Trans>Duration</Trans>
+                    <Trans>Number of days</Trans>
                   )}
                 </Text>
               </Button>
@@ -879,8 +879,8 @@ export default function ConsList({ cons }: { cons: ConWithPost[] }) {
                     ) : (
                       <Plural
                         value={DEFAULT_VIEW_OPTIONS.filter.duration[1]}
-                        one="# day or longer"
-                        other="# days or longer"
+                        one="# day or more"
+                        other="# days or more"
                       />
                     )
                   }
@@ -1155,7 +1155,7 @@ export default function ConsList({ cons }: { cons: ConWithPost[] }) {
         })}
         <Divider mb="sm" mx="calc(var(--mantine-spacing-md) * -1)" />
         <Title order={2} size="h5" mb="sm">
-          <Trans>Duration</Trans>
+          <Trans>Number of days</Trans>
         </Title>
         <RangeSlider
           w="100%"
@@ -1176,8 +1176,8 @@ export default function ConsList({ cons }: { cons: ConWithPost[] }) {
             ) : (
               <Plural
                 value={DEFAULT_VIEW_OPTIONS.filter.duration[1]}
-                one="# day or longer"
-                other="# days or longer"
+                one="# day or more"
+                other="# days or more"
               />
             )
           }

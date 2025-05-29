@@ -144,7 +144,7 @@ msgstr "{0}地域選択中"
 #: app/components/ConsList.tsx:845
 #: app/components/ConsList.tsx:880
 #: app/components/ConsList.tsx:1177
-msgid "{0, plural, one {# day or longer} other {# days or longer}}"
+msgid "{0, plural, one {# day or more} other {# days or more}}"
 msgstr "{0}日以上"
 
 #. placeholder {0}: viewOptions.filter.duration[0]
@@ -163,8 +163,8 @@ msgstr "{0}〜{1}日"
 
 #: app/components/ConsList.tsx:857
 #: app/components/ConsList.tsx:1158
-msgid "Duration"
-msgstr "開催期間"
+msgid "Number of days"
+msgstr "日数"
 
 #: app/components/ConsList.tsx:922
 #: app/components/ConsList.tsx:1084

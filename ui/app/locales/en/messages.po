@@ -142,8 +142,8 @@ msgstr "{0, plural, one {# selected} other {# selected}}"
 #: app/components/ConsList.tsx:845
 #: app/components/ConsList.tsx:880
 #: app/components/ConsList.tsx:1177
-msgid "{0, plural, one {# day or longer} other {# days or longer}}"
-msgstr "{0, plural, one {# day or longer} other {# days or longer}}"
+msgid "{0, plural, one {# day or more} other {# days or more}}"
+msgstr "{0, plural, one {# day or more} other {# days or more}}"
 
 #. placeholder {0}: viewOptions.filter.duration[0]
 #. placeholder {0}: [value][0]
@@ -161,8 +161,8 @@ msgstr "{0} to {1} days"
 
 #: app/components/ConsList.tsx:857
 #: app/components/ConsList.tsx:1158
-msgid "Duration"
-msgstr "Duration"
+msgid "Number of days"
+msgstr "Number of days"
 
 #: app/components/ConsList.tsx:922
 #: app/components/ConsList.tsx:1084
