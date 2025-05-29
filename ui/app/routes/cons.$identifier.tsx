@@ -6,7 +6,6 @@ import {
   Group,
   Indicator,
   Loader,
-  Popover,
   SimpleGrid,
   Skeleton,
   Stack,
@@ -14,7 +13,6 @@ import {
   Title,
   Tooltip,
 } from "@mantine/core";
-import { useDisclosure } from "@mantine/hooks";
 import { Link, useParams } from "@remix-run/react";
 import {
   IconBrandBluesky,
