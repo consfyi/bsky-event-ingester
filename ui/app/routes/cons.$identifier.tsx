@@ -310,7 +310,7 @@ export default function Index() {
     <Box p="sm">
       <Header con={con} />
 
-      <Box>
+      <Box mb="calc(var(--mantine-spacing-sm) * -1)">
         <Title order={2} size="h5" fw={500} mb="sm">
           <Trans>Attendees</Trans>{" "}
           <Text size="sm" span>

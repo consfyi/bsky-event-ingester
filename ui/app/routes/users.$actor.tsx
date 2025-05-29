@@ -50,7 +50,7 @@ function Attending({ profile }: { profile: Profile }) {
       : [];
 
   return (
-    <Box>
+    <Box mb="calc(var(--mantine-spacing-sm) * -1)">
       <Title order={2} size="h5" fw={500} mb="sm">
         <Trans>Attending</Trans>{" "}
         <Text size="sm" span>
