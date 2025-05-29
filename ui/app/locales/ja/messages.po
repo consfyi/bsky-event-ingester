@@ -303,4 +303,4 @@ msgstr "フォロー中のユーザーを読み込み中"
 #. placeholder {0}: unknownCons.length
 #: app/routes/users.$actor.tsx:100
 msgid "{0, plural, one {# con you aren’t attending} other {# cons you aren’t attending}}"
-msgstr "参加予定のないコンベンション{0}件"
+msgstr "あなたが参加予定のないコンベンション{0}件"

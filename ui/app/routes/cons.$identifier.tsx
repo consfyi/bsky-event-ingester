@@ -56,51 +56,27 @@ function ActorSkeleton() {
 }
 
 function Actor({ actor }: { actor: Profile }) {
-  const [opened, { close, open }] = useDisclosure(false);
-
   return (
-    <Popover
-      position="top-start"
-      shadow="md"
-      offset={{ mainAxis: -51, crossAxis: -17 }}
-      opened={opened}
+    <Anchor
+      component={Link}
+      to={`/users/${actor.handle}`}
+      c="var(--mantine-color-text)"
+      style={{
+        textDecoration: "unset",
+      }}
     >
-      <Popover.Target>
-        <Anchor
-          component={Link}
-          onMouseEnter={open}
-          onMouseLeave={close}
-          to={`/users/${actor.handle}`}
-          c="var(--mantine-color-text)"
-          style={{
-            textDecoration: "unset",
-          }}
-        >
-          <Group wrap="nowrap" gap="sm">
-            <Avatar src={actor.avatar} alt={`@${actor.handle}`} />
-            <Stack gap={0} miw={0}>
-              <Text size="sm" fw={500} truncate>
-                {actor.displayName ? actor.displayName : actor.handle}{" "}
-              </Text>
-              <Text size="xs" truncate>
-                @{actor.handle}
-              </Text>
-            </Stack>
-          </Group>
-        </Anchor>
-      </Popover.Target>
-      <Popover.Dropdown style={{ pointerEvents: "none" }}>
-        <Group wrap="nowrap" gap="sm">
-          <Avatar src={actor.avatar} alt={`@${actor.handle}`} />
-          <Stack gap={0} miw={0}>
-            <Text size="sm" fw={500}>
-              {actor.displayName ? actor.displayName : actor.handle}
-            </Text>
-            <Text size="xs">@{actor.handle}</Text>
-          </Stack>
-        </Group>
-      </Popover.Dropdown>
-    </Popover>
+      <Group wrap="nowrap" gap="sm">
+        <Avatar src={actor.avatar} alt={`@${actor.handle}`} />
+        <Stack gap={0} miw={0}>
+          <Text size="sm" fw={500} truncate>
+            {actor.displayName ? actor.displayName : actor.handle}{" "}
+          </Text>
+          <Text size="xs" truncate>
+            @{actor.handle}
+          </Text>
+        </Stack>
+      </Group>
+    </Anchor>
   );
 }
 
@@ -260,9 +236,7 @@ function AttendeesList({
       {knownLikes.length > 0 ? (
         <SimpleGrid cols={{ base: 1, sm: 2, lg: 5 }} mb="sm">
           {knownLikes.map((actor) => (
-            <div key={actor.did}>
-              <Actor actor={actor} />
-            </div>
+            <Actor actor={actor} key={actor.did} />
           ))}
         </SimpleGrid>
       ) : null}
@@ -281,9 +255,7 @@ function AttendeesList({
           />
           <SimpleGrid cols={{ base: 1, sm: 2, lg: 5 }} mb="sm">
             {unknownLikes.map((actor) => (
-              <div key={actor.did}>
-                <Actor actor={actor} />
-              </div>
+              <Actor actor={actor} key={actor.did} />
             ))}
           </SimpleGrid>
         </>
