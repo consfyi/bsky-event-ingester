@@ -1,4 +1,4 @@
-import type { ActorIdentifier, Did } from "@atcute/lexicons";
+import type { ActorIdentifier } from "@atcute/lexicons";
 import { Plural, Trans } from "@lingui/react/macro";
 import {
   Anchor,
@@ -15,6 +15,7 @@ import { useParams } from "@remix-run/react";
 import { Suspense } from "react";
 import Avatar from "~/components/Avatar";
 import { ConRow } from "~/components/ConsList";
+import { Profile } from "~/endpoints";
 import {
   useConsWithPosts,
   useProfile,
@@ -22,9 +23,13 @@ import {
   useSelf,
 } from "~/hooks";
 
-function Attending({ did }: { did: Did }) {
+function Attending({ profile }: { profile: Profile }) {
   const self = useSelf();
-  const labels = useProfileLabels(did);
+  const queriedLabels = useProfileLabels(
+    self == null ? profile.did : undefined
+  );
+
+  const labels = queriedLabels ?? profile.labels!;
 
   const selfLabelsSet =
     self != null ? new Set(self.labels!.map((label) => label.val)) : null;
@@ -143,7 +148,7 @@ export default function Index() {
           </Box>
         }
       >
-        <Attending did={profile.did!} />
+        <Attending profile={profile} />
       </Suspense>
     </Box>
   );
