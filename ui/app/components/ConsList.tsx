@@ -54,7 +54,7 @@ import LikeButton from "~/components/LikeButton";
 import { Continent, getContinentForCountry } from "~/continents";
 import { monthRange, reinterpretAsLocalDate } from "~/date";
 import {
-  Con,
+  ConWithPost,
   useFollowedConAttendees,
   useFollowedConAttendeesDLE,
   useIsLoggedIn,
@@ -62,12 +62,20 @@ import {
 
 const MAX_AVATARS_IN_STACK = 3;
 
-function ConRow({
+export function ConRow({
   con,
   showMonthInIcon,
+  showEndDateOnly,
+  showLocation,
+  showFollowed,
+  showLikeButton,
 }: {
-  con: Con;
+  con: ConWithPost;
   showMonthInIcon: boolean;
+  showEndDateOnly: boolean;
+  showLocation: boolean;
+  showFollowed: boolean;
+  showLikeButton: boolean;
 }) {
   const isAttending = con.post.viewer?.like != null;
   const { data: followedConAttendees } = useFollowedConAttendeesDLE();
@@ -108,8 +116,8 @@ function ConRow({
   const active = isAfter(now, con.start) && !isAfter(now, addDays(con.end, 1));
 
   return (
-    <Group gap="xs" wrap="nowrap" mb="sm" px="xs">
-      <Anchor<typeof Link> component={Link} to={`/cons/${con.identifier}`}>
+    <Group gap="xs" wrap="nowrap">
+      <Anchor component={Link} to={`/cons/${con.identifier}`}>
         <Indicator
           position="top-start"
           color="green"
@@ -148,7 +156,7 @@ function ConRow({
       </Anchor>
       <Box style={{ minWidth: 0 }}>
         <Group gap={7} wrap="nowrap">
-          {con.post.viewer != null ? (
+          {showLikeButton && con.post.viewer != null ? (
             <LikeButton size="xs" post={con.post} />
           ) : null}
 
@@ -156,11 +164,7 @@ function ConRow({
             {con.geocoded != null ? (
               <Flag country={con.geocoded.country ?? "XX"} size={10} me={6} />
             ) : null}
-            <Anchor<typeof Link>
-              fw={500}
-              component={Link}
-              to={`/cons/${con.identifier}`}
-            >
+            <Anchor fw={500} component={Link} to={`/cons/${con.identifier}`}>
               {con.name}
             </Anchor>
           </Text>
@@ -171,7 +175,7 @@ function ConRow({
             size={12}
           />{" "}
           <Trans context="attendee count">{[likeCount][0]}</Trans>{" "}
-          {follows != null && follows.length > 0 ? (
+          {showFollowed && follows != null && follows.length > 0 ? (
             <Tooltip
               label={listFormat.format(
                 follows
@@ -211,7 +215,7 @@ function ConRow({
             </Tooltip>
           ) : null}{" "}
           •{" "}
-          {showMonthInIcon ? (
+          {!showEndDateOnly ? (
             <>
               <IconCalendar title={t`Date`} size={12} />{" "}
               <Trans context="[start date]-[end date] ([duration] days)">
@@ -253,18 +257,20 @@ function ConRow({
               </Trans>
             </>
           )}
-          <Text span visibleFrom="xs">
-            {" "}
-            • <IconMapPin title={t`Location`} size={12} />{" "}
-            <Anchor
-              href={`https://www.google.com/maps?q=${con.location}`}
-              target="_blank"
-              rel="noreferrer"
-              c="var(--mantine-color-text)"
-            >
-              {con.location}
-            </Anchor>
-          </Text>
+          {showLocation ? (
+            <Text span visibleFrom="xs">
+              {" "}
+              • <IconMapPin title={t`Location`} size={12} />{" "}
+              <Anchor
+                href={`https://www.google.com/maps?q=${con.location}`}
+                target="_blank"
+                rel="noreferrer"
+                c="var(--mantine-color-text)"
+              >
+                {con.location}
+              </Anchor>
+            </Text>
+          ) : null}
         </Text>
       </Box>
     </Group>
@@ -287,7 +293,7 @@ function ConsByDate({
   hideEmptyGroups,
   sortDesc,
 }: {
-  cons: Con[];
+  cons: ConWithPost[];
   hideEmptyGroups: boolean;
   sortDesc: boolean;
 }) {
@@ -357,11 +363,22 @@ function ConsByDate({
             year: "numeric",
           })}
         </Title>
-        {(consByMonth[groupKey] ?? []).map((con) => {
-          return (
-            <ConRow key={con.identifier} con={con} showMonthInIcon={false} />
-          );
-        })}
+        <Box px="xs">
+          {(consByMonth[groupKey] ?? []).map((con) => {
+            return (
+              <Box key={con.identifier} mb="sm">
+                <ConRow
+                  con={con}
+                  showMonthInIcon={false}
+                  showEndDateOnly
+                  showLocation
+                  showFollowed
+                  showLikeButton
+                />
+              </Box>
+            );
+          })}
+        </Box>
       </Fragment>
     );
   });
@@ -371,7 +388,7 @@ function ConsByAttendees({
   cons,
   sortDesc,
 }: {
-  cons: Con[];
+  cons: ConWithPost[];
   sortDesc: boolean;
 }) {
   const sortedCons = useMemo(() => {
@@ -382,16 +399,31 @@ function ConsByAttendees({
     return sorted;
   }, [cons, sortDesc]);
 
-  return sortedCons.map((con) => {
-    return <ConRow key={con.identifier} con={con} showMonthInIcon={true} />;
-  });
+  return (
+    <Box px="xs">
+      {sortedCons.map((con) => {
+        return (
+          <Box key={con.identifier} mb="sm">
+            <ConRow
+              con={con}
+              showMonthInIcon
+              showEndDateOnly={false}
+              showLocation
+              showFollowed
+              showLikeButton
+            />
+          </Box>
+        );
+      })}
+    </Box>
+  );
 }
 
 function ConsByFollowed({
   cons,
   sortDesc,
 }: {
-  cons: Con[];
+  cons: ConWithPost[];
   sortDesc: boolean;
 }) {
   const followedConAttendees = useFollowedConAttendees();
@@ -408,9 +440,24 @@ function ConsByFollowed({
     return sorted;
   }, [cons, followedConAttendees, sortDesc]);
 
-  return sortedCons.map((con) => {
-    return <ConRow key={con.identifier} con={con} showMonthInIcon={true} />;
-  });
+  return (
+    <Box px="xs">
+      {sortedCons.map((con) => {
+        return (
+          <Box key={con.identifier} mb="sm">
+            <ConRow
+              con={con}
+              showMonthInIcon
+              showEndDateOnly={false}
+              showLocation
+              showFollowed
+              showLikeButton
+            />
+          </Box>
+        );
+      })}
+    </Box>
+  );
 }
 
 const SortBy = z.enum(["date", "attendees", "followed"]);
@@ -449,7 +496,7 @@ type ViewOptions = z.infer<typeof ViewOptions>;
 
 const DEFAULT_VIEW_OPTIONS: ViewOptions = ViewOptions.parse({});
 
-export default function ConsList({ cons }: { cons: Con[] }) {
+export default function ConsList({ cons }: { cons: ConWithPost[] }) {
   const { t } = useLingui();
   const { data: followedConAttendees } = useFollowedConAttendeesDLE();
 

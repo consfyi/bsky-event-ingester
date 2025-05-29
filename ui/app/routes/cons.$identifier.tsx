@@ -1,7 +1,6 @@
 import { Plural, Trans, useLingui } from "@lingui/react/macro";
 import {
   Anchor,
-  Badge,
   Box,
   Divider,
   Group,
@@ -16,7 +15,7 @@ import {
   Tooltip,
 } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
-import { useParams } from "@remix-run/react";
+import { Link, useParams } from "@remix-run/react";
 import {
   IconBrandBluesky,
   IconCalendar,
@@ -35,7 +34,8 @@ import { reinterpretAsLocalDate } from "~/date";
 import { Profile } from "~/endpoints";
 import {
   Con,
-  useCons,
+  ConWithPost,
+  useConsWithPosts,
   useFollowedConAttendeesDLE,
   useLikes,
   useSelf,
@@ -67,11 +67,10 @@ function Actor({ actor }: { actor: Profile }) {
     >
       <Popover.Target>
         <Anchor
+          component={Link}
           onMouseEnter={open}
           onMouseLeave={close}
-          href={`https://bsky.app/profile/${actor.handle}`}
-          target="_blank"
-          rel="noreferrer"
+          to={`/users/${actor.handle}`}
           c="var(--mantine-color-text)"
           style={{
             textDecoration: "unset",
@@ -105,7 +104,7 @@ function Actor({ actor }: { actor: Profile }) {
   );
 }
 
-function Header({ con }: { con: Con }) {
+function Header({ con }: { con: ConWithPost }) {
   const { i18n, t } = useLingui();
 
   const dateTimeFormat = useMemo(
@@ -300,7 +299,7 @@ function AttendeesList({
 }
 
 export default function Index() {
-  const cons = useCons();
+  const cons = useConsWithPosts();
 
   const { identifier } = useParams();
   const self = useSelf();

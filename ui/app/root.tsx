@@ -107,7 +107,7 @@ function Header() {
     >
       <Container size="lg" p="sm">
         <Group justify="space-between" wrap="nowrap">
-          <Anchor<typeof Link>
+          <Anchor
             component={Link}
             to="/"
             aria-label={clientMetadata.client_name}

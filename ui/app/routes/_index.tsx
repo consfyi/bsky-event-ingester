@@ -20,7 +20,7 @@ import ConsList from "~/components/ConsList";
 import SimpleErrorBoundary from "~/components/SimpleErrorBoundary";
 import { LABELER_DID } from "~/config";
 import { useGetPreferences, usePutPreferences } from "~/endpoints";
-import { useCons, useIsLoggedIn } from "~/hooks";
+import { useConsWithPosts, useIsLoggedIn } from "~/hooks";
 import clientMetadata from "../../public/client-metadata.json";
 
 export const meta: MetaFunction = ({ matches }) => [
@@ -31,7 +31,7 @@ export const meta: MetaFunction = ({ matches }) => [
 export default function Index() {
   const isLoggedIn = useIsLoggedIn();
 
-  const cons = useCons();
+  const cons = useConsWithPosts();
 
   const getPreferences = useGetPreferences();
   const preferences = useSuspense(getPreferences);

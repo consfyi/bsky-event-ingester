@@ -6,14 +6,26 @@ import { Endpoint, Entity, schema } from "@data-client/endpoint";
 import { useController } from "@data-client/react";
 import { useClient } from "./hooks";
 
+export class ProfileLabels extends Entity {
+  static key = "ProfileLabels";
+
+  public did?: Did;
+  public labels?: Label[];
+
+  pk() {
+    return this.did;
+  }
+}
+
 export class Profile extends Entity {
   static key = "Profile";
 
-  public did: Did | undefined;
-  public handle: string | undefined;
-  public displayName: string | undefined;
-  public avatar: string | undefined;
-  public labels: Label[] | undefined;
+  public did?: Did;
+  public handle?: string;
+  public displayName?: string;
+  public description?: string;
+  public avatar?: string;
+  public labels?: Label[];
 
   pk() {
     return this.did;
@@ -23,10 +35,10 @@ export class Profile extends Entity {
 export class Post extends Entity {
   static key = "Post";
 
-  public uri: ResourceUri | undefined;
-  public cid: string | undefined;
-  public likeCount: number | undefined;
-  public viewer: { like?: ResourceUri | undefined } | undefined;
+  public uri?: ResourceUri;
+  public cid?: string;
+  public likeCount?: number;
+  public viewer?: { like?: ResourceUri };
 
   pk() {
     return this.uri;
@@ -36,7 +48,7 @@ export class Post extends Entity {
 export class Like extends Entity {
   static key = "Like";
 
-  public actor: Profile | undefined;
+  public actor?: Profile;
 
   pk() {
     return this.actor?.did;
@@ -50,7 +62,7 @@ export class Like extends Entity {
 export class Preferences extends Entity {
   static key = "Preferences";
 
-  public preferences: ActorPreferences | undefined;
+  public preferences?: ActorPreferences;
 
   pk() {
     return "preferences";
@@ -60,8 +72,8 @@ export class Preferences extends Entity {
 export class LabelerView extends Entity {
   static key = "LabelerView";
 
-  public uri: ResourceUri | undefined;
-  public policies: LabelerPolicies | undefined;
+  public uri?: ResourceUri;
+  public policies?: LabelerPolicies;
 
   pk() {
     return this.uri;
@@ -90,8 +102,8 @@ export function useGetProfile() {
   const client = useClient();
 
   return new Endpoint(
-    async ({ did }: { did: Did }) => {
-      return Profile.fromJS(await client.getProfile(did));
+    async ({ actor }: { actor: ActorIdentifier }) => {
+      return Profile.fromJS(await client.getProfile(actor));
     },
     {
       name: "getProfile",
@@ -236,6 +248,24 @@ export function usePutPreferences() {
       name: "putPreferences",
       sideEffect: true,
       schema: Preferences,
+    }
+  );
+}
+
+export function useGetLabels() {
+  const client = useClient();
+
+  return new Endpoint(
+    async ({ did }: { did: Did }) => {
+      const labels = [];
+      for await (const label of client.getLabels(did)) {
+        labels.push(label);
+      }
+      return ProfileLabels.fromJS({ did, labels });
+    },
+    {
+      name: "getLabels",
+      schema: ProfileLabels,
     }
   );
 }

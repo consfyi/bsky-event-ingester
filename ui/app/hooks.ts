@@ -1,4 +1,4 @@
-import type { ResourceUri } from "@atcute/lexicons";
+import type { ActorIdentifier, Did, ResourceUri } from "@atcute/lexicons";
 import { useDLE, useSuspense } from "@data-client/react";
 import { TZDate } from "@date-fns/tz";
 import { parse as parseDate } from "date-fns";
@@ -13,6 +13,7 @@ import {
   useGetAuthorPosts,
   useGetFollows,
   useGetLabelerView,
+  useGetLabels,
   useGetLikes,
   useGetProfile,
 } from "./endpoints";
@@ -96,14 +97,14 @@ export interface Con {
   end: TZDate;
   location: string;
   geocoded: Geocoded | null;
-  post: Post;
   postRkey: string;
   url: string;
 }
 
+export type ConWithPost = Con & { post: Post };
+
 export function useCons() {
   const labelerView = useSuspense(useGetLabelerView(), { did: LABELER_DID });
-  const conPosts = useConPosts();
 
   const cons = useGlobalMemo(
     "cons",
@@ -119,15 +120,6 @@ export function useCons() {
             };
             fbl_postRkey: string;
           };
-
-          if (
-            !Object.prototype.hasOwnProperty.call(
-              conPosts,
-              fullDef.fbl_postRkey
-            )
-          ) {
-            return [];
-          }
 
           const [strings] = def.locales;
           const [start, end] = fullDef.fbl_eventInfo.date.split("/");
@@ -148,7 +140,6 @@ export function useCons() {
               end: endDate,
               location: fullDef.fbl_eventInfo.location,
               geocoded: fullDef.fbl_eventInfo.geocoded ?? null,
-              post: conPosts[fullDef.fbl_postRkey],
               postRkey: fullDef.fbl_postRkey,
               url: fullDef.fbl_eventInfo.url,
             } satisfies Con,
@@ -158,9 +149,20 @@ export function useCons() {
 
       return cons;
     },
-    [labelerView, conPosts]
+    [labelerView]
   );
   return cons;
+}
+
+export function useConsWithPosts() {
+  const cons = useCons();
+  const conPosts = useConPosts();
+
+  return cons.flatMap((con) =>
+    Object.prototype.hasOwnProperty.call(conPosts, con.postRkey)
+      ? [{ ...con, post: conPosts[con.postRkey] }]
+      : []
+  );
 }
 
 export function useLikes(uri: ResourceUri) {
@@ -171,9 +173,19 @@ export function useSelf() {
   const client = useClient();
   const resp = useSuspense(
     useGetProfile(),
-    client.did != null ? { did: client.did } : null
+    client.did != null ? { actor: client.did } : null
   );
   return resp;
+}
+
+export function useProfile(actor: ActorIdentifier | undefined) {
+  const resp = useSuspense(useGetProfile(), actor != null ? { actor } : null);
+  return resp;
+}
+
+export function useProfileLabels(did: Did | undefined) {
+  const resp = useSuspense(useGetLabels(), did != null ? { did } : null);
+  return resp?.labels;
 }
 
 export function useSelfFollowsDLE() {

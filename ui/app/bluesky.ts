@@ -36,6 +36,7 @@ import {
 } from "@atcute/oauth-browser-client";
 import clientMetadata from "../public/client-metadata.json";
 import { LABELER_DID } from "./config";
+import { Label } from "@atcute/atproto/types/label/defs";
 
 export const DEFAULT_PDS_HOST = "https://bsky.social";
 
@@ -182,6 +183,30 @@ export class Client {
       }
 
       yield* data.follows;
+      if (!data.cursor) {
+        break;
+      }
+      cursor = data.cursor;
+    }
+  }
+
+  async *getLabels(did: Did): AsyncGenerator<Label> {
+    const LIMIT = 250;
+    let cursor = "";
+    while (true) {
+      const { ok, data } = await this.rpc.get("com.atproto.label.queryLabels", {
+        params: {
+          uriPatterns: [did],
+          sources: [LABELER_DID],
+          limit: LIMIT,
+          cursor,
+        },
+      });
+      if (!ok) {
+        throw data.error;
+      }
+
+      yield* data.labels;
       if (!data.cursor) {
         break;
       }
