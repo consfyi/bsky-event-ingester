@@ -500,8 +500,6 @@ export default function ConsList({ cons }: { cons: ConWithPost[] }) {
   const { t } = useLingui();
   const { data: followedConAttendees } = useFollowedConAttendeesDLE();
 
-  const now = new Date();
-
   const isLoggedIn = useIsLoggedIn();
   const [viewOptions, setViewOptions] = useLocalStorage<ViewOptions>({
     key: "fbl:_index:viewOptions",
