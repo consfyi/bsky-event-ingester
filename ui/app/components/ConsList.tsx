@@ -539,7 +539,24 @@ export default function ConsList({ cons }: { cons: ConWithPost[] }) {
   const [filterDrawerOpen, setFilterDrawerOpen] = useState(false);
 
   const [searchParams, setSearchParams] = useSearchParams();
-  const query = searchParams.get("q") ?? "";
+  const [query, setQuery] = useState(searchParams.get("q") ?? "");
+
+  useEffect(() => {
+    setSearchParams(
+      (prev) => {
+        if (query == "") {
+          prev.delete("q");
+        } else {
+          prev.set("q", query);
+        }
+        return prev;
+      },
+      {
+        replace: true,
+        preventScrollReset: true,
+      }
+    );
+  }, [query]);
 
   const actuallyShowOnlyAttending = isLoggedIn && viewOptions.filter.attending;
   const actuallyShowOnlyFollowed = isLoggedIn && viewOptions.filter.followed;
@@ -659,20 +676,7 @@ export default function ConsList({ cons }: { cons: ConWithPost[] }) {
         placeholder={t`Search`}
         value={query}
         onChange={(e) => {
-          setSearchParams(
-            (prev) => {
-              if (e.target.value == "") {
-                prev.delete("q");
-              } else {
-                prev.set("q", e.target.value);
-              }
-              return prev;
-            },
-            {
-              replace: true,
-              preventScrollReset: true,
-            }
-          );
+          setQuery(e.target.value);
         }}
       />
       <Group wrap="nowrap" m="xs" justify="space-between" gap="0">
@@ -1257,7 +1261,8 @@ export default function ConsList({ cons }: { cons: ConWithPost[] }) {
                 <Trans>No cons to display.</Trans>
               </Text>
 
-              {!isEqual(viewOptions.filter, DEFAULT_VIEW_OPTIONS.filter) ? (
+              {!isEqual(viewOptions.filter, DEFAULT_VIEW_OPTIONS.filter) ||
+              query != "" ? (
                 <Box>
                   <Button
                     onClick={() => {
@@ -1265,6 +1270,7 @@ export default function ConsList({ cons }: { cons: ConWithPost[] }) {
                         ...viewOptions,
                         filter: DEFAULT_VIEW_OPTIONS.filter,
                       });
+                      setQuery("");
                     }}
                   >
                     <Trans>Clear all filters</Trans>
