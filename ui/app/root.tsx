@@ -254,7 +254,7 @@ function Header() {
                   </Menu.Target>
                   <Menu.Dropdown>
                     <TextInput
-                      style={{ fontSize: "16px" }}
+                      styles={{ input: { fontSize: "16px" } }}
                       label={<Trans>Custom PDS</Trans>}
                       name="pds"
                       m={4}

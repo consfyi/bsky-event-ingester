@@ -1257,7 +1257,7 @@ export default function ConsList({ cons }: { cons: ConWithPost[] }) {
   return (
     <>
       <TextInput
-        style={{ fontSize: "16px" }}
+        styles={{ input: { fontSize: "16px" } }}
         name="q"
         m="xs"
         leftSection={<IconSearch size={16} />}
