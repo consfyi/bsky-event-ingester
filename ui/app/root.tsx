@@ -18,6 +18,7 @@ import {
   createTheme,
   Direction,
   DirectionProvider,
+  DirectionProviderProps,
   Group,
   Image,
   Loader,
@@ -114,7 +115,7 @@ function Header() {
   const self = useSelf();
 
   return (
-    (<Box
+    <Box
       style={{
         background: "var(--mantine-color-body)",
         borderBottom: "1px solid var(--mantine-color-default-border)",
@@ -279,7 +280,7 @@ function Header() {
           )}
         </Group>
       </Container>
-    </Box>)
+    </Box>
   );
 }
 
@@ -545,7 +546,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
   return (
     // lang is set by LinguiProvider.
     // eslint-disable-next-line jsx-a11y/html-has-lang
-    (<html>
+    <html>
       <head>
         <meta charSet="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -560,9 +561,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
             {hydrated ? (
               <DirectionProvider
                 initialDirection={
-                  (new IntlLocale(INITIAL_LOCALE).textInfo.direction as
-                    | Direction
-                    | undefined) ?? "ltr"
+                  new IntlLocale(INITIAL_LOCALE).textInfo
+                    .direction as DirectionProviderProps["initialDirection"]
                 }
               >
                 <DataProvider>
@@ -599,7 +599,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <ScrollRestoration />
         <Scripts />
       </body>
-    </html>)
+    </html>
   );
 }
 
