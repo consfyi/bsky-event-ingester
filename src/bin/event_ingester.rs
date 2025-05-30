@@ -45,6 +45,8 @@ struct EventsState {
 #[derive(serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct LabelerEventInfo {
+    name: String,
+    year: u32,
     date: String,
     location: String,
     url: String,
@@ -303,21 +305,23 @@ async fn fetch_old_events(
                         }
                     };
 
-                    let labeler_event_info = v
+                    let info = v
                         .extra_data
                         .get(EXTRA_DATA_EVENT_INFO)
                         .ok()
                         .flatten()
                         .cloned()
-                        .and_then(|v| ipld_core::serde::from_ipld::<LabelerEventInfo>(v).ok())
-                        .unwrap();
+                        .and_then(|v| ipld_core::serde::from_ipld::<LabelerEventInfo>(v).ok());
 
                     Some((
                         base26::decode(&v.identifier).unwrap(),
                         OldEvent {
                             rkey,
-                            location: labeler_event_info.location,
-                            geocoded: labeler_event_info.geocoded,
+                            location: info
+                                .as_ref()
+                                .map(|info| info.location.to_string())
+                                .unwrap_or_else(|| "".to_string()),
+                            geocoded: info.and_then(|info| info.geocoded),
                         },
                     ))
                 })
@@ -664,6 +668,8 @@ async fn sync_labels(
                                 extra_data.insert(
                                     EXTRA_DATA_EVENT_INFO.to_string(),
                                     ipld_core::serde::to_ipld(LabelerEventInfo {
+                                        name: event.name.clone(),
+                                        year: event.year,
                                         date: format!(
                                             "{}/{}",
                                             event.start_date.format("%Y-%m-%d"),
