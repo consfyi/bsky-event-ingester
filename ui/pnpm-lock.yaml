@@ -98,6 +98,9 @@ importers:
       react-router:
         specifier: ^7.0.0
         version: 7.6.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      regexp.escape:
+        specifier: ^2.0.1
+        version: 2.0.1
       zod:
         specifier: ^3.25.32
         version: 3.25.42
@@ -123,6 +126,9 @@ importers:
       '@types/react-dom':
         specifier: ^18.2.7
         version: 18.3.7(@types/react@18.3.23)
+      '@types/regexp.escape':
+        specifier: ^2.0.0
+        version: 2.0.0
       '@typescript-eslint/eslint-plugin':
         specifier: ^6.7.4
         version: 6.21.0(@typescript-eslint/parser@6.21.0(eslint@8.57.1)(typescript@5.8.3))(eslint@8.57.1)(typescript@5.8.3)
@@ -1002,6 +1008,9 @@ packages:
 
   '@types/react@18.3.23':
     resolution: {integrity: sha512-/LDXMQh55EzZQ0uVAZmKKhfENivEvWz6E+EYzh+/MCjMhNsotd+ZHhBGIjFDTi6+fz0OhQQQLbTgdQIxxCsC0w==}
+
+  '@types/regexp.escape@2.0.0':
+    resolution: {integrity: sha512-L0+4KOC47zH0AE/27YhzECRlE4HxHycQy0ng8P4SMmsYIdUqJFzKlk4LameozRQ2mRozPRwRAzpXsDsUgb6ezA==}
 
   '@types/semver@7.7.0':
     resolution: {integrity: sha512-k107IF4+Xr7UHjwDc7Cfd6PRQfbdkiRabXGRjo07b4WyPahFBZCZ1sE+BNxYIJPPg73UkfOsVOLwqVc/6ETrIA==}
@@ -2798,6 +2807,10 @@ packages:
     resolution: {integrity: sha512-00o4I+DVrefhv+nX0ulyi3biSHCPDe+yLv5o/p6d/UVlirijB8E16FtfwSAi4g3tcqrQ4lRAqQSoFEZJehYEcw==}
     engines: {node: '>= 0.4'}
 
+  regexp.escape@2.0.1:
+    resolution: {integrity: sha512-JItRb4rmyTzmERBkAf6J87LjDPy/RscIwmaJQ3gsFlAzrmZbZU8LwBw5IydFZXW9hqpgbPlGbMhtpqtuAhMgtg==}
+    engines: {node: '>= 0.4'}
+
   regexp.prototype.flags@1.5.4:
     resolution: {integrity: sha512-dYqgNSZbDwkaJ2ceRd9ojCGjBq+mOm9LmtXnAnEGyHhN/5R7iDW2TRw3h+o/jCFxus3P2LfWIIiwowAjANm7IA==}
     engines: {node: '>= 0.4'}
@@ -4283,6 +4296,8 @@ snapshots:
     dependencies:
       '@types/prop-types': 15.7.14
       csstype: 3.1.3
+
+  '@types/regexp.escape@2.0.0': {}
 
   '@types/semver@7.7.0': {}
 
@@ -6261,6 +6276,15 @@ snapshots:
       get-intrinsic: 1.3.0
       get-proto: 1.0.1
       which-builtin-type: 1.2.1
+
+  regexp.escape@2.0.1:
+    dependencies:
+      call-bind: 1.0.8
+      define-properties: 1.2.1
+      es-abstract: 1.24.0
+      es-errors: 1.3.0
+      for-each: 0.3.5
+      safe-regex-test: 1.1.0
 
   regexp.prototype.flags@1.5.4:
     dependencies:

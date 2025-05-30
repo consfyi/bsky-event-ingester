@@ -1,4 +1,5 @@
 import { plural } from "@lingui/core/macro";
+import regexpEscape from "regexp.escape";
 import { Plural, Trans, useLingui } from "@lingui/react/macro";
 import {
   Anchor,
@@ -1238,20 +1239,28 @@ export default function ConsList({ cons }: { cons: ConWithPost[] }) {
   const actuallyShowOnlyAttending = isLoggedIn && viewOptions.filter.attending;
   const actuallyShowOnlyFollowed = isLoggedIn && viewOptions.filter.followed;
 
+  const queryRe = new RegExp(
+    `^${Array.prototype.map
+      .call(
+        viewOptions.filter.query.toLocaleLowerCase(i18n.locale),
+        (c) => `${regexpEscape(c)}.*`
+      )
+      .join("")}`
+  );
+
+  const [minDuration, tempMaxDuration] = viewOptions.filter.duration;
+  const maxDuration =
+    tempMaxDuration >= DEFAULT_VIEW_OPTIONS.filter.duration[1]
+      ? Infinity
+      : tempMaxDuration;
+
   const filteredCons = cons.filter((con) => {
     const duration = differenceInDays(con.end, con.start) + 1;
-    const [minDuration, tempMaxDuration] = viewOptions.filter.duration;
-    const maxDuration =
-      tempMaxDuration >= DEFAULT_VIEW_OPTIONS.filter.duration[1]
-        ? Infinity
-        : tempMaxDuration;
 
     return (
       // Query
       // Followed filter
-      con.name
-        .toLocaleLowerCase(i18n.locale)
-        .startsWith(viewOptions.filter.query.toLocaleLowerCase(i18n.locale)) &&
+      con.name.toLocaleLowerCase(i18n.locale).match(queryRe) != null &&
       // Attending filter
       (!actuallyShowOnlyAttending || con.post.viewer?.like != null) &&
       // Continents filter
