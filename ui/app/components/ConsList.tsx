@@ -125,6 +125,7 @@ export function ConRow({
           size={12}
           withBorder
           disabled={!active}
+          zIndex={2}
         >
           <ThemeIcon
             size="xl"
@@ -344,24 +345,29 @@ function ConsByDate({
           mx={{ base: 0, lg: "xs" }}
           px={{ base: "xs", lg: 0 }}
           mt={{ base: -4, lg: -8 }}
-          pt={{ base: 4, lg: 8 }}
-          pb={4}
           order={2}
           size="h5"
           fw={500}
           pos="sticky"
           top={50}
-          bg="var(--mantine-color-body)"
           style={{
             zIndex: 3,
             borderBottom:
               "calc(0.0625rem * var(--mantine-scale)) solid var(--mantine-color-default-border)",
           }}
         >
-          {i18n.date(date, {
-            month: "long",
-            year: "numeric",
-          })}
+          <Box
+            mx="calc(var(--mantine-spacing-xs) * -1)"
+            px="xs"
+            pt={{ base: 4, lg: 8 }}
+            pb={4}
+            bg="var(--mantine-color-body)"
+          >
+            {i18n.date(date, {
+              month: "long",
+              year: "numeric",
+            })}
+          </Box>
         </Title>
         <Box px="xs">
           {(consByMonth[groupKey] ?? []).map((con) => {
