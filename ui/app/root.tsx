@@ -22,6 +22,7 @@ import {
   Group,
   Image,
   Loader,
+  mantineHtmlProps,
   MantineProvider,
   Menu,
   Select,
@@ -542,20 +543,24 @@ function Alerts() {
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const hydrated = useHydrated();
-
-  const viewport = [
-    "width=device-width",
-    "initial-scale=1",
-    ...(navigator.userAgent.includes("iPhone") ? ["maximum-scale=1"] : []),
-  ];
+  useEffect(() => {
+    if (navigator.userAgent.indexOf("iPhone") > -1) {
+      document
+        .querySelector("meta[name=viewport]")!
+        .setAttribute(
+          "content",
+          "width=device-width, initial-scale=1, maximum-scale=1"
+        );
+    }
+  }, []);
 
   return (
     // lang is set by LinguiProvider.
     // eslint-disable-next-line jsx-a11y/html-has-lang
-    <html>
+    <html {...mantineHtmlProps}>
       <head>
         <meta charSet="utf-8" />
-        <meta name="viewport" content={viewport.join(", ")} />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
         <Meta />
         <Links />
         <ColorSchemeScript defaultColorScheme="auto" />
