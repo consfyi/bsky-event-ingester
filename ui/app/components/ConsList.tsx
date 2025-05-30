@@ -16,12 +16,13 @@ import {
   RangeSlider,
   Stack,
   Text,
+  TextInput,
   ThemeIcon,
   Title,
   Tooltip,
 } from "@mantine/core";
 import { useLocalStorage } from "@mantine/hooks";
-import { Link } from "@remix-run/react";
+import { Link, useSearchParams } from "@remix-run/react";
 import {
   IconAdjustmentsHorizontal,
   IconCalendar,
@@ -31,6 +32,7 @@ import {
   IconHeartFilled,
   IconMapPin,
   IconMinus,
+  IconSearch,
   IconSortAscending,
   IconSortDescending,
   IconUsers,
@@ -536,6 +538,9 @@ export default function ConsList({ cons }: { cons: ConWithPost[] }) {
   const [sortMenuOpen, setSortMenuOpen] = useState(false);
   const [filterDrawerOpen, setFilterDrawerOpen] = useState(false);
 
+  const [searchParams, setSearchParams] = useSearchParams();
+  const query = searchParams.get("q") ?? "";
+
   const actuallyShowOnlyAttending = isLoggedIn && viewOptions.filter.attending;
   const actuallyShowOnlyFollowed = isLoggedIn && viewOptions.filter.followed;
 
@@ -625,6 +630,8 @@ export default function ConsList({ cons }: { cons: ConWithPost[] }) {
         : tempMaxDuration;
 
     return (
+      // Query
+      con.name.toLowerCase().startsWith(query.toLowerCase()) &&
       // Attending filter
       (!actuallyShowOnlyAttending || con.post.viewer?.like != null) &&
       // Continents filter
@@ -645,6 +652,29 @@ export default function ConsList({ cons }: { cons: ConWithPost[] }) {
 
   return (
     <>
+      <TextInput
+        name="q"
+        m="xs"
+        leftSection={<IconSearch size={16} />}
+        placeholder={t`Search`}
+        value={query}
+        onChange={(e) => {
+          setSearchParams(
+            (prev) => {
+              if (e.target.value == "") {
+                prev.delete("q");
+              } else {
+                prev.set("q", e.target.value);
+              }
+              return prev;
+            },
+            {
+              replace: true,
+              preventScrollReset: true,
+            }
+          );
+        }}
+      />
       <Group wrap="nowrap" m="xs" justify="space-between" gap="0">
         <Button
           size="xs"
