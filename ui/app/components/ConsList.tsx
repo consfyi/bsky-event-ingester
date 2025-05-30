@@ -21,8 +21,6 @@ import {
   Title,
   Tooltip,
 } from "@mantine/core";
-import { useLocalStorage } from "@mantine/hooks";
-import { Link, useSearchParams } from "react-router";
 import {
   IconAdjustmentsHorizontal,
   IconCalendar,
@@ -49,6 +47,7 @@ import {
 } from "date-fns";
 import { groupBy, isEqual, sortBy } from "lodash-es";
 import { Fragment, Suspense, useEffect, useMemo, useState } from "react";
+import { Link, useSearchParams } from "react-router";
 import { z } from "zod/v4-mini";
 import Avatar from "~/components/Avatar";
 import Flag from "~/components/Flag";
@@ -478,6 +477,7 @@ const DEFAULT_SORT_DESC_OPTIONS: Record<SortBy, boolean> = {
 };
 
 const FilterOptions = z.object({
+  query: z._default(z.string(), ""),
   attending: z._default(z.boolean(), false),
   followed: z._default(z.boolean(), false),
   continents: z._default(z.array(Continent), () =>
@@ -618,6 +618,20 @@ function Filters({
 
   return (
     <>
+      <TextInput
+        name="q"
+        m="xs"
+        leftSection={<IconSearch size={16} />}
+        placeholder={t`Search`}
+        value={viewOptions.filter.query}
+        onChange={(e) => {
+          setViewOptions((vo) => ({
+            ...vo,
+            filter: { ...vo.filter, query: e.target.value },
+          }));
+        }}
+      />
+
       <Group wrap="nowrap" m="xs" justify="space-between" gap="0">
         <Button
           size="xs"
@@ -1172,21 +1186,22 @@ function Filters({
 }
 
 export default function ConsList({ cons }: { cons: ConWithPost[] }) {
-  const { t } = useLingui();
   const { data: followedConAttendees } = useFollowedConAttendeesDLE();
 
   const isLoggedIn = useIsLoggedIn();
-  const [viewOptions, setViewOptions] = useLocalStorage<ViewOptions>({
-    key: "fbl:_index:viewOptions",
-    getInitialValueInEffect: false,
-    defaultValue: DEFAULT_VIEW_OPTIONS,
-    deserialize(v) {
-      if (v == undefined) {
-        return DEFAULT_VIEW_OPTIONS;
-      }
-      const result = ViewOptions.safeParse(JSON.parse(v));
-      return result.success ? result.data : DEFAULT_VIEW_OPTIONS;
-    },
+
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  const [viewOptions, setViewOptions] = useState<ViewOptions>(() => {
+    if (!searchParams.has("q")) {
+      return DEFAULT_VIEW_OPTIONS;
+    }
+
+    try {
+      return ViewOptions.parse(JSON.parse(searchParams.get("q")!));
+    } catch (e) {
+      return DEFAULT_VIEW_OPTIONS;
+    }
   });
 
   useEffect(() => {
@@ -1202,16 +1217,13 @@ export default function ConsList({ cons }: { cons: ConWithPost[] }) {
     }));
   }, [isLoggedIn, setViewOptions]);
 
-  const [searchParams, setSearchParams] = useSearchParams();
-  const [query, setQuery] = useState(searchParams.get("q") ?? "");
-
   useEffect(() => {
     setSearchParams(
       (prev) => {
-        if (query == "") {
+        if (isEqual(viewOptions, DEFAULT_VIEW_OPTIONS)) {
           prev.delete("q");
         } else {
-          prev.set("q", query);
+          prev.set("q", JSON.stringify(viewOptions));
         }
         return prev;
       },
@@ -1220,7 +1232,7 @@ export default function ConsList({ cons }: { cons: ConWithPost[] }) {
         preventScrollReset: true,
       }
     );
-  }, [query]);
+  }, [viewOptions]);
 
   const actuallyShowOnlyAttending = isLoggedIn && viewOptions.filter.attending;
   const actuallyShowOnlyFollowed = isLoggedIn && viewOptions.filter.followed;
@@ -1236,7 +1248,9 @@ export default function ConsList({ cons }: { cons: ConWithPost[] }) {
     return (
       // Query
       // Followed filter
-      con.name.toLowerCase().startsWith(query.toLowerCase()) &&
+      con.name
+        .toLowerCase()
+        .startsWith(viewOptions.filter.query.toLowerCase()) &&
       // Attending filter
       (!actuallyShowOnlyAttending || con.post.viewer?.like != null) &&
       // Continents filter
@@ -1256,16 +1270,6 @@ export default function ConsList({ cons }: { cons: ConWithPost[] }) {
 
   return (
     <>
-      <TextInput
-        name="q"
-        m="xs"
-        leftSection={<IconSearch size={16} />}
-        placeholder={t`Search`}
-        value={query}
-        onChange={(e) => {
-          setQuery(e.target.value);
-        }}
-      />
       <Filters
         cons={cons}
         viewOptions={viewOptions}
@@ -1304,8 +1308,7 @@ export default function ConsList({ cons }: { cons: ConWithPost[] }) {
                 <Trans>No cons to display.</Trans>
               </Text>
 
-              {!isEqual(viewOptions.filter, DEFAULT_VIEW_OPTIONS.filter) ||
-              query != "" ? (
+              {!isEqual(viewOptions.filter, DEFAULT_VIEW_OPTIONS.filter) ? (
                 <Box>
                   <Button
                     onClick={() => {
@@ -1313,7 +1316,6 @@ export default function ConsList({ cons }: { cons: ConWithPost[] }) {
                         ...viewOptions,
                         filter: DEFAULT_VIEW_OPTIONS.filter,
                       });
-                      setQuery("");
                     }}
                   >
                     <Trans>Clear all filters</Trans>
