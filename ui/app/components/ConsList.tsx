@@ -8,6 +8,7 @@ import {
   Button,
   Center,
   Checkbox,
+  CloseButton,
   Divider,
   Drawer,
   Group,
@@ -35,6 +36,7 @@ import {
   IconSortAscending,
   IconSortDescending,
   IconUsers,
+  IconX,
 } from "@tabler/icons-react";
 import {
   addDays,
@@ -623,6 +625,20 @@ function Filters({
         name="q"
         m="xs"
         leftSection={<IconSearch size={16} />}
+        rightSection={
+          <CloseButton
+            icon={<IconX size={16} />}
+            onClick={() => {
+              setViewOptions((vo) => ({
+                ...vo,
+                filter: { ...vo.filter, query: "" },
+              }));
+            }}
+            style={{
+              display: viewOptions.filter.query != "" ? undefined : "none",
+            }}
+          />
+        }
         placeholder={t`Search`}
         value={viewOptions.filter.query}
         onChange={(e) => {
