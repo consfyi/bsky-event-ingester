@@ -1186,6 +1186,7 @@ function Filters({
 }
 
 export default function ConsList({ cons }: { cons: ConWithPost[] }) {
+  const { i18n } = useLingui();
   const { data: followedConAttendees } = useFollowedConAttendeesDLE();
 
   const isLoggedIn = useIsLoggedIn();
@@ -1249,8 +1250,8 @@ export default function ConsList({ cons }: { cons: ConWithPost[] }) {
       // Query
       // Followed filter
       con.name
-        .toLowerCase()
-        .startsWith(viewOptions.filter.query.toLowerCase()) &&
+        .toLocaleLowerCase(i18n.locale)
+        .startsWith(viewOptions.filter.query.toLocaleLowerCase(i18n.locale)) &&
       // Attending filter
       (!actuallyShowOnlyAttending || con.post.viewer?.like != null) &&
       // Continents filter
