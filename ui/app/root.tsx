@@ -254,6 +254,7 @@ function Header() {
                   </Menu.Target>
                   <Menu.Dropdown>
                     <TextInput
+                      style={{ fontSize: "16px" }}
                       label={<Trans>Custom PDS</Trans>}
                       name="pds"
                       m={4}
@@ -549,10 +550,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
     <html>
       <head>
         <meta charSet="utf-8" />
-        <meta
-          name="viewport"
-          content="width=device-width, initial-scale=1, maximum-scale=1"
-        />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
         <Meta />
         <Links />
         <ColorSchemeScript defaultColorScheme="auto" />

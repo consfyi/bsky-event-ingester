@@ -1235,7 +1235,7 @@ export default function ConsList({ cons }: { cons: ConWithPost[] }) {
 
     return (
       // Query
-      (// Followed filter
+      // Followed filter
       con.name.toLowerCase().startsWith(query.toLowerCase()) &&
       // Attending filter
       (!actuallyShowOnlyAttending || con.post.viewer?.like != null) &&
@@ -1247,14 +1247,17 @@ export default function ConsList({ cons }: { cons: ConWithPost[] }) {
       ) &&
       // Duration filter
       duration >= minDuration &&
-      duration <= maxDuration && (!actuallyShowOnlyFollowed ||
-        followedConAttendees == null || (followedConAttendees[con.identifier] ?? []).length > 0))
+      duration <= maxDuration &&
+      (!actuallyShowOnlyFollowed ||
+        followedConAttendees == null ||
+        (followedConAttendees[con.identifier] ?? []).length > 0)
     );
   });
 
   return (
     <>
       <TextInput
+        style={{ fontSize: "16px" }}
         name="q"
         m="xs"
         leftSection={<IconSearch size={16} />}
