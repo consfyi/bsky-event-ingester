@@ -622,7 +622,7 @@ function Filters({
         <Button
           size="xs"
           c="dimmed"
-          color="dimmed"
+          color="var(--mantine-color-dimmed)"
           style={{ zIndex: 4, flexShrink: 0 }}
           variant="subtle"
           leftSection={<IconAdjustmentsHorizontal size={14} />}
@@ -914,7 +914,7 @@ function Filters({
               variant="subtle"
               size="xs"
               c="dimmed"
-              color="dimmed"
+              color="var(--mantine-color-dimmed)"
               style={{ zIndex: 4, flexShrink: 0 }}
               leftSection={
                 viewOptions.sort.desc ? (
@@ -1257,7 +1257,6 @@ export default function ConsList({ cons }: { cons: ConWithPost[] }) {
   return (
     <>
       <TextInput
-        styles={{ input: { fontSize: "16px" } }}
         name="q"
         m="xs"
         leftSection={<IconSearch size={16} />}
