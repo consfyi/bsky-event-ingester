@@ -504,23 +504,21 @@ type ViewOptions = z.infer<typeof ViewOptions>;
 
 const DEFAULT_VIEW_OPTIONS: ViewOptions = ViewOptions.parse({});
 
-export default function ConsList({ cons }: { cons: ConWithPost[] }) {
+function Filters({
+  cons,
+  viewOptions,
+  setViewOptions,
+}: {
+  cons: ConWithPost[];
+  viewOptions: ViewOptions;
+  setViewOptions: (
+    val: ViewOptions | ((prevState: ViewOptions) => ViewOptions)
+  ) => void;
+}) {
   const { t } = useLingui();
   const { data: followedConAttendees } = useFollowedConAttendeesDLE();
 
   const isLoggedIn = useIsLoggedIn();
-  const [viewOptions, setViewOptions] = useLocalStorage<ViewOptions>({
-    key: "fbl:_index:viewOptions",
-    getInitialValueInEffect: false,
-    defaultValue: DEFAULT_VIEW_OPTIONS,
-    deserialize(v) {
-      if (v == undefined) {
-        return DEFAULT_VIEW_OPTIONS;
-      }
-      const result = ViewOptions.safeParse(JSON.parse(v));
-      return result.success ? result.data : DEFAULT_VIEW_OPTIONS;
-    },
-  });
 
   useEffect(() => {
     if (isLoggedIn) {
@@ -537,26 +535,6 @@ export default function ConsList({ cons }: { cons: ConWithPost[] }) {
 
   const [sortMenuOpen, setSortMenuOpen] = useState(false);
   const [filterDrawerOpen, setFilterDrawerOpen] = useState(false);
-
-  const [searchParams, setSearchParams] = useSearchParams();
-  const [query, setQuery] = useState(searchParams.get("q") ?? "");
-
-  useEffect(() => {
-    setSearchParams(
-      (prev) => {
-        if (query == "") {
-          prev.delete("q");
-        } else {
-          prev.set("q", query);
-        }
-        return prev;
-      },
-      {
-        replace: true,
-        preventScrollReset: true,
-      }
-    );
-  }, [query]);
 
   const actuallyShowOnlyAttending = isLoggedIn && viewOptions.filter.attending;
   const actuallyShowOnlyFollowed = isLoggedIn && viewOptions.filter.followed;
@@ -638,47 +616,8 @@ export default function ConsList({ cons }: { cons: ConWithPost[] }) {
     !isEqual(viewOptions.filter.duration, DEFAULT_VIEW_OPTIONS.filter.duration),
   ].reduce((acc, v) => acc + (v ? 1 : 0), 0);
 
-  const filteredCons = cons.filter((con) => {
-    const duration = differenceInDays(con.end, con.start) + 1;
-    const [minDuration, tempMaxDuration] = viewOptions.filter.duration;
-    const maxDuration =
-      tempMaxDuration >= DEFAULT_VIEW_OPTIONS.filter.duration[1]
-        ? Infinity
-        : tempMaxDuration;
-
-    return (
-      // Query
-      con.name.toLowerCase().startsWith(query.toLowerCase()) &&
-      // Attending filter
-      (!actuallyShowOnlyAttending || con.post.viewer?.like != null) &&
-      // Continents filter
-      viewOptions.filter.continents.includes(
-        con.geocoded != null && con.geocoded.country != null
-          ? getContinentForCountry(con.geocoded.country)
-          : "XX"
-      ) &&
-      // Duration filter
-      duration >= minDuration &&
-      duration <= maxDuration &&
-      // Followed filter
-      (!actuallyShowOnlyFollowed ||
-        followedConAttendees == null ||
-        (followedConAttendees[con.identifier] ?? []).length > 0)
-    );
-  });
-
   return (
     <>
-      <TextInput
-        name="q"
-        m="xs"
-        leftSection={<IconSearch size={16} />}
-        placeholder={t`Search`}
-        value={query}
-        onChange={(e) => {
-          setQuery(e.target.value);
-        }}
-      />
       <Group wrap="nowrap" m="xs" justify="space-between" gap="0">
         <Button
           size="xs"
@@ -1228,6 +1167,110 @@ export default function ConsList({ cons }: { cons: ConWithPost[] }) {
           )}
         />
       </Drawer>
+    </>
+  );
+}
+
+export default function ConsList({ cons }: { cons: ConWithPost[] }) {
+  const { t } = useLingui();
+  const { data: followedConAttendees } = useFollowedConAttendeesDLE();
+
+  const isLoggedIn = useIsLoggedIn();
+  const [viewOptions, setViewOptions] = useLocalStorage<ViewOptions>({
+    key: "fbl:_index:viewOptions",
+    getInitialValueInEffect: false,
+    defaultValue: DEFAULT_VIEW_OPTIONS,
+    deserialize(v) {
+      if (v == undefined) {
+        return DEFAULT_VIEW_OPTIONS;
+      }
+      const result = ViewOptions.safeParse(JSON.parse(v));
+      return result.success ? result.data : DEFAULT_VIEW_OPTIONS;
+    },
+  });
+
+  useEffect(() => {
+    if (isLoggedIn) {
+      return;
+    }
+    setViewOptions((vo) => ({
+      ...vo,
+      sort: {
+        ...vo.sort,
+        by: vo.sort.by == "followed" ? "attendees" : vo.sort.by,
+      },
+    }));
+  }, [isLoggedIn, setViewOptions]);
+
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [query, setQuery] = useState(searchParams.get("q") ?? "");
+
+  useEffect(() => {
+    setSearchParams(
+      (prev) => {
+        if (query == "") {
+          prev.delete("q");
+        } else {
+          prev.set("q", query);
+        }
+        return prev;
+      },
+      {
+        replace: true,
+        preventScrollReset: true,
+      }
+    );
+  }, [query]);
+
+  const actuallyShowOnlyAttending = isLoggedIn && viewOptions.filter.attending;
+  const actuallyShowOnlyFollowed = isLoggedIn && viewOptions.filter.followed;
+
+  const filteredCons = cons.filter((con) => {
+    const duration = differenceInDays(con.end, con.start) + 1;
+    const [minDuration, tempMaxDuration] = viewOptions.filter.duration;
+    const maxDuration =
+      tempMaxDuration >= DEFAULT_VIEW_OPTIONS.filter.duration[1]
+        ? Infinity
+        : tempMaxDuration;
+
+    return (
+      // Query
+      con.name.toLowerCase().startsWith(query.toLowerCase()) &&
+      // Attending filter
+      (!actuallyShowOnlyAttending || con.post.viewer?.like != null) &&
+      // Continents filter
+      viewOptions.filter.continents.includes(
+        con.geocoded != null && con.geocoded.country != null
+          ? getContinentForCountry(con.geocoded.country)
+          : "XX"
+      ) &&
+      // Duration filter
+      duration >= minDuration &&
+      duration <= maxDuration &&
+      // Followed filter
+      (!actuallyShowOnlyFollowed ||
+        followedConAttendees == null ||
+        (followedConAttendees[con.identifier] ?? []).length > 0)
+    );
+  });
+
+  return (
+    <>
+      <TextInput
+        name="q"
+        m="xs"
+        leftSection={<IconSearch size={16} />}
+        placeholder={t`Search`}
+        value={query}
+        onChange={(e) => {
+          setQuery(e.target.value);
+        }}
+      />
+      <Filters
+        cons={cons}
+        viewOptions={viewOptions}
+        setViewOptions={setViewOptions}
+      />
 
       <Suspense
         fallback={
