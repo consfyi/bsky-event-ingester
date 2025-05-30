@@ -143,15 +143,19 @@ async fn list_all_records(
 
 #[derive(Debug)]
 struct Event {
-    ics: ICSEvent,
+    url: String,
+    name: String,
+    year: u32,
+    location: String,
+    start_date: chrono::NaiveDate,
+    end_date: chrono::NaiveDate,
     geocoded: Option<Geocoded>,
     rkey: Option<Option<atrium_api::types::string::RecordKey>>,
 }
 
 impl Event {
     fn end_time(&self) -> chrono::DateTime<chrono_tz::Tz> {
-        self.ics
-            .dtend
+        self.end_date
             .and_time(chrono::NaiveTime::MIN)
             .and_local_timezone(
                 self.geocoded
@@ -194,10 +198,24 @@ async fn fetch_events(
                 .ok_or(anyhow::anyhow!("malformed event uid"))?
                 .0
                 .parse()?;
+            let event = fixup_event(event);
+
+            let (name, year) = event
+                .summary
+                .rsplit_once(" ")
+                .ok_or(anyhow::anyhow!("could not split year"))?;
+
+            let year = year.parse()?;
+
             Ok::<_, anyhow::Error>((
                 id,
                 Event {
-                    ics: fixup_event(event),
+                    url: event.url,
+                    name: name.to_string(),
+                    year,
+                    location: event.location,
+                    start_date: event.dtstart,
+                    end_date: event.dtend,
                     geocoded: None,
                     rkey: None,
                 },
@@ -334,7 +352,7 @@ async fn sync_labels(
         .into_iter()
         .filter(|(_, event)| {
             // Somewhat obnoxiously we have to do this in UTC, because otherwise we have to geocode to find the timezone.
-            now < event.ics.dtend.and_time(chrono::NaiveTime::MIN).and_utc()
+            now < event.end_date.and_time(chrono::NaiveTime::MIN).and_utc()
                     + chrono::Days::new(1) // Add an extra day to compensate for very ahead timezones, like Pacific/Auckland.
                     + EXPIRY_DATE_GRACE_PERIOD
         })
@@ -397,7 +415,7 @@ async fn sync_labels(
                 event.geocoded = Some(
                     if let Some(geocoded) = old_events
                         .get(&id)
-                        .filter(|e| e.location == event.ics.location)
+                        .filter(|e| e.location == event.location)
                         .and_then(|e| e.geocoded.as_ref())
                     {
                         // Already have geocoding data, ignore.
@@ -406,7 +424,7 @@ async fn sync_labels(
                         // Need to geocode and get timezone from Google Maps.
                         if let Some(geocoding) = google_maps_client
                             .geocoding()
-                            .with_address(&event.ics.location)
+                            .with_address(&event.location)
                             .execute()
                             .await?
                             .results
@@ -416,7 +434,7 @@ async fn sync_labels(
                             let tz = google_maps_client
                                 .time_zone(
                                     geocoding.geometry.location,
-                                    event.ics.dtstart.and_time(chrono::NaiveTime::MIN).and_utc(),
+                                    event.start_date.and_time(chrono::NaiveTime::MIN).and_utc(),
                                 )
                                 .execute()
                                 .await?;
@@ -481,7 +499,7 @@ async fn sync_labels(
 
     // Create new events.
     let mut sorted_events = events.iter_mut().collect::<Vec<_>>();
-    sorted_events.sort_by_key(|(_, event)| (event.ics.dtstart, event.ics.dtend));
+    sorted_events.sort_by_key(|(_, event)| (event.start_date, event.end_date));
 
     {
         let mut created_at = now;
@@ -500,6 +518,8 @@ async fn sync_labels(
             event.rkey = Some(Some(rkey.clone()));
 
             {
+                let text = format!("{} {}", event.name, event.year);
+
                 let record: atrium_api::app::bsky::feed::post::Record =
                     atrium_api::app::bsky::feed::post::RecordData {
                         created_at: atrium_api::types::string::Datetime::new(
@@ -514,7 +534,6 @@ async fn sync_labels(
                         .unwrap()]),
                         reply: None,
                         tags: None,
-                        text: format!("{}", event.ics.summary),
                         facets: Some(vec![atrium_api::app::bsky::richtext::facet::MainData {
                             features: vec![atrium_api::types::Union::Refs(
                                 atrium_api::app::bsky::richtext::facet::MainFeaturesItem::Link(
@@ -532,11 +551,12 @@ async fn sync_labels(
                             )],
                             index: atrium_api::app::bsky::richtext::facet::ByteSliceData {
                                 byte_start: 0,
-                                byte_end: event.ics.summary.bytes().len(),
+                                byte_end: text.bytes().len(),
                             }
                             .into(),
                         }
                         .into()]),
+                        text,
                     }
                     .into();
 
@@ -601,7 +621,7 @@ async fn sync_labels(
                         sorted_events.iter()
                             .map(|(id, event)| {
                                 // The "DTEND" property for a "VEVENT" calendar component specifies the non-inclusive end of the event.
-                                let end_date = event.ics.dtend - chrono::Days::new(1);
+                                let end_date = event.end_date - chrono::Days::new(1);
 
                                 let mut def: atrium_api::com::atproto::label::defs::LabelValueDefinition = atrium_api::com::atproto::label::defs::LabelValueDefinitionData {
                                     adult_only: Some(false),
@@ -613,11 +633,11 @@ async fn sync_labels(
                                             "en".to_string(),
                                         )
                                         .unwrap(),
-                                        name: event.ics.summary.clone(),
+                                        name: format!("{} {}", event.name, event.year),
                                         description: format!(
                                             "📅 {start_date} – {end_date}\n📍 {location}",
-                                            location = event.ics.location,
-                                            start_date = event.ics.dtstart,
+                                            location = event.location,
+                                            start_date = event.start_date,
                                             end_date = end_date
                                         ),
                                     }
@@ -646,11 +666,11 @@ async fn sync_labels(
                                     ipld_core::serde::to_ipld(LabelerEventInfo {
                                         date: format!(
                                             "{}/{}",
-                                            event.ics.dtstart.format("%Y-%m-%d"),
+                                            event.start_date.format("%Y-%m-%d"),
                                             end_date
                                         ),
-                                        location: event.ics.location.clone(),
-                                        url: event.ics.url.clone(),
+                                        location: event.location.clone(),
+                                        url: event.url.clone(),
                                         geocoded: event.geocoded.clone(),
                                     }).unwrap(),
                                 );
