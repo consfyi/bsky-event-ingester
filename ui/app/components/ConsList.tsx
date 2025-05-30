@@ -22,7 +22,7 @@ import {
   Tooltip,
 } from "@mantine/core";
 import { useLocalStorage } from "@mantine/hooks";
-import { Link, useSearchParams } from "@remix-run/react";
+import { Link, useSearchParams } from "react-router";
 import {
   IconAdjustmentsHorizontal,
   IconCalendar,
@@ -1235,6 +1235,7 @@ export default function ConsList({ cons }: { cons: ConWithPost[] }) {
 
     return (
       // Query
+      (// Followed filter
       con.name.toLowerCase().startsWith(query.toLowerCase()) &&
       // Attending filter
       (!actuallyShowOnlyAttending || con.post.viewer?.like != null) &&
@@ -1246,11 +1247,8 @@ export default function ConsList({ cons }: { cons: ConWithPost[] }) {
       ) &&
       // Duration filter
       duration >= minDuration &&
-      duration <= maxDuration &&
-      // Followed filter
-      (!actuallyShowOnlyFollowed ||
-        followedConAttendees == null ||
-        (followedConAttendees[con.identifier] ?? []).length > 0)
+      duration <= maxDuration && (!actuallyShowOnlyFollowed ||
+        followedConAttendees == null || (followedConAttendees[con.identifier] ?? []).length > 0))
     );
   });
 

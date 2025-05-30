@@ -12,7 +12,7 @@ import {
   Text,
   Title,
 } from "@mantine/core";
-import { useParams } from "@remix-run/react";
+import { useParams } from "react-router";
 import { Suspense, useEffect } from "react";
 import Avatar from "~/components/Avatar";
 import { ConRow } from "~/components/ConsList";

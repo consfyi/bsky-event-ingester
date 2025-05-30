@@ -35,7 +35,7 @@ import {
   startNavigationProgress,
 } from "@mantine/nprogress";
 import "@mantine/nprogress/styles.css";
-import { LinksFunction } from "@remix-run/node";
+import { LinksFunction } from "react-router";
 import {
   Link,
   Links,
@@ -46,7 +46,7 @@ import {
   ScrollRestoration,
   useNavigation,
   useRouteError,
-} from "@remix-run/react";
+} from "react-router";
 import {
   IconAlertTriangle,
   IconBrandBluesky,
@@ -114,7 +114,7 @@ function Header() {
   const self = useSelf();
 
   return (
-    <Box
+    (<Box
       style={{
         background: "var(--mantine-color-body)",
         borderBottom: "1px solid var(--mantine-color-default-border)",
@@ -279,7 +279,7 @@ function Header() {
           )}
         </Group>
       </Container>
-    </Box>
+    </Box>)
   );
 }
 
@@ -545,7 +545,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
   return (
     // lang is set by LinguiProvider.
     // eslint-disable-next-line jsx-a11y/html-has-lang
-    <html>
+    (<html>
       <head>
         <meta charSet="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -599,7 +599,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <ScrollRestoration />
         <Scripts />
       </body>
-    </html>
+    </html>)
   );
 }
 

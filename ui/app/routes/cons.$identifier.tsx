@@ -13,7 +13,7 @@ import {
   Title,
   Tooltip,
 } from "@mantine/core";
-import { Link, useParams } from "@remix-run/react";
+import { Link, useParams } from "react-router";
 import {
   IconBrandBluesky,
   IconCalendar,
@@ -96,7 +96,7 @@ function Header({ con }: { con: ConWithPost }) {
   const active = isAfter(now, con.start) && !isAfter(now, addDays(con.end, 1));
 
   return (
-    <Box mb="sm">
+    (<Box mb="sm">
       <Group gap={7} wrap="nowrap" align="top">
         {con.post.viewer != null ? (
           <Box mt={2} mb={-2}>
@@ -186,7 +186,7 @@ function Header({ con }: { con: ConWithPost }) {
           </Text>
         </Group>
       </Box>
-    </Box>
+    </Box>)
   );
 }
 

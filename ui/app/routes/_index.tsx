@@ -1,5 +1,5 @@
 import { Center, Loader } from "@mantine/core";
-import type { MetaFunction } from "@remix-run/node";
+import type { MetaFunction } from "react-router";
 import { Suspense } from "react";
 import ConsList from "~/components/ConsList";
 import SimpleErrorBoundary from "~/components/SimpleErrorBoundary";
