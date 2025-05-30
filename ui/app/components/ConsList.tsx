@@ -1324,7 +1324,9 @@ export default function ConsList({ cons }: { cons: ConWithPost[] }) {
             <ConsByDate
               cons={filteredCons}
               sortDesc={viewOptions.sort.desc}
-              hideEmptyGroups={actuallyShowOnlyAttending}
+              hideEmptyGroups={
+                actuallyShowOnlyAttending || viewOptions.filter.query != ""
+              }
             />
           ) : null
         ) : (
