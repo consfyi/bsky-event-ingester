@@ -13,7 +13,6 @@ import {
   Title,
   Tooltip,
 } from "@mantine/core";
-import { Link, useParams } from "react-router";
 import {
   IconBrandBluesky,
   IconCalendar,
@@ -23,6 +22,7 @@ import {
 import { addDays, differenceInDays, isAfter } from "date-fns";
 import { range, sortBy } from "lodash-es";
 import { Suspense, useEffect, useMemo } from "react";
+import { Link, useParams } from "react-router";
 import Avatar from "~/components/Avatar";
 import Flag from "~/components/Flag";
 import LikeButton from "~/components/LikeButton";
@@ -39,6 +39,7 @@ import {
   useSelf,
   useSelfFollowsDLE,
 } from "~/hooks";
+import { Route } from "./+types/cons.$identifier";
 
 function ActorSkeleton() {
   return (
@@ -96,7 +97,7 @@ function Header({ con }: { con: ConWithPost }) {
   const active = isAfter(now, con.start) && !isAfter(now, addDays(con.end, 1));
 
   return (
-    (<Box mb="sm">
+    <Box mb="sm">
       <Group gap={7} wrap="nowrap" align="top">
         {con.post.viewer != null ? (
           <Box mt={2} mb={-2}>
@@ -186,7 +187,7 @@ function Header({ con }: { con: ConWithPost }) {
           </Text>
         </Group>
       </Box>
-    </Box>)
+    </Box>
   );
 }
 
@@ -271,7 +272,7 @@ function AttendeesList({
 export default function Index() {
   const cons = useConsWithPosts();
 
-  const { identifier } = useParams();
+  const { identifier } = useParams<Route.LoaderArgs["params"]>();
   const self = useSelf();
 
   const con =

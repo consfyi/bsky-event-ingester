@@ -6,14 +6,13 @@ import {
   Center,
   Divider,
   Flex,
-  Group,
   Loader,
   SimpleGrid,
   Text,
   Title,
 } from "@mantine/core";
-import { useParams } from "react-router";
 import { Suspense, useEffect } from "react";
+import { useParams } from "react-router";
 import Avatar from "~/components/Avatar";
 import { ConRow } from "~/components/ConsList";
 import { Profile } from "~/endpoints";
@@ -23,6 +22,7 @@ import {
   useProfileLabels,
   useSelf,
 } from "~/hooks";
+import { Route } from "./+types/users.$actor";
 
 function Attending({ profile }: { profile: Profile }) {
   const self = useSelf();
@@ -104,7 +104,7 @@ function Attending({ profile }: { profile: Profile }) {
 }
 
 export default function Index() {
-  const { actor } = useParams();
+  const { actor } = useParams<Route.LoaderArgs["params"]>();
 
   const profile = useProfile(actor as ActorIdentifier);
 
