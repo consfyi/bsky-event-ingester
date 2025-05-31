@@ -121,7 +121,7 @@ export function ConRow({
 
   return (
     <Group gap="xs" wrap="nowrap">
-      <Anchor component={Link} to={`/cons/${con.identifier}`}>
+      <Anchor component={Link} to={`/cons/${con.slug}`}>
         <Indicator
           position="top-start"
           color="green"
@@ -169,7 +169,7 @@ export function ConRow({
             {con.geocoded != null ? (
               <Flag country={con.geocoded.country ?? "XX"} size={10} me={6} />
             ) : null}
-            <Anchor fw={500} component={Link} to={`/cons/${con.identifier}`}>
+            <Anchor fw={500} component={Link} to={`/cons/${con.slug}`}>
               {con.name}
             </Anchor>
           </Text>

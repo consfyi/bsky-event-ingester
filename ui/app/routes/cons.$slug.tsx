@@ -39,7 +39,7 @@ import {
   useSelf,
   useSelfFollowsDLE,
 } from "~/hooks";
-import { Route } from "./+types/cons.$identifier";
+import { Route } from "./+types/cons.$slug";
 
 function ActorSkeleton() {
   return (
@@ -272,17 +272,28 @@ function AttendeesList({
 export default function Index() {
   const cons = useConsWithPosts();
 
-  const { identifier } = useParams<Route.LoaderArgs["params"]>();
+  const { slug } = useParams<Route.LoaderArgs["params"]>();
   const self = useSelf();
 
   const con =
-    cons != null ? cons.find((con) => con.identifier == identifier) : null;
+    cons != null
+      ? cons.find((con) => con.slug == slug || con.identifier == slug)
+      : null;
 
   const { data: followedConAttendees, loading: followedConAttendeesLoading } =
     useFollowedConAttendeesDLE();
 
   useEffect(() => {
     document.title = con != null ? con.name : "";
+  }, [con]);
+
+  useEffect(() => {
+    if (con == null) {
+      return;
+    }
+    if (slug != con.slug) {
+      window.history.replaceState(null, "", `/cons/${con.slug}`);
+    }
   }, [con]);
 
   if (con == null) {

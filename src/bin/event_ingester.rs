@@ -153,6 +153,7 @@ struct Event {
     start_date: chrono::NaiveDate,
     end_date: chrono::NaiveDate,
     geocoded: Option<Geocoded>,
+    slug: Option<String>,
     rkey: Option<Option<atrium_api::types::string::RecordKey>>,
 }
 
@@ -219,6 +220,7 @@ async fn fetch_events(
                     location: event.location,
                     start_date: event.dtstart,
                     end_date: event.dtend,
+                    slug: None,
                     geocoded: None,
                     rkey: None,
                 },
@@ -240,6 +242,7 @@ const EXTRA_DATA_EVENT_INFO: &str = "fbl_eventInfo";
 struct OldEvent {
     rkey: Option<atrium_api::types::string::RecordKey>,
     location: String,
+    slug: Option<String>,
     geocoded: Option<Geocoded>,
 }
 
@@ -322,6 +325,7 @@ async fn fetch_old_events(
                                 .as_ref()
                                 .map(|info| info.location.to_string())
                                 .unwrap_or_else(|| "".to_string()),
+                            slug: info.as_ref().map(|info| info.slug.to_string()),
                             geocoded: info.and_then(|info| info.geocoded),
                         },
                     ))
@@ -490,6 +494,24 @@ async fn sync_labels(
             .collect();
     }
 
+    for (id, event) in events.iter_mut() {
+        event.slug = Some(
+            if let Some(slug) = old_events.get(id).and_then(|oe| oe.slug.as_ref()) {
+                slug.clone()
+            } else {
+                let langid = event
+                    .geocoded
+                    .as_ref()
+                    .and_then(|g| g.country.as_ref())
+                    .and_then(|c| c.parse().ok())
+                    .map(|region| guess_language_for_region(region))
+                    .unwrap_or(icu_locale::LanguageIdentifier::UNKNOWN);
+
+                format!("{}-{}", slugify(&event.name, &langid), event.year)
+            },
+        );
+    }
+
     // Delete events.
     for (id, oe) in old_events.into_iter() {
         if let Some(event) = events.get_mut(&id) {
@@ -531,7 +553,7 @@ async fn sync_labels(
     {
         let mut created_at = now;
 
-        for (id, event) in sorted_events.iter_mut() {
+        for (_, event) in sorted_events.iter_mut() {
             if event.rkey.is_some() {
                 continue;
             }
@@ -569,7 +591,7 @@ async fn sync_labels(
                                             uri: format!(
                                                 "{}/cons/{}",
                                                 ui_endpoint,
-                                                base26::encode(**id)
+                                                event.slug.as_ref().unwrap()
                                             ),
                                         }
                                         .into(),
@@ -687,18 +709,10 @@ async fn sync_labels(
                                     },
                                 );
 
-                                let langid = event
-                                    .geocoded
-                                    .as_ref()
-                                    .and_then(|g| g.country.as_ref())
-                                    .and_then(|c| c.parse().ok())
-                                    .map(|region| guess_language_for_region(region))
-                                    .unwrap_or(icu_locale::LanguageIdentifier::UNKNOWN);
-
                                 extra_data.insert(
                                     EXTRA_DATA_EVENT_INFO.to_string(),
                                     ipld_core::serde::to_ipld(LabelerEventInfo {
-                                        slug: format!("{}-{}", slugify(&event.name, &langid), event.year),
+                                        slug: event.slug.as_ref().unwrap().clone(),
                                         name: event.name.clone(),
                                         year: event.year,
                                         date: format!(
