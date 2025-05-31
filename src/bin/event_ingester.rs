@@ -45,6 +45,7 @@ struct EventsState {
 #[derive(serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct LabelerEventInfo {
+    slug: String,
     name: String,
     year: u32,
     date: String,
@@ -327,6 +328,27 @@ async fn fetch_old_events(
                 })
                 .collect::<std::collections::HashMap<_, _>>()
         }))
+}
+
+fn guess_language_for_region(
+    region: icu_locale::subtags::Region,
+) -> icu_locale::LanguageIdentifier {
+    static LOCALE_EXPANDER: std::sync::LazyLock<icu_locale::LocaleExpander> =
+        std::sync::LazyLock::new(|| icu_locale::LocaleExpander::new_common());
+
+    let mut langid = icu_locale::LanguageIdentifier::UNKNOWN;
+    langid.region = Some(region);
+    LOCALE_EXPANDER.maximize(&mut langid);
+    langid
+}
+
+fn slugify(s: &str, langid: &icu_locale::LanguageIdentifier) -> String {
+    static CASE_MAPPER: std::sync::LazyLock<icu_casemap::CaseMapperBorrowed<'static>> =
+        std::sync::LazyLock::new(|| icu_casemap::CaseMapper::new());
+    CASE_MAPPER
+        .lowercase_to_string(s, langid)
+        .replace(" ", "-")
+        .to_string()
 }
 
 async fn sync_labels(
@@ -664,10 +686,18 @@ async fn sync_labels(
                                     },
                                 );
 
+                                let langid = event
+                                    .geocoded
+                                    .as_ref()
+                                    .and_then(|g| g.country.as_ref())
+                                    .and_then(|c| c.parse().ok())
+                                    .map(|region| guess_language_for_region(region))
+                                    .unwrap_or(icu_locale::LanguageIdentifier::UNKNOWN);
 
                                 extra_data.insert(
                                     EXTRA_DATA_EVENT_INFO.to_string(),
                                     ipld_core::serde::to_ipld(LabelerEventInfo {
+                                        slug: slugify(&format!("{} {}", event.name, event.year), &langid),
                                         name: event.name.clone(),
                                         year: event.year,
                                         date: format!(
