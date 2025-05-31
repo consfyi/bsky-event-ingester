@@ -333,9 +333,7 @@ async fn fetch_old_events(
 fn guess_language_for_region(
     region: icu_locale::subtags::Region,
 ) -> icu_locale::LanguageIdentifier {
-    static LOCALE_EXPANDER: std::sync::LazyLock<icu_locale::LocaleExpander> =
-        std::sync::LazyLock::new(|| icu_locale::LocaleExpander::new_common());
-
+    const LOCALE_EXPANDER: icu_locale::LocaleExpander = icu_locale::LocaleExpander::new_common();
     let mut langid = icu_locale::LanguageIdentifier::UNKNOWN;
     langid.region = Some(region);
     LOCALE_EXPANDER.maximize(&mut langid);
@@ -343,8 +341,7 @@ fn guess_language_for_region(
 }
 
 fn slugify(s: &str, langid: &icu_locale::LanguageIdentifier) -> String {
-    static CASE_MAPPER: std::sync::LazyLock<icu_casemap::CaseMapperBorrowed<'static>> =
-        std::sync::LazyLock::new(|| icu_casemap::CaseMapper::new());
+    const CASE_MAPPER: icu_casemap::CaseMapperBorrowed<'static> = icu_casemap::CaseMapper::new();
     CASE_MAPPER
         .lowercase_to_string(s, langid)
         .replace(" ", "-")
