@@ -51,26 +51,20 @@ pub fn from_roman(s: &str) -> Option<u32> {
         })
     }
 
-    let chars: Vec<char> = s.chars().collect();
+    let mut iter = s.chars().peekable();
     let mut total = 0;
-    let mut i = 0;
 
-    while i < chars.len() {
-        let current = symbol_to_int(chars[i])?;
-
-        let next = if i + 1 < chars.len() {
-            symbol_to_int(chars[i + 1])?
-        } else {
-            0
-        };
-
-        if next > current {
-            total += next - current;
-            i += 2;
-        } else {
-            total += current;
-            i += 1;
+    while let Some(c1) = iter.next() {
+        let v1 = symbol_to_int(c1)?;
+        if let Some(c2) = iter.peek() {
+            let v2 = symbol_to_int(*c2)?;
+            if v2 > v1 {
+                total += v2 - v1;
+                iter.next();
+                continue;
+            }
         }
+        total += v1;
     }
 
     Some(total)
