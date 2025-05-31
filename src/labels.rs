@@ -25,23 +25,21 @@ pub async fn emit(
 
     label.sig = Some(keypair.sign(&serde_ipld_dagcbor::to_vec(&label)?)?);
 
-    let seq = {
-        sqlx::query!(
-            r#"
-            INSERT INTO labels (val, uri, neg, payload, like_rkey)
-            VALUES ($1, $2, $3, $4, $5)
-            RETURNING seq
-            "#,
-            label.val,
-            label.uri,
-            label.neg.unwrap_or(false),
-            serde_ipld_dagcbor::to_vec(&label)?,
-            like_rkey,
-        )
-        .fetch_one(&mut **tx)
-        .await?
-        .seq
-    };
+    let seq = sqlx::query!(
+        r#"
+        INSERT INTO labels (val, uri, neg, payload, like_rkey)
+        VALUES ($1, $2, $3, $4, $5)
+        RETURNING seq
+        "#,
+        label.val,
+        label.uri,
+        label.neg.unwrap_or(false),
+        serde_ipld_dagcbor::to_vec(&label)?,
+        like_rkey,
+    )
+    .fetch_one(&mut **tx)
+    .await?
+    .seq;
 
     sqlx::query!("NOTIFY labels").execute(&mut **tx).await?;
 
