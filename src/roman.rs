@@ -168,12 +168,10 @@ mod tests {
 
     #[test]
     fn test_round_trip() {
-        let samples = [
+        for n in [
             3, 8, 14, 27, 44, 59, 73, 88, 99, 142, 199, 242, 388, 499, 501, 688, 944, 1001, 2025,
             3050, 3888, 3999, 4444, 5000,
-        ];
-
-        for &n in &samples {
+        ] {
             assert_eq!(from_roman(&to_roman(n)), Some(n));
         }
     }
