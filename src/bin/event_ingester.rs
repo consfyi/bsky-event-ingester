@@ -349,7 +349,7 @@ fn slugify(s: &str, langid: &icu_locale::LanguageIdentifier) -> String {
         std::sync::LazyLock::new(|| regex::Regex::new(r"[^\p{L}\p{N}\s-]+").unwrap());
     const CASE_MAPPER: icu_casemap::CaseMapperBorrowed<'static> = icu_casemap::CaseMapper::new();
     const NORMALIZER: icu_normalizer::ComposingNormalizerBorrowed<'static> =
-        icu_normalizer::ComposingNormalizer::new_nfc();
+        icu_normalizer::ComposingNormalizer::new_nfkc();
 
     CASE_MAPPER
         .lowercase_to_string(&RE.replace_all(&NORMALIZER.normalize(s), ""), langid)
