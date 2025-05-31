@@ -92,6 +92,7 @@ export interface Geocoded {
 
 export interface Con {
   identifier: string;
+  slug: string;
   name: string;
   start: TZDate;
   end: TZDate;
@@ -115,6 +116,7 @@ export function useCons() {
         (def) => {
           const fullDef = def as typeof def & {
             fbl_eventInfo: {
+              slug: string;
               date: string;
               location: string;
               geocoded?: Geocoded | null;
@@ -141,6 +143,7 @@ export function useCons() {
           return [
             {
               identifier: def.identifier,
+              slug: fullDef.fbl_eventInfo.slug,
               name: strings.name,
               start: startDate,
               end: endDate,

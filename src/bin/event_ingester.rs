@@ -341,11 +341,15 @@ fn guess_language_for_region(
 }
 
 fn slugify(s: &str, langid: &icu_locale::LanguageIdentifier) -> String {
+    static RE: std::sync::LazyLock<regex::Regex> =
+        std::sync::LazyLock::new(|| regex::Regex::new(r"[^\p{L}\p{N}\s]+").unwrap());
     const CASE_MAPPER: icu_casemap::CaseMapperBorrowed<'static> = icu_casemap::CaseMapper::new();
+
     CASE_MAPPER
-        .lowercase_to_string(s, langid)
-        .replace(" ", "-")
-        .to_string()
+        .lowercase_to_string(&RE.replace_all(s, ""), langid)
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join("-")
 }
 
 async fn sync_labels(
@@ -694,7 +698,7 @@ async fn sync_labels(
                                 extra_data.insert(
                                     EXTRA_DATA_EVENT_INFO.to_string(),
                                     ipld_core::serde::to_ipld(LabelerEventInfo {
-                                        slug: slugify(&format!("{} {}", event.name, event.year), &langid),
+                                        slug: format!("{}-{}", slugify(&event.name, &langid), event.year),
                                         name: event.name.clone(),
                                         year: event.year,
                                         date: format!(
