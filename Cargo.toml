@@ -20,7 +20,7 @@ htmlize = { version = "1", features = ["unescape"] }
 icalendar = "0.16"
 icu_casemap = "2"
 icu_locale = "2"
-icu_normalizer = "2.0.0"
+icu_normalizer = "2"
 ipld-core = { version = "0.4", features = ["serde"] }
 jetstream-oxide = "0.1"
 log = "0.4"
