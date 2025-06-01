@@ -18,6 +18,7 @@ struct Config {
     keypair_path: String,
     label_sync_delay_secs: u64,
     google_maps_api_key: String,
+    commit_firehose_cursor_every_secs: u64,
 }
 
 #[derive(Debug)]
@@ -796,6 +797,7 @@ async fn service_jetstream(
     keypair: &atrium_crypto::keypair::Secp256k1Keypair,
     events_state: std::sync::Arc<tokio::sync::Mutex<EventsState>>,
     jetstream_endpoint: &str,
+    commit_firehose_cursor_every: std::time::Duration,
 ) -> Result<(), anyhow::Error> {
     let mut cursor = {
         let mut db_conn = db_pool.acquire().await?;
@@ -812,6 +814,7 @@ async fn service_jetstream(
             keypair,
             events_state.clone(),
             jetstream_endpoint,
+            commit_firehose_cursor_every,
             cursor,
         )
         .await?;
@@ -825,8 +828,11 @@ async fn service_jetstream_once(
     keypair: &atrium_crypto::keypair::Secp256k1Keypair,
     events_state: std::sync::Arc<tokio::sync::Mutex<EventsState>>,
     jetstream_endpoint: &str,
+    commit_firehose_cursor_every: std::time::Duration,
     mut cursor: Option<i64>,
 ) -> Result<Option<i64>, anyhow::Error> {
+    let mut last_firehose_commit_time = std::time::SystemTime::now();
+
     let jetstream = jetstream_oxide::JetstreamConnector::new(jetstream_oxide::JetstreamConfig {
         endpoint: jetstream_endpoint.to_string(),
         compression: jetstream_oxide::JetstreamCompression::Zstd,
@@ -975,20 +981,24 @@ async fn service_jetstream_once(
         }
         .await?;
 
-        let mut tx = db_conn.begin().await?;
-        sqlx::query!(r#"SET LOCAL synchronous_commit TO OFF"#)
-            .execute(&mut *tx)
-            .await?;
-        sqlx::query!(
-            r#"
+        let now = std::time::SystemTime::now();
+        if now >= last_firehose_commit_time + commit_firehose_cursor_every {
+            let mut tx = db_conn.begin().await?;
+            sqlx::query!(r#"SET LOCAL synchronous_commit TO OFF"#)
+                .execute(&mut *tx)
+                .await?;
+            sqlx::query!(
+                r#"
             INSERT INTO jetstream_cursor (cursor) VALUES ($1)
             ON CONFLICT ((true)) DO UPDATE SET cursor = excluded.cursor
             "#,
-            next_cursor as i64,
-        )
-        .execute(&mut *tx)
-        .await?;
-        tx.commit().await?;
+                next_cursor as i64,
+            )
+            .execute(&mut *tx)
+            .await?;
+            tx.commit().await?;
+            last_firehose_commit_time = now;
+        }
 
         metrics::gauge!("jetstream_cursor").set(next_cursor as f64);
 
@@ -1027,6 +1037,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .set_default("label_sync_delay_secs", 60 * 60)?
         .set_default("ingester_bind", "127.0.0.1:3002")?
         .set_default("google_maps_api_key", "")?
+        .set_default("commit_firehose_cursor_every_secs", 5)?
         .build()?
         .try_deserialize()?;
 
@@ -1119,6 +1130,7 @@ async fn main() -> Result<(), anyhow::Error> {
                 &keypair,
                 events_state.clone(),
                 &config.jetstream_endpoint,
+                std::time::Duration::from_secs(config.commit_firehose_cursor_every_secs),
             )
             .await?;
             unreachable!();
