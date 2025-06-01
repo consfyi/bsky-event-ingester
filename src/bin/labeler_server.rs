@@ -9,12 +9,21 @@ struct Config {
 #[derive(Copy, Clone)]
 enum Message<'a> {
     Labels { seq: i64, labels: &'a [u8] },
-    Error { error: &'a str },
+    Error { error: EventStreamError },
 }
 
-const FUTURE_CURSOR_ERROR: Message<'static> = Message::Error {
-    error: "FutureCursor",
-};
+#[derive(Copy, Clone)]
+enum EventStreamError {
+    FutureCursor,
+}
+
+impl EventStreamError {
+    pub fn as_str(&self) -> &str {
+        match self {
+            Self::FutureCursor => "FutureCursor",
+        }
+    }
+}
 
 fn encode_message(msg: Message) -> Vec<u8> {
     let mut writer = minicbor::Encoder::new(vec![]);
@@ -71,7 +80,7 @@ fn encode_message(msg: Message) -> Vec<u8> {
                 //
                 .str("error")
                 .unwrap()
-                .str(error)
+                .str(error.as_str())
                 .unwrap();
         }
     }
@@ -116,7 +125,10 @@ async fn subscribe_labels(
             if let Some(cursor) = params.cursor {
                 if cursor > seq {
                     sink.send(axum::extract::ws::Message::Binary(
-                        encode_message(FUTURE_CURSOR_ERROR).into(),
+                        encode_message(Message::Error {
+                            error: EventStreamError::FutureCursor,
+                        })
+                        .into(),
                     ))
                     .await?;
                     return Ok::<_, anyhow::Error>(());
