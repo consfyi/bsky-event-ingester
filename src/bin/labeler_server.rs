@@ -49,14 +49,19 @@ fn encode_message(msg: Message) -> Vec<u8> {
         }
 
         Message::FutureCursorError => {
-            // {"op": -1, "error": "FutureCursor"}
+            // {"op": -1}
             writer
-                .map(2)
+                .map(1)
                 .unwrap()
                 //
                 .str("op")
                 .unwrap()
                 .i64(-1)
+                .unwrap();
+
+            // {"error": "FutureCursor"}
+            writer
+                .map(1)
                 .unwrap()
                 //
                 .str("error")
