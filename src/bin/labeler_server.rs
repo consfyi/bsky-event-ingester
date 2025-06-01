@@ -6,39 +6,65 @@ struct Config {
     postgres_url: String,
 }
 
-fn encode_message(seq: i64, raw: &[u8]) -> Vec<u8> {
+enum Message<'a> {
+    Labels { seq: i64, labels: &'a [u8] },
+    FutureCursorError,
+}
+
+fn encode_message(msg: Message) -> Vec<u8> {
     let mut writer = minicbor::Encoder::new(vec![]);
 
-    // {"t": "#labels", "op": 1}
-    writer
-        .map(2)
-        .unwrap()
-        //
-        .str("t")
-        .unwrap()
-        .str("#labels")
-        .unwrap()
-        //
-        .str("op")
-        .unwrap()
-        .i64(1)
-        .unwrap();
+    match msg {
+        Message::Labels { seq, labels } => {
+            // {"t": "#labels", "op": 1}
+            writer
+                .map(2)
+                .unwrap()
+                //
+                .str("t")
+                .unwrap()
+                .str("#labels")
+                .unwrap()
+                //
+                .str("op")
+                .unwrap()
+                .i64(1)
+                .unwrap();
 
-    // com.atproto.label.subscribeLabels#labels
-    writer
-        .map(2)
-        .unwrap()
-        //
-        .str("seq")
-        .unwrap()
-        .i64(seq)
-        .unwrap()
-        //
-        .str("labels")
-        .unwrap()
-        .array(1)
-        .unwrap();
-    writer.writer_mut().extend(raw);
+            // com.atproto.label.subscribeLabels#labels
+            writer
+                .map(2)
+                .unwrap()
+                //
+                .str("seq")
+                .unwrap()
+                .i64(seq)
+                .unwrap()
+                //
+                .str("labels")
+                .unwrap()
+                .array(1)
+                .unwrap();
+            writer.writer_mut().extend(labels);
+        }
+
+        Message::FutureCursorError => {
+            // {"op": -1, "error": "FutureCursor"}
+            writer
+                .map(2)
+                .unwrap()
+                //
+                .str("op")
+                .unwrap()
+                .i64(-1)
+                .unwrap()
+                //
+                .str("error")
+                .unwrap()
+                .str("FutureCursor")
+                .unwrap();
+        }
+    }
 
     writer.into_writer()
 }
@@ -60,19 +86,15 @@ async fn subscribe_labels(
 
         match async {
             let mut seq = {
-                if let Some(cursor) = params.cursor {
-                    cursor
-                } else {
-                    let mut db_conn = db_pool.acquire().await?;
-                    sqlx::query!(
-                        r#"
-                        SELECT COALESCE((SELECT MAX(seq) FROM labels), 0) AS "seq!"
-                        "#
-                    )
-                    .fetch_one(&mut *db_conn)
-                    .await?
-                    .seq
-                }
+                let mut db_conn = db_pool.acquire().await?;
+                sqlx::query!(
+                    r#"
+                    SELECT COALESCE((SELECT MAX(seq) FROM labels), 0) AS "seq!"
+                    "#
+                )
+                .fetch_one(&mut *db_conn)
+                .await?
+                .seq
             };
 
             log::info!(
@@ -80,6 +102,17 @@ async fn subscribe_labels(
                 params.cursor,
                 seq
             );
+
+            if let Some(cursor) = params.cursor {
+                if cursor > seq {
+                    sink.send(axum::extract::ws::Message::Binary(
+                        encode_message(Message::FutureCursorError).into(),
+                    ))
+                    .await?;
+                    return Ok::<_, anyhow::Error>(());
+                }
+                seq = cursor;
+            }
 
             loop {
                 tokio::select! {
@@ -107,7 +140,7 @@ async fn subscribe_labels(
                             let row = row?;
 
                             sink.send(axum::extract::ws::Message::Binary(
-                                encode_message(row.seq, &row.payload).into(),
+                                encode_message(Message::Labels { seq: row.seq, labels: &row.payload}).into(),
                             ))
                             .await?;
 
