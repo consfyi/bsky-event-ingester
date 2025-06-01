@@ -54,7 +54,6 @@ async fn subscribe_labels(
     notify_recv.mark_changed();
 
     ws.on_upgrade(move |socket: axum::extract::ws::WebSocket| async move {
-        log::info!("got websocket subscriber, cursor = {:?}", params.cursor);
         metrics::gauge!("num_subscriptions").increment(1);
 
         let (mut sink, mut stream) = socket.split();
@@ -75,6 +74,12 @@ async fn subscribe_labels(
                     .seq
                 }
             };
+
+            log::info!(
+                "got websocket subscriber, cursor = {:?}, seq = {}",
+                params.cursor,
+                seq
+            );
 
             loop {
                 tokio::select! {
