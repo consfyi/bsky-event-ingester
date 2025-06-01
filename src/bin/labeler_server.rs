@@ -150,7 +150,10 @@ async fn subscribe_labels(
                             let row = row?;
 
                             sink.send(axum::extract::ws::Message::Binary(
-                                encode_message(Message::Labels { seq: row.seq, labels: &row.payload}).into(),
+                                encode_message(Message::Labels {
+                                    seq: row.seq,
+                                    labels: &row.payload,
+                                }).into(),
                             ))
                             .await?;
 
