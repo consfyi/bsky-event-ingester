@@ -6,10 +6,15 @@ struct Config {
     postgres_url: String,
 }
 
+#[derive(Copy, Clone)]
 enum Message<'a> {
     Labels { seq: i64, labels: &'a [u8] },
-    FutureCursorError,
+    Error { error: &'a str },
 }
+
+const FUTURE_CURSOR_ERROR: Message<'static> = Message::Error {
+    error: "FutureCursor",
+};
 
 fn encode_message(msg: Message) -> Vec<u8> {
     let mut writer = minicbor::Encoder::new(vec![]);
@@ -48,7 +53,7 @@ fn encode_message(msg: Message) -> Vec<u8> {
             writer.writer_mut().extend(labels);
         }
 
-        Message::FutureCursorError => {
+        Message::Error { error } => {
             // {"op": -1}
             writer
                 .map(1)
@@ -66,7 +71,7 @@ fn encode_message(msg: Message) -> Vec<u8> {
                 //
                 .str("error")
                 .unwrap()
-                .str("FutureCursor")
+                .str(error)
                 .unwrap();
         }
     }
@@ -111,7 +116,7 @@ async fn subscribe_labels(
             if let Some(cursor) = params.cursor {
                 if cursor > seq {
                     sink.send(axum::extract::ws::Message::Binary(
-                        encode_message(Message::FutureCursorError).into(),
+                        encode_message(FUTURE_CURSOR_ERROR).into(),
                     ))
                     .await?;
                     return Ok::<_, anyhow::Error>(());
