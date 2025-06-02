@@ -18,7 +18,7 @@ enum EventStreamError {
 }
 
 impl EventStreamError {
-    pub fn as_str(&self) -> &str {
+    pub const fn as_str(&self) -> &str {
         match self {
             Self::FutureCursor => "FutureCursor",
         }

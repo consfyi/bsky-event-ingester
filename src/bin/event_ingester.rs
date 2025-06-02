@@ -7,7 +7,6 @@ use sqlx::Acquire as _;
 
 #[derive(serde::Deserialize)]
 struct Config {
-    ingester_bind: std::net::SocketAddr,
     bsky_username: String,
     bsky_password: String,
     bsky_endpoint: String,
@@ -762,8 +761,6 @@ async fn sync_labels(
 
     events_state.events = events;
 
-    metrics::gauge!("label_sync_time").set(chrono::Utc::now().timestamp_micros() as f64);
-
     Ok(())
 }
 
@@ -900,10 +897,8 @@ async fn service_jetstream_once(
                     log::info!("applying label: {:?}", label);
 
                     let mut tx = db_conn.begin().await?;
-                    let seq = labels::emit(keypair, &mut tx, label, &commit.info.rkey).await?;
+                    labels::emit(keypair, &mut tx, label, &commit.info.rkey).await?;
                     tx.commit().await?;
-
-                    metrics::gauge!("label_seq").set(seq as f64);
                 }
                 jetstream_oxide::events::commit::CommitEvent::Delete { info, commit } => {
                     let uri = info.did.to_string();
@@ -945,10 +940,8 @@ async fn service_jetstream_once(
                     log::info!("removing label: {:?}", label);
 
                     let mut tx = db_conn.begin().await?;
-                    let seq = labels::emit(keypair, &mut tx, label, &commit.rkey).await?;
+                    labels::emit(keypair, &mut tx, label, &commit.rkey).await?;
                     tx.commit().await?;
-
-                    metrics::gauge!("label_seq").set(seq as f64);
                 }
                 _ => {}
             }
@@ -976,8 +969,6 @@ async fn service_jetstream_once(
             last_firehose_commit_time = now;
         }
 
-        metrics::gauge!("jetstream_cursor").set(next_cursor as f64);
-
         cursor = Some(next_cursor);
     }
 
@@ -986,18 +977,6 @@ async fn service_jetstream_once(
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    metrics::describe_gauge!(
-        "jetstream_cursor",
-        metrics::Unit::Microseconds,
-        "jetstream cursor location"
-    );
-    metrics::describe_gauge!("label_seq", "sequence number of currently emitted label");
-    metrics::describe_gauge!(
-        "label_sync_time",
-        metrics::Unit::Microseconds,
-        "last label sync time"
-    );
-
     env_logger::init();
 
     let config: Config = config::Config::builder()
@@ -1038,11 +1017,6 @@ async fn main() -> Result<(), anyhow::Error> {
 
     let db_pool = sqlx::PgPool::connect(&config.postgres_url).await?;
 
-    let listener = tokio::net::TcpListener::bind(&config.ingester_bind).await?;
-
-    let metrics_handle =
-        metrics_exporter_prometheus::PrometheusBuilder::new().install_recorder()?;
-
     let google_maps_client = if !config.google_maps_api_key.is_empty() {
         Some(google_maps::Client::try_new(config.google_maps_api_key)?)
     } else {
@@ -1060,13 +1034,6 @@ async fn main() -> Result<(), anyhow::Error> {
         events_state.clone(),
     )
     .await?;
-
-    let app = axum::Router::new()
-        .route(
-            "/metrics",
-            axum::routing::get(|| async move { metrics_handle.render() }),
-        )
-        .route("/", axum::routing::get(|| async { ">:3" }));
 
     tokio::try_join!(
         async {
@@ -1109,14 +1076,6 @@ async fn main() -> Result<(), anyhow::Error> {
                 std::time::Duration::from_secs(config.commit_firehose_cursor_every_secs),
             )
             .await?;
-            unreachable!();
-
-            #[allow(unreachable_code)]
-            Ok::<_, anyhow::Error>(())
-        },
-        async {
-            // Serve labeler.
-            axum::serve(listener, app).await?;
             unreachable!();
 
             #[allow(unreachable_code)]
