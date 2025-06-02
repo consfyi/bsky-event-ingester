@@ -73,7 +73,7 @@ fn encode_message(msg: Message) -> Vec<u8> {
                 .i64(-1)
                 .unwrap();
 
-            // {"error": "FutureCursor"}
+            // {"error": error}
             writer
                 .map(1)
                 .unwrap()
