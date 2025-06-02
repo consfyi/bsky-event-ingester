@@ -45,6 +45,16 @@ async fn metrics(db_pool: sqlx::PgPool) -> Result<axum::response::Response, AppE
     .await?
     .cursor;
 
+    let current_timestamp = sqlx::query!(
+        r#"
+        SELECT CURRENT_TIMESTAMP AS "current_timestamp!"
+        "#
+    )
+    .fetch_one(&mut *tx)
+    .await?
+    .current_timestamp
+    .timestamp_micros();
+
     Ok(axum::http::Response::builder()
         .header(axum::http::header::CONTENT_TYPE, "text/plain")
         .body(axum::body::Body::from(format!(
@@ -54,6 +64,9 @@ label_seq {label_seq}
 
 # TYPE jetstream_cursor gauge
 jetstream_cursor {jetstream_cursor}
+
+# TYPE current_timestamp gauge
+current_timestamp {current_timestamp}
 "
         )))
         .unwrap())
