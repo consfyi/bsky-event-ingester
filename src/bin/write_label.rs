@@ -30,7 +30,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let mut db_conn = sqlx::PgConnection::connect(&config.postgres_url).await?;
 
     let mut tx = db_conn.begin().await?;
-    let seq = labels::emit(&keypair, &mut tx, label, &rkey).await?;
+    let seq = labels::emit(&keypair, &mut tx, &label, &rkey).await?;
     tx.commit().await?;
 
     println!("{seq}");

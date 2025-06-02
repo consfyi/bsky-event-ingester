@@ -1,5 +1,5 @@
 #[derive(thiserror::Error, Debug)]
-pub enum Error {
+pub enum SignError {
     #[error("already signed")]
     AlreadySigned,
 
@@ -8,23 +8,35 @@ pub enum Error {
 
     #[error("serde_ipld_dagcbor: {0}")]
     SerdeIpldDagcbor(#[from] serde_ipld_dagcbor::EncodeError<std::collections::TryReserveError>),
+}
 
-    #[error("sqlx: {0}")]
+pub fn sign_to_payload(
+    keypair: &atrium_crypto::keypair::Secp256k1Keypair,
+    label: &atrium_api::com::atproto::label::defs::Label,
+) -> Result<Vec<u8>, SignError> {
+    if label.sig.is_some() {
+        return Err(SignError::AlreadySigned);
+    }
+    let mut label = label.clone();
+    label.sig = Some(keypair.sign(&serde_ipld_dagcbor::to_vec(&label)?)?);
+    Ok(serde_ipld_dagcbor::to_vec(&label)?)
+}
+
+#[derive(thiserror::Error, Debug)]
+pub enum EmitError {
+    #[error("sign: {0}")]
+    Sign(#[from] SignError),
+
+    #[error("sign: {0}")]
     Sqlx(#[from] sqlx::Error),
 }
 
 pub async fn emit(
     keypair: &atrium_crypto::keypair::Secp256k1Keypair,
     tx: &mut sqlx::PgTransaction<'_>,
-    mut label: atrium_api::com::atproto::label::defs::Label,
+    label: &atrium_api::com::atproto::label::defs::Label,
     like_rkey: &str,
-) -> Result<i64, Error> {
-    if label.sig.is_some() {
-        return Err(Error::AlreadySigned);
-    }
-
-    label.sig = Some(keypair.sign(&serde_ipld_dagcbor::to_vec(&label)?)?);
-
+) -> Result<i64, EmitError> {
     let seq = sqlx::query!(
         r#"
         INSERT INTO labels (val, uri, neg, payload, like_rkey)
@@ -34,7 +46,7 @@ pub async fn emit(
         label.val,
         label.uri,
         label.neg.unwrap_or(false),
-        serde_ipld_dagcbor::to_vec(&label)?,
+        sign_to_payload(keypair, label)?,
         like_rkey,
     )
     .fetch_one(&mut **tx)
