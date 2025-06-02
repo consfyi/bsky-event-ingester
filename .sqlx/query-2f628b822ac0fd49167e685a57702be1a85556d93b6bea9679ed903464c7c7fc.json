@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n                INSERT INTO jetstream_cursor (cursor) VALUES ($1)\n                ON CONFLICT ((true)) DO UPDATE SET cursor = excluded.cursor\n                ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "2f628b822ac0fd49167e685a57702be1a85556d93b6bea9679ed903464c7c7fc"
+}

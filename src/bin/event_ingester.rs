@@ -965,9 +965,9 @@ async fn service_jetstream_once(
                 .await?;
             sqlx::query!(
                 r#"
-            INSERT INTO jetstream_cursor (cursor) VALUES ($1)
-            ON CONFLICT ((true)) DO UPDATE SET cursor = excluded.cursor
-            "#,
+                INSERT INTO jetstream_cursor (cursor) VALUES ($1)
+                ON CONFLICT ((true)) DO UPDATE SET cursor = excluded.cursor
+                "#,
                 next_cursor as i64,
             )
             .execute(&mut *tx)
