@@ -732,21 +732,24 @@ async fn sync_labels(
 
     log::info!("applying writes:\n{writes:#?}");
 
-    agent
-        .api
-        .com
-        .atproto
-        .repo
-        .apply_writes(
-            atrium_api::com::atproto::repo::apply_writes::InputData {
-                repo: did.clone().into(),
-                swap_commit: None,
-                validate: Some(true),
-                writes,
-            }
-            .into(),
-        )
-        .await?;
+    const CHUNK_SIZE: usize = 200;
+    for chunk in writes.chunks(CHUNK_SIZE) {
+        agent
+            .api
+            .com
+            .atproto
+            .repo
+            .apply_writes(
+                atrium_api::com::atproto::repo::apply_writes::InputData {
+                    repo: did.clone().into(),
+                    swap_commit: None,
+                    validate: Some(true),
+                    writes: chunk.to_vec(),
+                }
+                .into(),
+            )
+            .await?;
+    }
 
     events_state.rkeys_to_ids = sorted_events
         .iter()
