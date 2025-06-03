@@ -14,7 +14,7 @@ fn map_cow<'a, T>(
 ) -> std::borrow::Cow<'a, T>
 where
     T: ToOwned + ?Sized,
-    T::Owned: AsRef<T> + 'a,
+    T::Owned: AsRef<T>,
 {
     match input {
         std::borrow::Cow::Borrowed(b) => f(b),
