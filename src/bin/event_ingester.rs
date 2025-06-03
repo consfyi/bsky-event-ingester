@@ -22,6 +22,7 @@ struct Config {
 
 #[derive(Debug)]
 struct ICSEvent {
+    #[allow(unused)]
     uid: String,
     url: String,
     summary: String,
@@ -38,8 +39,8 @@ struct Geocoded {
 }
 
 struct EventsState {
-    rkeys_to_ids: std::collections::HashMap<atrium_api::types::string::RecordKey, u64>,
-    events: std::collections::HashMap<u64, Event>,
+    rkeys_to_ids: std::collections::HashMap<atrium_api::types::string::RecordKey, String>,
+    events: std::collections::HashMap<String, Event>,
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -173,7 +174,7 @@ impl Event {
 
 async fn fetch_events(
     ics_url: &str,
-) -> Result<std::collections::HashMap<u64, Event>, anyhow::Error> {
+) -> Result<std::collections::HashMap<String, Event>, anyhow::Error> {
     let calendar: icalendar::Calendar = reqwest::get(ics_url)
         .await?
         .text()
@@ -196,12 +197,6 @@ async fn fetch_events(
             }
         })
         .map(|event| {
-            let id = event
-                .uid
-                .split_once("-")
-                .ok_or(anyhow::anyhow!("malformed event uid"))?
-                .0
-                .parse()?;
             let event = fixup_event(event);
 
             let (name, year) = event
@@ -210,6 +205,12 @@ async fn fetch_events(
                 .ok_or(anyhow::anyhow!("could not split year"))?;
 
             let year = year.parse()?;
+
+            let id = format!(
+                "{}-{}",
+                slug::slugify_for_label(name),
+                roman::to_roman(year).to_lowercase()
+            );
 
             Ok::<_, anyhow::Error>((
                 id,
@@ -256,7 +257,7 @@ async fn fetch_old_events(
             atrium_xrpc_client::reqwest::ReqwestClient,
         >,
     >,
-) -> Result<Option<std::collections::HashMap<u64, OldEvent>>, anyhow::Error> {
+) -> Result<Option<std::collections::HashMap<String, OldEvent>>, anyhow::Error> {
     let Some(record) = match agent
         .api
         .com
@@ -318,7 +319,7 @@ async fn fetch_old_events(
                         .and_then(|v| ipld_core::serde::from_ipld::<LabelerEventInfo>(v).ok());
 
                     Some((
-                        base26::decode(&v.identifier).unwrap(),
+                        v.identifier.clone(),
                         OldEvent {
                             rkey,
                             location: info
@@ -643,7 +644,7 @@ async fn sync_labels(
                 policies: atrium_api::app::bsky::labeler::defs::LabelerPoliciesData {
                     label_values: sorted_events.iter().filter(|(_, event)| {
                         event.rkey.as_ref().unwrap().is_some()
-                    }).map(|(id, _)| base26::encode(**id)).collect(),
+                    }).map(|(id, _)| (*id).clone()).collect(),
                     label_value_definitions: Some(
                         sorted_events.iter()
                             .map(|(id, event)| {
@@ -654,7 +655,7 @@ async fn sync_labels(
                                     adult_only: Some(false),
                                     blurs: "none".to_string(),
                                     default_setting: Some("warn".to_string()),
-                                    identifier: base26::encode(**id),
+                                    identifier: (*id).clone(),
                                     locales: vec![atrium_api::com::atproto::label::defs::LabelValueDefinitionStringsData {
                                         lang: atrium_api::types::string::Language::new(
                                             "en".to_string(),
@@ -732,21 +733,23 @@ async fn sync_labels(
 
     log::info!("applying writes:\n{writes:#?}");
 
-    agent
-        .api
-        .com
-        .atproto
-        .repo
-        .apply_writes(
-            atrium_api::com::atproto::repo::apply_writes::InputData {
-                repo: did.clone().into(),
-                swap_commit: None,
-                validate: Some(true),
-                writes,
-            }
-            .into(),
-        )
-        .await?;
+    for chunk in writes.chunks(200) {
+        agent
+            .api
+            .com
+            .atproto
+            .repo
+            .apply_writes(
+                atrium_api::com::atproto::repo::apply_writes::InputData {
+                    repo: did.clone().into(),
+                    swap_commit: None,
+                    validate: Some(true),
+                    writes: chunk.to_vec(),
+                }
+                .into(),
+            )
+            .await?;
+    }
 
     events_state.rkeys_to_ids = sorted_events
         .iter()
@@ -755,7 +758,7 @@ async fn sync_labels(
                 .rkey
                 .as_ref()
                 .and_then(|rkey| rkey.as_ref())
-                .map(|rkey| (rkey.clone(), **id))
+                .map(|rkey| (rkey.clone(), (*id).clone()))
         })
         .collect();
 
@@ -888,7 +891,7 @@ async fn service_jetstream_once(
                             cid: None,
                             neg: None,
                             uri: info.did.to_string(),
-                            val: base26::encode(id),
+                            val: id,
                             sig: None,
                             ver: Some(1),
                         }
