@@ -47,7 +47,7 @@ pub fn slugify(s: &str, langid: &icu_locale::LanguageIdentifier) -> String {
         .join("-")
 }
 
-pub fn slugify_for_label(s: &str, langid: &icu_locale::LanguageIdentifier) -> String {
+pub fn slugify_for_label(s: &str) -> String {
     static NUMBERS_RE: std::sync::LazyLock<regex::Regex> =
         std::sync::LazyLock::new(|| regex::Regex::new(r"\d+").unwrap());
     static ALLOWED_CHARS_RE: std::sync::LazyLock<regex::Regex> =
@@ -55,7 +55,7 @@ pub fn slugify_for_label(s: &str, langid: &icu_locale::LanguageIdentifier) -> St
     ALLOWED_CHARS_RE
         .replace_all(
             &NUMBERS_RE.replace_all(
-                &deunicode::deunicode(&to_lower(s, langid)),
+                &deunicode::deunicode(s).to_ascii_lowercase(),
                 |caps: &regex::Captures| {
                     format!(
                         " {} ",
@@ -103,39 +103,12 @@ mod test {
 
     #[test]
     fn test_slugify_for_label() {
-        assert_eq!(
-            slugify_for_label("Anthrocon", &icu_locale::langid!("en-US")),
-            "anthrocon"
-        );
-
-        assert_eq!(
-            slugify_for_label("2Dance", &icu_locale::langid!("en-DE")),
-            "ii-dance"
-        );
-
-        assert_eq!(
-            slugify_for_label("A2B", &icu_locale::langid!("en-US")),
-            "a-ii-b"
-        );
-
-        assert_eq!(
-            slugify_for_label("Futrołajki", &icu_locale::langid!("pl-PL")),
-            "futrolajki"
-        );
-
-        assert_eq!(
-            slugify_for_label("Örli Försztivál", &icu_locale::langid!("hu-HU")),
-            "orli-forsztival"
-        );
-
-        assert_eq!(
-            slugify_for_label("んなモフ", &icu_locale::langid!("ja-JP")),
-            "nnamohu"
-        );
-
-        assert_eq!(
-            slugify_for_label("Fur-Eh!", &icu_locale::langid!("en-CA")),
-            "fur-eh"
-        );
+        assert_eq!(slugify_for_label("Anthrocon"), "anthrocon");
+        assert_eq!(slugify_for_label("2Dance"), "ii-dance");
+        assert_eq!(slugify_for_label("A2B"), "a-ii-b");
+        assert_eq!(slugify_for_label("Futrołajki"), "futrolajki");
+        assert_eq!(slugify_for_label("Örli Försztivál"), "orli-forsztival");
+        assert_eq!(slugify_for_label("んなモフ"), "nnamohu");
+        assert_eq!(slugify_for_label("Fur-Eh!"), "fur-eh");
     }
 }
