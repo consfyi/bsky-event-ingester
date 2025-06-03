@@ -1,6 +1,6 @@
 use sqlx::Acquire as _;
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, Debug)]
 struct Config {
     metrics_bind: std::net::SocketAddr,
     postgres_url: String,
@@ -137,11 +137,14 @@ async fn metrics(db_pool: sqlx::PgPool) -> Result<axum::response::Response, AppE
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     env_logger::init();
+
     let config: Config = config::Config::builder()
         .add_source(config::File::with_name("config.toml"))
         .set_default("metrics_bind", "127.0.0.1:3002")?
         .build()?
         .try_deserialize()?;
+    log::info!("config: {config:?}");
+
     let db_pool = sqlx::PgPool::connect(&config.postgres_url).await?;
     let app = axum::Router::new().route("/metrics", axum::routing::get(move || metrics(db_pool)));
     let listener = tokio::net::TcpListener::bind(&config.metrics_bind).await?;

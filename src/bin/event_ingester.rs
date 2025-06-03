@@ -5,7 +5,7 @@ use futures::StreamExt as _;
 use icalendar::{Component as _, EventLike as _};
 use sqlx::Acquire as _;
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, Debug)]
 struct Config {
     bsky_username: String,
     bsky_password: String,
@@ -995,6 +995,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .set_default("commit_firehose_cursor_every_secs", 5)?
         .build()?
         .try_deserialize()?;
+    log::info!("config: {config:?}");
 
     let keypair =
         atrium_crypto::keypair::Secp256k1Keypair::import(&std::fs::read(&config.keypair_path)?)?;

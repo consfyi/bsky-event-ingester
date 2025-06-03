@@ -1,9 +1,10 @@
 use futures::{SinkExt as _, StreamExt as _};
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, Debug)]
 struct Config {
     labeler_bind: std::net::SocketAddr,
     postgres_url: String,
+    empty_cursor_is_zero: bool,
 }
 
 #[derive(Copy, Clone)]
@@ -91,6 +92,7 @@ fn encode_message(msg: Message) -> Vec<u8> {
 async fn subscribe_labels(
     mut notify_recv: tokio::sync::watch::Receiver<()>,
     db_pool: sqlx::PgPool,
+    empty_cursor_is_zero: bool,
     ws: axum::extract::ws::WebSocketUpgrade,
     axum_extra::extract::Query(params): axum_extra::extract::Query<
         atrium_api::com::atproto::label::subscribe_labels::ParametersData,
@@ -114,12 +116,6 @@ async fn subscribe_labels(
                 .seq
             };
 
-            log::info!(
-                "got websocket subscriber, cursor = {:?}, seq = {}",
-                params.cursor,
-                seq
-            );
-
             if let Some(cursor) = params.cursor {
                 if cursor > seq {
                     sink.send(axum::extract::ws::Message::Binary(
@@ -132,7 +128,15 @@ async fn subscribe_labels(
                     return Ok::<_, anyhow::Error>(());
                 }
                 seq = cursor;
+            } else if empty_cursor_is_zero {
+                seq = 0;
             }
+
+            log::info!(
+                "got websocket subscriber, cursor = {:?}, seq = {}",
+                params.cursor,
+                seq
+            );
 
             loop {
                 tokio::select! {
@@ -197,8 +201,10 @@ async fn main() -> Result<(), anyhow::Error> {
     let config: Config = config::Config::builder()
         .add_source(config::File::with_name("config.toml"))
         .set_default("labeler_bind", "127.0.0.1:3001")?
+        .set_default("empty_cursor_is_zero", false)?
         .build()?
         .try_deserialize()?;
+    log::info!("config: {config:?}");
 
     let (notify_send, notify_recv) = tokio::sync::watch::channel(());
 
@@ -234,7 +240,13 @@ async fn main() -> Result<(), anyhow::Error> {
                     let db_pool = db_pool.clone();
                     move |ws, query| {
                         notify_recv.mark_changed();
-                        subscribe_labels(notify_recv, db_pool, ws, query)
+                        subscribe_labels(
+                            notify_recv,
+                            db_pool,
+                            config.empty_cursor_is_zero,
+                            ws,
+                            query,
+                        )
                     }
                 }),
             ),
