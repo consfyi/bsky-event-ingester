@@ -1,7 +1,10 @@
+use std::str::FromStr;
+
 use furcons_bsky_labeler::*;
 
 use atrium_api::types::{Collection as _, TryFromUnknown as _, TryIntoUnknown as _};
 use futures::StreamExt as _;
+use num_traits::ToPrimitive as _;
 use sqlx::Acquire as _;
 
 #[derive(serde::Deserialize, Debug)]
@@ -297,7 +300,7 @@ const EXTRA_DATA_EVENT_INFO: &str = "fbl_eventInfo";
 #[derive(Debug)]
 struct OldEvent {
     rkey: Option<atrium_api::types::string::RecordKey>,
-    location: String,
+    address: String,
     geocoded: Option<Geocoded>,
 }
 
@@ -376,7 +379,7 @@ async fn fetch_old_events(
                         base26::decode(&v.identifier).unwrap(),
                         OldEvent {
                             rkey,
-                            location: info
+                            address: info
                                 .as_ref()
                                 .map(|info| info.address.to_string())
                                 .unwrap_or_else(|| "".to_string()),
@@ -478,7 +481,7 @@ async fn sync_labels(
                 event.geocoded = Some(
                     if let Some(geocoded) = old_events
                         .get(&id)
-                        .filter(|e| e.location == event.address)
+                        .filter(|e| e.address == event.address)
                         .and_then(|e| e.geocoded.as_ref())
                     {
                         // Already have geocoding data, ignore.
@@ -494,17 +497,16 @@ async fn sync_labels(
                             .into_iter()
                             .next()
                         {
-                            let tz = google_maps_client
-                                .time_zone(
-                                    geocoding.geometry.location,
-                                    event.start_date.and_time(chrono::NaiveTime::MIN).and_utc(),
-                                )
-                                .execute()
-                                .await?;
+                            let tz = geotz::lookup([
+                                geocoding.geometry.location.lng.to_f64().unwrap(),
+                                geocoding.geometry.location.lat.to_f64().unwrap(),
+                            ])
+                            .ok()
+                            .map(|v| v.into_iter().next())
+                            .flatten()
+                            .and_then(|v| chrono_tz::Tz::from_str(&v).ok());
 
-                            Geocoded {
-                                timezone: tz.time_zone_id,
-                            }
+                            Geocoded { timezone: tz }
                         } else {
                             Geocoded { timezone: None }
                         }
