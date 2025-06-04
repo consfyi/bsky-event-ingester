@@ -27,7 +27,6 @@ log = "0.4"
 metrics = "0.24"
 metrics-exporter-prometheus = "0.17"
 minicbor = { version = "1", features = ["alloc"] }
-nu-json = "0.76"
 rand = "0.8"
 regex = { version = "1", features = ["unicode"] }
 reqwest = "0.12"

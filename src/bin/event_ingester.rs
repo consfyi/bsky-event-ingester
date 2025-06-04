@@ -186,9 +186,9 @@ async fn fetch_events(
     )
     .select(&scraper::Selector::parse("script[type=\"application/ld+json\"]").unwrap())
     {
-        for doc in nu_json::from_str::<JsonLdInput>(&htmlize::unescape(
-            element.text().collect::<String>(),
-        ))?
+        for doc in serde_json::from_str::<JsonLdInput>(
+            &htmlize::unescape(element.text().collect::<String>()).replace("\n", " "),
+        )?
         .into_vec()
         {
             if !doc
