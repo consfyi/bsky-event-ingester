@@ -177,8 +177,14 @@ async fn fetch_events(
 ) -> Result<std::collections::HashMap<u64, Event>, anyhow::Error> {
     let mut events = std::collections::HashMap::new();
 
-    for element in scraper::Html::parse_document(&reqwest::get(calendar_url).await?.text().await?)
-        .select(&scraper::Selector::parse("script[type=\"application/ld+json\"]").unwrap())
+    for element in scraper::Html::parse_document(
+        &reqwest::get(calendar_url)
+            .await?
+            .error_for_status()?
+            .text()
+            .await?,
+    )
+    .select(&scraper::Selector::parse("script[type=\"application/ld+json\"]").unwrap())
     {
         for doc in nu_json::from_str::<JsonLdInput>(&htmlize::unescape(
             element.text().collect::<String>(),
