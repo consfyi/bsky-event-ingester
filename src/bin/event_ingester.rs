@@ -119,29 +119,52 @@ impl Event {
 }
 
 #[derive(serde::Deserialize, Debug)]
-pub struct JsonLd {
-    #[serde(rename = "@context", skip_serializing_if = "Option::is_none")]
-    pub context: Option<serde_json::Value>,
+struct JsonLd {
+    #[serde(rename = "@context")]
+    context: Option<serde_json::Value>,
 
-    #[serde(rename = "@type", skip_serializing_if = "Option::is_none")]
-    pub r#type: Option<serde_json::Value>,
-
-    #[serde(rename = "@id", skip_serializing_if = "Option::is_none")]
-    pub id: Option<String>,
+    #[serde(rename = "@type")]
+    r#type: Option<serde_json::Value>,
 
     #[serde(flatten)]
-    pub properties: std::collections::HashMap<String, serde_json::Value>,
+    properties: serde_json::Value,
+}
+
+#[derive(serde::Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
+struct SchemaOrgEvent {
+    name: String,
+    event_status: String,
+    url: String,
+    start_date: String,
+    end_date: String,
+    location: SchemaOrgEventLocation,
+}
+
+#[derive(serde::Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
+struct SchemaOrgEventLocation {
+    name: String,
+    address: SchemaOrgEventLocationAddress,
+}
+
+#[derive(serde::Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
+struct SchemaOrgEventLocationAddress {
+    address_locality: Option<String>,
+    address_region: Option<String>,
+    address_country: String,
 }
 
 #[derive(serde::Deserialize, Debug)]
 #[serde(untagged)]
-pub enum JsonLdInput {
+enum JsonLdInput {
     Single(JsonLd),
     Multiple(Vec<JsonLd>),
 }
 
 impl JsonLdInput {
-    pub fn into_vec(self) -> Vec<JsonLd> {
+    fn into_vec(self) -> Vec<JsonLd> {
         match self {
             JsonLdInput::Single(item) => vec![item],
             JsonLdInput::Multiple(items) => items,
@@ -178,84 +201,41 @@ async fn fetch_events(
                 continue;
             }
 
-            if doc
-                .properties
-                .get("eventStatus")
-                .and_then(|v| v.as_str())
-                .map(|v| {
-                    v != "https://schema.org/EventScheduled"
-                        && v != "https://schema.org/EventRescheduled"
-                })
-                .unwrap_or(true)
+            let event = serde_json::from_value::<SchemaOrgEvent>(doc.properties)?;
+
+            if event.event_status != "https://schema.org/EventScheduled"
+                && event.event_status != "https://schema.org/EventRescheduled"
             {
                 continue;
             }
 
-            let (name, year) = doc
-                .properties
-                .get("name")
-                .ok_or(anyhow::anyhow!("could not get name"))?
-                .as_str()
-                .and_then(|v| v.rsplit_once(" "))
+            let (name, year) = event
+                .name
+                .rsplit_once(" ")
                 .ok_or(anyhow::anyhow!("could not split year"))?;
             let year = year.parse()?;
 
-            let url = doc
-                .properties
-                .get("url")
-                .and_then(|v| v.as_str())
-                .ok_or(anyhow::anyhow!("could not get url"))?;
+            let start_date = chrono::NaiveDate::parse_from_str(&event.start_date, "%Y-%m-%d")?;
+            let end_date = chrono::NaiveDate::parse_from_str(&event.end_date, "%Y-%m-%d")?;
 
-            let start_date = chrono::NaiveDate::parse_from_str(
-                doc.properties
-                    .get("startDate")
-                    .and_then(|v| v.as_str())
-                    .ok_or(anyhow::anyhow!("could not get start date"))?,
-                "%Y-%m-%d",
-            )?;
-
-            let end_date = chrono::NaiveDate::parse_from_str(
-                doc.properties
-                    .get("endDate")
-                    .and_then(|v| v.as_str())
-                    .ok_or(anyhow::anyhow!("could not get start date"))?,
-                "%Y-%m-%d",
-            )?;
-
-            let location = doc.properties.get("location").and_then(|v| v.as_object());
-
-            let raw_country = location
-                .and_then(|v| v.get("address"))
-                .and_then(|v| v.as_object())
-                .and_then(|v| v.get("addressCountry"))
-                .and_then(|v| v.as_str())
-                .map(|v| v.to_string())
-                .ok_or(anyhow::anyhow!("could not get country"))?;
-
-            let country = countries::find(&raw_country)
+            let country = countries::find(&event.location.address.address_country)
                 .ok_or(anyhow::anyhow!("could not find country code"))?;
 
             let address = vec![
-                location
-                    .and_then(|v| v.get("name"))
-                    .and_then(|v| v.as_str())
-                    .map(|v| v.to_string())
+                event.location.name.clone(),
+                event
+                    .location
+                    .address
+                    .address_locality
+                    .clone()
                     .unwrap_or_default(),
-                location
-                    .and_then(|v| v.get("address"))
-                    .and_then(|v| v.as_object())
-                    .and_then(|v| v.get("addressLocality"))
-                    .and_then(|v| v.as_str())
-                    .map(|v| v.to_string())
+                event
+                    .location
+                    .address
+                    .address_region
+                    .clone()
                     .unwrap_or_default(),
-                location
-                    .and_then(|v| v.get("address"))
-                    .and_then(|v| v.as_object())
-                    .and_then(|v| v.get("addressRegion"))
-                    .and_then(|v| v.as_str())
-                    .map(|v| v.to_string())
-                    .unwrap_or_default(),
-                raw_country,
+                event.location.address.address_country.clone(),
             ]
             .into_iter()
             .filter(|v| !v.is_empty())
@@ -273,7 +253,7 @@ async fn fetch_events(
             static ID_REGEX: std::sync::LazyLock<regex::Regex> =
                 std::sync::LazyLock::new(|| regex::Regex::new(r#"/event/(\d+)/"#).unwrap());
             let id = ID_REGEX
-                .captures(&url)
+                .captures(&event.url)
                 .ok_or(anyhow::anyhow!("could not get ID"))?
                 .get(1)
                 .unwrap()
@@ -283,7 +263,7 @@ async fn fetch_events(
             events.insert(
                 id,
                 Event {
-                    url: url.to_string(),
+                    url: event.url.to_string(),
                     name: name.to_string(),
                     year,
                     address,
@@ -296,6 +276,10 @@ async fn fetch_events(
                 },
             );
         }
+    }
+
+    if events.is_empty() {
+        return Err(anyhow::format_err!("no events found"));
     }
 
     Ok(events)
