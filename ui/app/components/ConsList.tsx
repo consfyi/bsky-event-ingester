@@ -1,5 +1,4 @@
 import { plural } from "@lingui/core/macro";
-import regexpEscape from "regexp.escape";
 import { Plural, Trans, useLingui } from "@lingui/react/macro";
 import {
   Anchor,
@@ -51,6 +50,7 @@ import {
 import { groupBy, isEqual, sortBy } from "lodash-es";
 import { Fragment, Suspense, useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router";
+import regexpEscape from "regexp.escape";
 import { z } from "zod/v4-mini";
 import Avatar from "~/components/Avatar";
 import Flag from "~/components/Flag";
@@ -63,6 +63,7 @@ import {
   useFollowedConAttendeesDLE,
   useIsLoggedIn,
 } from "~/hooks";
+import classes from "./ConsList.module.css";
 
 const MAX_AVATARS_IN_STACK = 3;
 
@@ -172,54 +173,63 @@ export function ConRow({
             </Anchor>
           </Text>
         </Group>
-        <Text size="sm" truncate>
-          <IconUsers
-            title={t({ message: "Attendees", context: "number of attendees" })}
-            size={12}
-          />{" "}
-          <Trans context="attendee count">{[likeCount][0]}</Trans>{" "}
-          {showFollowed && follows != null && follows.length > 0 ? (
-            <Tooltip
-              label={listFormat.format(
-                follows
-                  .slice(0, MAX_AVATARS_IN_STACK)
-                  .map((follow) => follow.displayName ?? follow.handle ?? "")
-                  .concat(
-                    follows.length > MAX_AVATARS_IN_STACK
-                      ? [
-                          plural(follows.length - MAX_AVATARS_IN_STACK, {
-                            one: "# other you follow",
-                            other: "# others you follow",
-                          }),
-                        ]
-                      : []
-                  )
-              )}
-            >
-              <Avatar.Group
-                display="inline-flex"
-                spacing="xs"
-                style={{ verticalAlign: "bottom" }}
-              >
-                {follows.slice(0, MAX_AVATARS_IN_STACK).map((follow) => (
-                  <Avatar
-                    key={follow.did}
-                    src={follow.avatar}
-                    alt={`@${follow.handle}`}
-                    size={22}
-                  />
-                ))}
-                {follows.length > MAX_AVATARS_IN_STACK ? (
-                  <Avatar size={22}>
-                    +{follows.length - MAX_AVATARS_IN_STACK}
-                  </Avatar>
-                ) : null}
-              </Avatar.Group>
-            </Tooltip>
-          ) : null}{" "}
-          •{" "}
+        <Text size="sm" truncate className={classes.itemDetails}>
+          <Text span>
+            <IconUsers
+              title={t({
+                message: "Attendees",
+                context: "number of attendees",
+              })}
+              size={12}
+            />{" "}
+            <Trans context="attendee count">{[likeCount][0]}</Trans>
+            {showFollowed && follows != null && follows.length > 0 ? (
+              <>
+                {" "}
+                <Tooltip
+                  label={listFormat.format(
+                    follows
+                      .slice(0, MAX_AVATARS_IN_STACK)
+                      .map(
+                        (follow) => follow.displayName ?? follow.handle ?? ""
+                      )
+                      .concat(
+                        follows.length > MAX_AVATARS_IN_STACK
+                          ? [
+                              plural(follows.length - MAX_AVATARS_IN_STACK, {
+                                one: "# other you follow",
+                                other: "# others you follow",
+                              }),
+                            ]
+                          : []
+                      )
+                  )}
+                >
+                  <Avatar.Group
+                    display="inline-flex"
+                    spacing="xs"
+                    style={{ verticalAlign: "bottom" }}
+                  >
+                    {follows.slice(0, MAX_AVATARS_IN_STACK).map((follow) => (
+                      <Avatar
+                        key={follow.did}
+                        src={follow.avatar}
+                        alt={`@${follow.handle}`}
+                        size={22}
+                      />
+                    ))}
+                    {follows.length > MAX_AVATARS_IN_STACK ? (
+                      <Avatar size={22}>
+                        +{follows.length - MAX_AVATARS_IN_STACK}
+                      </Avatar>
+                    ) : null}
+                  </Avatar.Group>
+                </Tooltip>
+              </>
+            ) : null}
+          </Text>
           {!showEndDateOnly ? (
-            <>
+            <Text span>
               <IconCalendar title={t`Date`} size={12} />{" "}
               <Trans context="[start date]-[end date] ([duration] days)">
                 {dateTimeFormat.formatRange(
@@ -234,9 +244,9 @@ export function ConRow({
                 />
                 )
               </Trans>
-            </>
+            </Text>
           ) : (
-            <>
+            <Text span>
               <IconCalendarWeek title={t`End date`} size={12} />{" "}
               <Trans context="ends [date] ([duration] days)">
                 ends{" "}
@@ -258,12 +268,11 @@ export function ConRow({
                 />
                 )
               </Trans>
-            </>
+            </Text>
           )}
           {showLocation ? (
             <Text span visibleFrom="xs">
-              {" "}
-              • <IconMapPin title={t`Location`} size={12} />{" "}
+              <IconMapPin title={t`Location`} size={12} />{" "}
               <Anchor
                 href={`https://www.google.com/maps?q=${con.address}`}
                 target="_blank"
