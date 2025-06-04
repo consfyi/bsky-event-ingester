@@ -2,7 +2,6 @@ use furcons_bsky_labeler::*;
 
 use atrium_api::types::{Collection as _, TryFromUnknown as _, TryIntoUnknown as _};
 use futures::StreamExt as _;
-use icalendar::{Component as _, EventLike as _};
 use sqlx::Acquire as _;
 
 #[derive(serde::Deserialize, Debug)]
@@ -12,7 +11,7 @@ struct Config {
     bsky_endpoint: String,
     ui_endpoint: String,
     jetstream_endpoint: String,
-    ics_url: String,
+    calendar_url: String,
     postgres_url: String,
     keypair_path: String,
     label_sync_delay_secs: u64,
@@ -20,20 +19,9 @@ struct Config {
     commit_firehose_cursor_every_secs: u64,
 }
 
-#[derive(Debug)]
-struct ICSEvent {
-    uid: String,
-    url: String,
-    summary: String,
-    location: String,
-    dtstart: chrono::NaiveDate,
-    dtend: chrono::NaiveDate,
-}
-
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct Geocoded {
-    country: Option<String>,
     timezone: Option<chrono_tz::Tz>,
 }
 
@@ -49,53 +37,10 @@ struct LabelerEventInfo {
     name: String,
     year: u32,
     date: String,
-    location: String,
+    address: String,
+    country: String,
     url: String,
     geocoded: Option<Geocoded>,
-}
-
-#[derive(thiserror::Error, Debug)]
-enum EventParseError {
-    #[error("invalid or missing field: {0}")]
-    InvalidOrMissingField(&'static str),
-}
-
-impl ICSEvent {
-    fn from_icalendar_event(event: &icalendar::Event) -> Result<ICSEvent, EventParseError> {
-        Ok(ICSEvent {
-            uid: event
-                .get_uid()
-                .ok_or(EventParseError::InvalidOrMissingField("UID"))?
-                .to_string(),
-            url: event
-                .get_url()
-                .ok_or(EventParseError::InvalidOrMissingField("URL"))?
-                .to_string(),
-            summary: event
-                .get_summary()
-                .ok_or(EventParseError::InvalidOrMissingField("SUMMARY"))?
-                .to_string(),
-            location: event
-                .get_location()
-                .ok_or(EventParseError::InvalidOrMissingField("LOCATION"))?
-                .to_string(),
-            dtstart: event
-                .get_start()
-                .ok_or(EventParseError::InvalidOrMissingField("DTSTART"))?
-                .date_naive(),
-            dtend: event
-                .get_end()
-                .ok_or(EventParseError::InvalidOrMissingField("DTEND"))?
-                .date_naive(),
-        })
-    }
-}
-
-fn fixup_event(mut event: ICSEvent) -> ICSEvent {
-    event.url = htmlize::unescape(event.url).to_string();
-    event.location = htmlize::unescape(event.location).to_string();
-    event.summary = htmlize::unescape(event.summary).to_string();
-    event
 }
 
 async fn list_all_records(
@@ -146,20 +91,21 @@ async fn list_all_records(
 
 #[derive(Debug)]
 struct Event {
+    slug: String,
     url: String,
     name: String,
     year: u32,
-    location: String,
+    address: String,
+    country: String,
     start_date: chrono::NaiveDate,
     end_date: chrono::NaiveDate,
     geocoded: Option<Geocoded>,
-    slug: Option<String>,
     rkey: Option<Option<atrium_api::types::string::RecordKey>>,
 }
 
 impl Event {
-    fn end_time(&self) -> chrono::DateTime<chrono_tz::Tz> {
-        self.end_date
+    fn end_time(&self) -> chrono::DateTime<chrono::Utc> {
+        (self.end_date + chrono::Days::new(1))
             .and_time(chrono::NaiveTime::MIN)
             .and_local_timezone(
                 self.geocoded
@@ -168,68 +114,188 @@ impl Event {
                     .unwrap_or(chrono_tz::UTC),
             )
             .unwrap()
+            .to_utc()
+    }
+}
+
+#[derive(serde::Deserialize, Debug)]
+pub struct JsonLd {
+    #[serde(rename = "@context", skip_serializing_if = "Option::is_none")]
+    pub context: Option<serde_json::Value>,
+
+    #[serde(rename = "@type", skip_serializing_if = "Option::is_none")]
+    pub r#type: Option<serde_json::Value>,
+
+    #[serde(rename = "@id", skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
+
+    #[serde(flatten)]
+    pub properties: std::collections::HashMap<String, serde_json::Value>,
+}
+
+#[derive(serde::Deserialize, Debug)]
+#[serde(untagged)]
+pub enum JsonLdInput {
+    Single(JsonLd),
+    Multiple(Vec<JsonLd>),
+}
+
+impl JsonLdInput {
+    pub fn into_vec(self) -> Vec<JsonLd> {
+        match self {
+            JsonLdInput::Single(item) => vec![item],
+            JsonLdInput::Multiple(items) => items,
+        }
     }
 }
 
 async fn fetch_events(
-    ics_url: &str,
+    calendar_url: &str,
 ) -> Result<std::collections::HashMap<u64, Event>, anyhow::Error> {
-    let calendar: icalendar::Calendar = reqwest::get(ics_url)
-        .await?
-        .text()
-        .await?
-        .parse()
-        .map_err(|e| anyhow::format_err!("{e}"))?;
+    let mut events = std::collections::HashMap::new();
 
-    let events = calendar
-        .components
-        .iter()
-        .flat_map(|component| {
-            let event = component.as_event()?;
-
-            match ICSEvent::from_icalendar_event(event) {
-                Ok(event) => Some(event),
-                Err(e) => {
-                    log::error!("failed to parse {:?}, skipping: {}", event, e);
-                    None
-                }
+    for element in scraper::Html::parse_document(&reqwest::get(calendar_url).await?.text().await?)
+        .select(&scraper::Selector::parse("script[type=\"application/ld+json\"]").unwrap())
+    {
+        for doc in nu_json::from_str::<JsonLdInput>(&htmlize::unescape(
+            element.text().collect::<String>(),
+        ))?
+        .into_vec()
+        {
+            if !doc
+                .context
+                .as_ref()
+                .and_then(|t| t.as_str())
+                .map(|s| s == "http://schema.org")
+                .unwrap_or(false)
+                || !doc
+                    .r#type
+                    .as_ref()
+                    .and_then(|t| t.as_str())
+                    .map(|s| s == "Event")
+                    .unwrap_or(false)
+            {
+                continue;
             }
-        })
-        .map(|event| {
-            let id = event
-                .uid
-                .split_once("-")
-                .ok_or(anyhow::anyhow!("malformed event uid"))?
-                .0
-                .parse()?;
-            let event = fixup_event(event);
 
-            let (name, year) = event
-                .summary
-                .rsplit_once(" ")
+            if doc
+                .properties
+                .get("eventStatus")
+                .and_then(|v| v.as_str())
+                .map(|v| {
+                    v != "https://schema.org/EventScheduled"
+                        && v != "https://schema.org/EventRescheduled"
+                })
+                .unwrap_or(true)
+            {
+                continue;
+            }
+
+            let (name, year) = doc
+                .properties
+                .get("name")
+                .ok_or(anyhow::anyhow!("could not get name"))?
+                .as_str()
+                .and_then(|v| v.rsplit_once(" "))
                 .ok_or(anyhow::anyhow!("could not split year"))?;
-
             let year = year.parse()?;
 
-            Ok::<_, anyhow::Error>((
+            let url = doc
+                .properties
+                .get("url")
+                .and_then(|v| v.as_str())
+                .ok_or(anyhow::anyhow!("could not get url"))?;
+
+            let start_date = chrono::NaiveDate::parse_from_str(
+                doc.properties
+                    .get("startDate")
+                    .and_then(|v| v.as_str())
+                    .ok_or(anyhow::anyhow!("could not get start date"))?,
+                "%Y-%m-%d",
+            )?;
+
+            let end_date = chrono::NaiveDate::parse_from_str(
+                doc.properties
+                    .get("endDate")
+                    .and_then(|v| v.as_str())
+                    .ok_or(anyhow::anyhow!("could not get start date"))?,
+                "%Y-%m-%d",
+            )?;
+
+            let location = doc.properties.get("location").and_then(|v| v.as_object());
+
+            let raw_country = location
+                .and_then(|v| v.get("address"))
+                .and_then(|v| v.as_object())
+                .and_then(|v| v.get("addressCountry"))
+                .and_then(|v| v.as_str())
+                .map(|v| v.to_string())
+                .ok_or(anyhow::anyhow!("could not get country"))?;
+
+            let country = countries::find(&raw_country)
+                .ok_or(anyhow::anyhow!("could not find country code"))?;
+
+            let address = vec![
+                location
+                    .and_then(|v| v.get("name"))
+                    .and_then(|v| v.as_str())
+                    .map(|v| v.to_string())
+                    .unwrap_or_default(),
+                location
+                    .and_then(|v| v.get("address"))
+                    .and_then(|v| v.as_object())
+                    .and_then(|v| v.get("addressLocality"))
+                    .and_then(|v| v.as_str())
+                    .map(|v| v.to_string())
+                    .unwrap_or_default(),
+                location
+                    .and_then(|v| v.get("address"))
+                    .and_then(|v| v.as_object())
+                    .and_then(|v| v.get("addressRegion"))
+                    .and_then(|v| v.as_str())
+                    .map(|v| v.to_string())
+                    .unwrap_or_default(),
+                raw_country,
+            ]
+            .into_iter()
+            .filter(|v| !v.is_empty())
+            .collect::<Vec<_>>()
+            .join(", ");
+
+            let langid = country
+                .parse()
+                .ok()
+                .map(|region| slug::guess_language_for_region(region))
+                .unwrap_or(icu_locale::LanguageIdentifier::UNKNOWN);
+
+            let slug = format!("{}-{}", slug::slugify(&name, &langid), year);
+
+            static ID_REGEX: std::sync::LazyLock<regex::Regex> =
+                std::sync::LazyLock::new(|| regex::Regex::new(r#"/event/(\d+)/"#).unwrap());
+            let id = ID_REGEX
+                .captures(&url)
+                .ok_or(anyhow::anyhow!("could not get ID"))?
+                .get(1)
+                .unwrap()
+                .as_str()
+                .parse()?;
+
+            events.insert(
                 id,
                 Event {
-                    url: event.url,
+                    url: url.to_string(),
                     name: name.to_string(),
                     year,
-                    location: event.location,
-                    start_date: event.dtstart,
-                    end_date: event.dtend,
-                    slug: None,
+                    address,
+                    country: country.to_string(),
+                    start_date,
+                    end_date,
+                    slug,
                     geocoded: None,
                     rkey: None,
                 },
-            ))
-        })
-        .collect::<Result<std::collections::HashMap<_, _>, _>>()?;
-
-    if events.is_empty() {
-        return Err(anyhow::anyhow!("calendar is empty"));
+            );
+        }
     }
 
     Ok(events)
@@ -242,7 +308,6 @@ const EXTRA_DATA_EVENT_INFO: &str = "fbl_eventInfo";
 struct OldEvent {
     rkey: Option<atrium_api::types::string::RecordKey>,
     location: String,
-    slug: Option<String>,
     geocoded: Option<Geocoded>,
 }
 
@@ -323,9 +388,8 @@ async fn fetch_old_events(
                             rkey,
                             location: info
                                 .as_ref()
-                                .map(|info| info.location.to_string())
+                                .map(|info| info.address.to_string())
                                 .unwrap_or_else(|| "".to_string()),
-                            slug: info.as_ref().map(|info| info.slug.to_string()),
                             geocoded: info.and_then(|info| info.geocoded),
                         },
                     ))
@@ -335,7 +399,7 @@ async fn fetch_old_events(
 }
 
 async fn sync_labels(
-    ics_url: &str,
+    calendar_url: &str,
     ui_endpoint: &str,
     did: &atrium_api::types::string::Did,
     agent: &atrium_api::agent::Agent<
@@ -355,14 +419,14 @@ async fn sync_labels(
 
     let now = chrono::Utc::now();
 
-    let mut events = fetch_events(ics_url).await?;
+    let mut events = fetch_events(calendar_url).await?;
 
     events = events
         .into_iter()
         .filter(|(_, event)| {
             // Somewhat obnoxiously we have to do this in UTC, because otherwise we have to geocode to find the timezone.
             now < event.end_date.and_time(chrono::NaiveTime::MIN).and_utc()
-                    + chrono::Days::new(1) // Add an extra day to compensate for very ahead timezones, like Pacific/Auckland.
+                    + chrono::Days::new(2) // Add an extra 2 days to compensate for very ahead timezones, like Pacific/Auckland.
                     + EXPIRY_DATE_GRACE_PERIOD
         })
         .collect();
@@ -424,7 +488,7 @@ async fn sync_labels(
                 event.geocoded = Some(
                     if let Some(geocoded) = old_events
                         .get(&id)
-                        .filter(|e| e.location == event.location)
+                        .filter(|e| e.location == event.address)
                         .and_then(|e| e.geocoded.as_ref())
                     {
                         // Already have geocoding data, ignore.
@@ -433,7 +497,7 @@ async fn sync_labels(
                         // Need to geocode and get timezone from Google Maps.
                         if let Some(geocoding) = google_maps_client
                             .geocoding()
-                            .with_address(&event.location)
+                            .with_address(&event.address)
                             .execute()
                             .await?
                             .results
@@ -449,18 +513,10 @@ async fn sync_labels(
                                 .await?;
 
                             Geocoded {
-                                country: geocoding
-                                    .address_components
-                                    .into_iter()
-                                    .find(|c| c.types.contains(&google_maps::PlaceType::Country))
-                                    .map(|c| c.short_name),
                                 timezone: tz.time_zone_id,
                             }
                         } else {
-                            Geocoded {
-                                country: None,
-                                timezone: None,
-                            }
+                            Geocoded { timezone: None }
                         }
                     },
                 );
@@ -470,24 +526,6 @@ async fn sync_labels(
             .await?
             .into_iter()
             .collect();
-    }
-
-    for (id, event) in events.iter_mut() {
-        event.slug = Some(
-            if let Some(slug) = old_events.get(id).and_then(|oe| oe.slug.as_ref()) {
-                slug.clone()
-            } else {
-                let langid = event
-                    .geocoded
-                    .as_ref()
-                    .and_then(|g| g.country.as_ref())
-                    .and_then(|c| c.parse().ok())
-                    .map(|region| slug::guess_language_for_region(region))
-                    .unwrap_or(icu_locale::LanguageIdentifier::UNKNOWN);
-
-                format!("{}-{}", slug::slugify(&event.name, &langid), event.year)
-            },
-        );
     }
 
     // Delete events.
@@ -566,11 +604,7 @@ async fn sync_labels(
                                 atrium_api::app::bsky::richtext::facet::MainFeaturesItem::Link(
                                     Box::new(
                                         atrium_api::app::bsky::richtext::facet::LinkData {
-                                            uri: format!(
-                                                "{}/cons/{}",
-                                                ui_endpoint,
-                                                event.slug.as_ref().unwrap()
-                                            ),
+                                            uri: format!("{}/cons/{}", ui_endpoint, event.slug),
                                         }
                                         .into(),
                                     ),
@@ -647,9 +681,6 @@ async fn sync_labels(
                     label_value_definitions: Some(
                         sorted_events.iter()
                             .map(|(id, event)| {
-                                // The "DTEND" property for a "VEVENT" calendar component specifies the non-inclusive end of the event.
-                                let end_date = event.end_date - chrono::Days::new(1);
-
                                 let mut def: atrium_api::com::atproto::label::defs::LabelValueDefinition = atrium_api::com::atproto::label::defs::LabelValueDefinitionData {
                                     adult_only: Some(false),
                                     blurs: "none".to_string(),
@@ -663,9 +694,9 @@ async fn sync_labels(
                                         name: format!("{} {}", event.name, event.year),
                                         description: format!(
                                             "📅 {start_date} – {end_date}\n📍 {location}",
-                                            location = event.location,
+                                            location = event.address,
                                             start_date = event.start_date,
-                                            end_date = end_date
+                                            end_date = event.end_date
                                         ),
                                     }
                                     .into()],
@@ -690,15 +721,16 @@ async fn sync_labels(
                                 extra_data.insert(
                                     EXTRA_DATA_EVENT_INFO.to_string(),
                                     ipld_core::serde::to_ipld(LabelerEventInfo {
-                                        slug: event.slug.as_ref().unwrap().clone(),
+                                        slug: event.slug.clone(),
                                         name: event.name.clone(),
                                         year: event.year,
                                         date: format!(
                                             "{}/{}",
                                             event.start_date.format("%Y-%m-%d"),
-                                            end_date
+                                            event.end_date.format("%Y-%m-%d")
                                         ),
-                                        location: event.location.clone(),
+                                        address: event.address.clone(),
+                                        country: event.country.clone(),
                                         url: event.url.clone(),
                                         geocoded: event.geocoded.clone(),
                                     }).unwrap(),
@@ -884,7 +916,7 @@ async fn service_jetstream_once(
                             ),
                             exp: Some(atrium_api::types::string::Datetime::new(
                                 (event.end_time() + EXPIRY_DATE_GRACE_PERIOD)
-                                    .with_timezone(&chrono_tz::UTC)
+                                    .to_utc()
                                     .fixed_offset(),
                             )),
                             src: did.clone(),
@@ -985,7 +1017,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let config: Config = config::Config::builder()
         .add_source(config::File::with_name("config.toml"))
         .set_default("bsky_endpoint", "https://bsky.social")?
-        .set_default("ics_url", "https://furrycons.com/calendar/furrycons.ics")?
+        .set_default("calendar_url", "https://furrycons.com/calendar/")?
         .set_default("keypair_path", "signing.key")?
         .set_default("ui_endpoint", "https://cons.furryli.st")?
         .set_default(
@@ -1030,7 +1062,7 @@ async fn main() -> Result<(), anyhow::Error> {
     log::info!("syncing initial labels");
 
     sync_labels(
-        &config.ics_url,
+        &config.calendar_url,
         &config.ui_endpoint,
         &did,
         &agent,
@@ -1048,7 +1080,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
                 log::info!("syncing labels");
                 if let Err(e) = sync_labels(
-                    &config.ics_url,
+                    &config.calendar_url,
                     &config.ui_endpoint,
                     &did,
                     &agent,

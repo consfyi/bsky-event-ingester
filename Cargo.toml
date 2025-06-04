@@ -11,14 +11,13 @@ atrium-xrpc-client = "0.5"
 axum = { version = "0.8", features = ["ws"] }
 axum-extra = { version = "0.10", features = ["query"] }
 chrono = "0.4"
-chrono-tz = "0.10.3"
+chrono-tz = "0.10"
 config = "0.15"
 deunicode = "1"
 env_logger = "0.11"
 futures = "0.3"
 google_maps = "3"
 htmlize = { version = "1", features = ["unescape"] }
-icalendar = "0.16"
 icu_casemap = "2"
 icu_locale = "2"
 icu_normalizer = "2"
@@ -28,9 +27,11 @@ log = "0.4"
 metrics = "0.24"
 metrics-exporter-prometheus = "0.17"
 minicbor = { version = "1", features = ["alloc"] }
+nu-json = "0.76"
 rand = "0.8"
 regex = { version = "1", features = ["unicode"] }
 reqwest = "0.12"
+scraper = "0.23"
 serde = { version = "1", features = ["derive"] }
 serde_ipld_dagcbor = "0.6"
 serde_json = "1"
