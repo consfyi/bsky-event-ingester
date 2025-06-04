@@ -105,10 +105,7 @@ function Header({ con }: { con: ConWithPost }) {
           </Box>
         ) : null}
         <Title size="h4" fw={500}>
-          {con.geocoded != null ? (
-            <Flag country={con.geocoded.country ?? "XX"} size={14} me={6} />
-          ) : null}{" "}
-          {con.name}{" "}
+          <Flag country={con.country} size={14} me={6} /> {con.name}{" "}
           <Tooltip label={<Trans>View Bluesky Post</Trans>} position="bottom">
             <Anchor
               href={`https://bsky.app/profile/${LABELER_DID}/post/${con.postRkey}`}
@@ -161,12 +158,12 @@ function Header({ con }: { con: ConWithPost }) {
           </Box>
           <Text size="sm" mb={5}>
             <Anchor
-              href={`https://www.google.com/maps?q=${con.location}`}
+              href={`https://www.google.com/maps?q=${con.address}`}
               target="_blank"
               rel="noreferrer"
               c="var(--mantine-color-text)"
             >
-              {con.location}
+              {con.address}
             </Anchor>{" "}
           </Text>
         </Group>

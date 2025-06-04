@@ -86,7 +86,6 @@ function useConPosts() {
 }
 
 export interface Geocoded {
-  country: string | null;
   timezone: string | null;
 }
 
@@ -96,7 +95,8 @@ export interface Con {
   name: string;
   start: TZDate;
   end: TZDate;
-  location: string;
+  address: string;
+  country: string;
   geocoded: Geocoded | null;
   postRkey: string;
   url: string;
@@ -118,7 +118,8 @@ export function useCons() {
             fbl_eventInfo: {
               slug: string;
               date: string;
-              location: string;
+              address: string;
+              country: string;
               geocoded?: Geocoded | null;
               url: string;
             };
@@ -147,7 +148,8 @@ export function useCons() {
               name: strings.name,
               start: startDate,
               end: endDate,
-              location: fullDef.fbl_eventInfo.location,
+              address: fullDef.fbl_eventInfo.address,
+              country: fullDef.fbl_eventInfo.country,
               geocoded: fullDef.fbl_eventInfo.geocoded ?? null,
               postRkey: fullDef.fbl_postRkey,
               url: fullDef.fbl_eventInfo.url,

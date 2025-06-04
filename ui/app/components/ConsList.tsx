@@ -166,9 +166,7 @@ export function ConRow({
           ) : null}
 
           <Text size="sm" truncate>
-            {con.geocoded != null ? (
-              <Flag country={con.geocoded.country ?? "XX"} size={10} me={6} />
-            ) : null}
+            <Flag country={con.country} size={10} me={6} />
             <Anchor fw={500} component={Link} to={`/cons/${con.slug}`}>
               {con.name}
             </Anchor>
@@ -267,12 +265,12 @@ export function ConRow({
               {" "}
               • <IconMapPin title={t`Location`} size={12} />{" "}
               <Anchor
-                href={`https://www.google.com/maps?q=${con.location}`}
+                href={`https://www.google.com/maps?q=${con.address}`}
                 target="_blank"
                 rel="noreferrer"
                 c="var(--mantine-color-text)"
               >
-                {con.location}
+                {con.address}
               </Anchor>
             </Text>
           ) : null}
@@ -572,10 +570,7 @@ function Filters({
   const continentCount = useMemo(() => {
     const counts: Partial<Record<Continent, number>> = {};
     for (const con of cons) {
-      const continent =
-        con.geocoded != null
-          ? getContinentForCountry(con.geocoded.country ?? "XX")
-          : "XX";
+      const continent = getContinentForCountry(con.country);
       counts[continent] = (counts[continent] || 0) + 1;
     }
     return counts;
@@ -1281,9 +1276,7 @@ export default function ConsList({ cons }: { cons: ConWithPost[] }) {
       (!actuallyShowOnlyAttending || con.post.viewer?.like != null) &&
       // Continents filter
       viewOptions.filter.continents.includes(
-        con.geocoded != null && con.geocoded.country != null
-          ? getContinentForCountry(con.geocoded.country)
-          : "XX"
+        getContinentForCountry(con.country)
       ) &&
       // Duration filter
       duration >= minDuration &&
