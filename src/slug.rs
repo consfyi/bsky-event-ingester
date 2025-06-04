@@ -10,12 +10,13 @@ pub fn guess_language_for_region(
     langid
 }
 
-fn map_cow<'a, T>(
+fn map_cow<'a, T, U>(
     input: std::borrow::Cow<'a, T>,
-    f: impl for<'b> Fn(&'b T) -> std::borrow::Cow<'b, T>,
-) -> std::borrow::Cow<'a, T>
+    f: impl for<'b> Fn(&'b T) -> std::borrow::Cow<'b, U>,
+) -> std::borrow::Cow<'a, U>
 where
     T: ToOwned + ?Sized,
+    U: ToOwned + ?Sized,
 {
     match input {
         std::borrow::Cow::Borrowed(b) => f(b),
