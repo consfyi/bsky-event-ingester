@@ -1721,7 +1721,8 @@ dependencies = [
 [[package]]
 name = "geotz"
 version = "0.1.0"
-source = "git+https://github.com/tolfdog/geotz#767ed83419680e0f58bbb9bcba8598ed55610a9f"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "75f012ac8aabd92fe26782aa6bb2c01ab72bc117fe5b14e9b496bdfa24c85bd5"
 dependencies = [
  "flatgeobuf",
  "geo",
@@ -1733,7 +1734,8 @@ dependencies = [
 [[package]]
 name = "geotz-data"
 version = "0.2025.2"
-source = "git+https://github.com/tolfdog/geotz#767ed83419680e0f58bbb9bcba8598ed55610a9f"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a61dc5d647556904a947b12624fc4594b90bf04f6491bb4600be78f416fc606a"
 dependencies = [
  "flatgeobuf",
  "geozero",
