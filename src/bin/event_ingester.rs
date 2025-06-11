@@ -1,11 +1,9 @@
-use std::str::FromStr;
-
-use furcons_bsky_labeler::*;
-
 use atrium_api::types::{Collection as _, TryFromUnknown as _, TryIntoUnknown as _};
+use furcons_bsky_labeler::*;
 use futures::StreamExt as _;
 use num_traits::ToPrimitive as _;
 use sqlx::Acquire as _;
+use std::str::FromStr as _;
 
 #[derive(serde::Deserialize, Debug)]
 struct Config {

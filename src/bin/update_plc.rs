@@ -1,7 +1,6 @@
-use std::io::Write as _;
-
 use atrium_api::types::TryIntoUnknown as _;
 use atrium_crypto::keypair::Did as _;
+use std::io::Write as _;
 
 #[derive(serde::Deserialize)]
 struct Config {

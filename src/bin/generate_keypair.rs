@@ -1,4 +1,4 @@
-use atrium_crypto::keypair::{Did, Export as _};
+use atrium_crypto::keypair::{Did as _, Export as _};
 
 #[derive(serde::Deserialize)]
 struct Config {
