@@ -118,6 +118,11 @@ async fn subscribe_labels(
 
             if let Some(cursor) = params.cursor {
                 if cursor > seq {
+                    log::info!(
+                        "got websocket subscriber, cursor = {:?}, seq = {} (future cursor error)",
+                        params.cursor,
+                        seq
+                    );
                     sink.send(axum::extract::ws::Message::Binary(
                         encode_message(Message::Error {
                             error: EventStreamError::FutureCursor,
