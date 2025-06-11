@@ -130,8 +130,7 @@ async fn metrics(db_pool: sqlx::PgPool) -> Result<axum::response::Response, AppE
 
     Ok(axum::http::Response::builder()
         .header(axum::http::header::CONTENT_TYPE, "text/plain")
-        .body(axum::body::Body::from(output))
-        .unwrap())
+        .body(output.into())?)
 }
 
 #[tokio::main]
