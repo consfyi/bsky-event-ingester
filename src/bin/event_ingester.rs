@@ -921,11 +921,9 @@ async fn service_jetstream_once(
 
                     log::info!("applying label: {:?}", label);
 
-                    let mut emitter = labels::Emitter::new(&mut db_conn, &keypair).await?;
-                    emitter
-                        .emit(&label, [("like_rkey", commit.info.rkey.as_str().into())])
-                        .await?;
-                    emitter.commit().await?;
+                    let mut tx = db_conn.begin().await?;
+                    labels::emit(keypair, &mut tx, &label, &commit.info.rkey).await?;
+                    tx.commit().await?;
                 }
                 jetstream_oxide::events::commit::CommitEvent::Delete { info, commit } => {
                     let uri = info.did.to_string();
@@ -966,11 +964,9 @@ async fn service_jetstream_once(
 
                     log::info!("removing label: {:?}", label);
 
-                    let mut emitter = labels::Emitter::new(&mut db_conn, &keypair).await?;
-                    emitter
-                        .emit(&label, [("like_rkey", commit.rkey.as_str().into())])
-                        .await?;
-                    emitter.commit().await?;
+                    let mut tx = db_conn.begin().await?;
+                    labels::emit(keypair, &mut tx, &label, &commit.rkey).await?;
+                    tx.commit().await?;
                 }
                 _ => {}
             }

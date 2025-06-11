@@ -29,11 +29,9 @@ async fn main() -> Result<(), anyhow::Error> {
 
     let mut db_conn = sqlx::PgConnection::connect(&config.postgres_url).await?;
 
-    let mut emitter = labels::Emitter::new(&mut db_conn, &keypair).await?;
-    let seq = emitter
-        .emit(&label, [("like_rkey", rkey.as_str().into())])
-        .await?;
-    emitter.commit().await?;
+    let mut tx = db_conn.begin().await?;
+    let seq = labels::emit(&keypair, &mut tx, &label, &rkey).await?;
+    tx.commit().await?;
 
     println!("{seq}");
 
