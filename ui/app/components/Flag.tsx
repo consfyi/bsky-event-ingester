@@ -13,6 +13,9 @@ export default function Flag({
     () => new Intl.DisplayNames(i18n.locale, { type: "region" }),
     [i18n.locale]
   );
+
+  const countryName = useMemo(() => countryNames.of(country), [country]);
+
   return (
     <Box
       component="span"
@@ -23,8 +26,8 @@ export default function Flag({
     >
       <Image
         src={`https://cdn.jsdelivr.net/npm/flagpack@latest/flags/4x3/${country.toLowerCase()}.svg`}
-        title={countryNames.of(country)}
-        alt={countryNames.of(country)}
+        title={countryName}
+        alt={countryName}
       />
     </Box>
   );
