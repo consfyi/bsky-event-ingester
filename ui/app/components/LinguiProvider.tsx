@@ -3,17 +3,12 @@ import { i18n, Locale } from "@lingui/core";
 import { I18nProvider, I18nProviderProps } from "@lingui/react";
 import { Direction, useDirection } from "@mantine/core";
 import IntlLocale from "intl-locale-textinfo-polyfill";
-import { sortBy } from "lodash-es";
 import { createContext, useContext, useEffect, useState } from "react";
 import { hookifyPromise } from "~/hooks";
 
-export const AVAILABLE_LOCALES = sortBy(
-  Object.keys(import.meta.glob("../locales/*/messages.po")).map((path) =>
-    path.replace(/..\/locales\/([^/]+)\/messages.po/, "$1")
-  )
-);
-
 const LOCALE_KEY = "fbl:locale";
+
+export const AVAILABLE_LOCALES = __LOCALES__;
 
 function getNegotiatedBrowserLocale(): Locale {
   const requestedLocales: string[] = [];

@@ -16,7 +16,6 @@ import {
   ColorSchemeScript,
   Container,
   createTheme,
-  Direction,
   DirectionProvider,
   DirectionProviderProps,
   Group,
