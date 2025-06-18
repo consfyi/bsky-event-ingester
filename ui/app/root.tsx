@@ -27,6 +27,9 @@ import {
   Select,
   Text,
   TextInput,
+  Tooltip,
+  useComputedColorScheme,
+  useMantineColorScheme,
 } from "@mantine/core";
 import "@mantine/core/styles.css";
 import { useLocalStorage } from "@mantine/hooks";
@@ -36,10 +39,22 @@ import {
   startNavigationProgress,
 } from "@mantine/nprogress";
 import "@mantine/nprogress/styles.css";
-import { LinksFunction } from "react-router";
+import {
+  IconAlertTriangle,
+  IconBrandBluesky,
+  IconChevronDown,
+  IconLanguage,
+  IconLogout2,
+  IconMoon,
+  IconPaw,
+  IconSun,
+} from "@tabler/icons-react";
+import IntlLocale from "intl-locale-textinfo-polyfill";
+import { Suspense, useEffect, useState } from "react";
 import {
   Link,
   Links,
+  LinksFunction,
   Meta,
   MetaFunction,
   Outlet,
@@ -48,16 +63,6 @@ import {
   useNavigation,
   useRouteError,
 } from "react-router";
-import {
-  IconAlertTriangle,
-  IconBrandBluesky,
-  IconChevronDown,
-  IconLanguage,
-  IconLogout2,
-  IconPaw,
-} from "@tabler/icons-react";
-import IntlLocale from "intl-locale-textinfo-polyfill";
-import { Suspense, useEffect, useState } from "react";
 import Avatar from "~/components/Avatar";
 import clientMetadata from "../public/client-metadata.json";
 import { DEFAULT_PDS_HOST, startLogin } from "./bluesky";
@@ -113,6 +118,8 @@ function Header() {
   const { t } = useLingui();
   const client = useClient();
   const self = useSelf();
+  const { setColorScheme } = useMantineColorScheme();
+  const colorScheme = useComputedColorScheme();
 
   return (
     <Box
@@ -143,141 +150,168 @@ function Header() {
               </Text>
             </Group>
           </Anchor>
-          {self != null ? (
-            <Menu
-              position="bottom-end"
-              withArrow
-              opened={menuOpen}
-              onChange={(value) => {
-                if (!value && pending) {
-                  return;
-                }
-                setMenuOpen(value);
-              }}
+          <Group my={-8}>
+            <Tooltip
+              label={
+                colorScheme == "light" ? (
+                  <Trans>Dark mode</Trans>
+                ) : (
+                  <Trans>Light mode</Trans>
+                )
+              }
             >
-              <Menu.Target>
-                <Button
-                  my={-8}
-                  variant="outline"
-                  color="var(--mantine-color-dimmed)"
-                  c="var(--mantine-color-text)"
-                  leftSection={
-                    <Avatar
-                      src={self.avatar}
-                      alt={`@${self.handle}`}
-                      size="sm"
-                    />
+              <ActionIcon
+                variant="outline"
+                size="sm"
+                color="gray"
+                w={34}
+                h={34}
+                onClick={() => {
+                  setColorScheme(colorScheme == "light" ? "dark" : "light");
+                }}
+              >
+                {colorScheme == "light" ? (
+                  <IconMoon size={18} />
+                ) : (
+                  <IconSun size={18} />
+                )}
+              </ActionIcon>
+            </Tooltip>
+            {self != null ? (
+              <Menu
+                position="bottom-end"
+                withArrow
+                opened={menuOpen}
+                onChange={(value) => {
+                  if (!value && pending) {
+                    return;
                   }
-                  rightSection={<IconChevronDown size={14} />}
-                >
-                  <Text span size="sm" fw={500} visibleFrom="xs">
-                    @{self.handle}
-                  </Text>
-                </Button>
-              </Menu.Target>
-              <Menu.Dropdown>
-                <Menu.Label hiddenFrom="xs">@{self.handle}</Menu.Label>
-                <Button
-                  fullWidth
-                  loading={pending}
-                  color="red"
-                  variant="subtle"
-                  leftSection={<IconLogout2 size={18} />}
-                  onClick={() => {
-                    setIsPending(true);
-                    setMenuOpen(true);
-
-                    (async () => {
-                      await client.logout();
-                      window.location.replace(window.location.toString());
-                    })();
-                  }}
-                >
-                  <Trans>Log out</Trans>
-                </Button>
-              </Menu.Dropdown>
-            </Menu>
-          ) : (
-            <form
-              onSubmit={(evt) => {
-                evt.preventDefault();
-                setIsPending(true);
-                (async () => {
-                  try {
-                    await startLogin(realPdsHost);
-                  } catch (e) {
-                    setIsPending(false);
-                    if (!usingDefaultPdsHost) {
+                  setMenuOpen(value);
+                }}
+              >
+                <Menu.Target>
+                  <Button
+                    variant="outline"
+                    color="var(--mantine-color-dimmed)"
+                    c="var(--mantine-color-text)"
+                    leftSection={
+                      <Avatar
+                        src={self.avatar}
+                        alt={`@${self.handle}`}
+                        size="sm"
+                      />
+                    }
+                    rightSection={<IconChevronDown size={14} />}
+                  >
+                    <Text span size="sm" fw={500} visibleFrom="xs">
+                      @{self.handle}
+                    </Text>
+                  </Button>
+                </Menu.Target>
+                <Menu.Dropdown>
+                  <Menu.Label hiddenFrom="xs">@{self.handle}</Menu.Label>
+                  <Button
+                    fullWidth
+                    loading={pending}
+                    color="red"
+                    variant="subtle"
+                    leftSection={<IconLogout2 size={18} />}
+                    onClick={() => {
+                      setIsPending(true);
                       setMenuOpen(true);
-                      setLoginError(e);
-                    }
-                  }
-                })();
-              }}
-            >
-              <Button.Group my={-8}>
-                <Button
-                  loading={pending}
-                  type="submit"
-                  size="sm"
-                  leftSection={<IconBrandBluesky size={18} />}
-                  color={!usingDefaultPdsHost ? "#8338ec" : undefined}
-                >
-                  {!usingDefaultPdsHost ? (
-                    <Trans>
-                      Log in via {realPdsHost.replace(/^https?:\/\//, "")}
-                    </Trans>
-                  ) : (
-                    <Trans>Log in</Trans>
-                  )}
-                </Button>
-                <Menu
-                  position="bottom-end"
-                  withArrow
-                  opened={menuOpen}
-                  onChange={(value) => {
-                    if (!value && pending) {
-                      return;
-                    }
-                    setMenuOpen(value);
-                  }}
-                >
-                  <Menu.Target>
-                    <Button
-                      size="sm"
-                      px={4}
-                      title={t`Log in via custom PDS`}
-                      color={!usingDefaultPdsHost ? "#8338ec" : undefined}
-                    >
-                      <IconChevronDown size={14} />
-                    </Button>
-                  </Menu.Target>
-                  <Menu.Dropdown>
-                    <TextInput
-                      label={<Trans>Custom PDS</Trans>}
-                      name="pds"
-                      m={4}
-                      w="300"
-                      disabled={pending}
-                      error={
-                        loginError != null ? (
-                          <Trans>
-                            Couldn’t log in with this PDS. Is the URL correct?
-                          </Trans>
-                        ) : null
+
+                      (async () => {
+                        await client.logout();
+                        window.location.replace(window.location.toString());
+                      })();
+                    }}
+                  >
+                    <Trans>Log out</Trans>
+                  </Button>
+                </Menu.Dropdown>
+              </Menu>
+            ) : (
+              <form
+                onSubmit={(evt) => {
+                  evt.preventDefault();
+                  setIsPending(true);
+                  (async () => {
+                    try {
+                      await startLogin(realPdsHost);
+                    } catch (e) {
+                      setIsPending(false);
+                      if (!usingDefaultPdsHost) {
+                        setMenuOpen(true);
+                        setLoginError(e);
                       }
-                      placeholder="https://your.pds.com"
-                      value={pdsHost}
-                      onChange={(e) => {
-                        setPdsHost(e.target.value);
-                        setLoginError(null);
-                      }}
-                    />
-                  </Menu.Dropdown>
-                </Menu>
-              </Button.Group>
-            </form>
-          )}
+                    }
+                  })();
+                }}
+              >
+                <Button.Group>
+                  <Button
+                    loading={pending}
+                    type="submit"
+                    size="sm"
+                    leftSection={<IconBrandBluesky size={18} />}
+                    color={!usingDefaultPdsHost ? "#8338ec" : undefined}
+                  >
+                    {!usingDefaultPdsHost ? (
+                      <Trans>
+                        Log in via {realPdsHost.replace(/^https?:\/\//, "")}
+                      </Trans>
+                    ) : (
+                      <Trans>Log in</Trans>
+                    )}
+                  </Button>
+                  <Menu
+                    position="bottom-end"
+                    withArrow
+                    opened={menuOpen}
+                    onChange={(value) => {
+                      if (!value && pending) {
+                        return;
+                      }
+                      setMenuOpen(value);
+                    }}
+                  >
+                    <Menu.Target>
+                      <Button
+                        size="sm"
+                        px={4}
+                        title={t`Log in via custom PDS`}
+                        color={!usingDefaultPdsHost ? "#8338ec" : undefined}
+                      >
+                        <IconChevronDown size={14} />
+                      </Button>
+                    </Menu.Target>
+                    <Menu.Dropdown>
+                      <TextInput
+                        label={<Trans>Custom PDS</Trans>}
+                        name="pds"
+                        m={4}
+                        w="300"
+                        disabled={pending}
+                        error={
+                          loginError != null ? (
+                            <Trans>
+                              Couldn’t log in with this PDS. Is the URL correct?
+                            </Trans>
+                          ) : null
+                        }
+                        placeholder="https://your.pds.com"
+                        value={pdsHost}
+                        onChange={(e) => {
+                          setPdsHost(e.target.value);
+                          setLoginError(null);
+                        }}
+                      />
+                    </Menu.Dropdown>
+                  </Menu>
+                </Button.Group>
+              </form>
+            )}
+          </Group>
         </Group>
       </Container>
     </Box>
