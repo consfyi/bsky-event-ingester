@@ -586,6 +586,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                     <LinguiProvider>
                       <Header />
                       <Container size="lg" px={0}>
+                        <Alerts />
                         <Suspense
                           fallback={
                             <Center p="lg">
@@ -593,7 +594,6 @@ export function Layout({ children }: { children: React.ReactNode }) {
                             </Center>
                           }
                         >
-                          <Alerts />
                           {children}
                         </Suspense>
                       </Container>

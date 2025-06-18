@@ -131,6 +131,7 @@ function Header({ con }: { con: ConWithPost }) {
               size={12}
               withBorder
               disabled={!active}
+              zIndex={2}
             >
               <IconCalendar title={t`Date`} size={16} stroke={1.5} />
             </Indicator>
