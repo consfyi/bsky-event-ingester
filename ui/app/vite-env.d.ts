@@ -1,3 +1,3 @@
 /// <reference types="vite/client" />
 
-const __LOCALES__: string[] = [];
+declare const __LOCALES__: string[];
