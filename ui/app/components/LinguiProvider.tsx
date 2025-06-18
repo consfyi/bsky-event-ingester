@@ -4,7 +4,6 @@ import { I18nProvider, I18nProviderProps } from "@lingui/react";
 import { Direction, useDirection } from "@mantine/core";
 import IntlLocale from "intl-locale-textinfo-polyfill";
 import { createContext, useContext, useEffect, useState } from "react";
-import { hookifyPromise } from "~/hooks";
 
 const LOCALE_KEY = "fbl:locale";
 
@@ -44,16 +43,17 @@ async function loadAndActivate(locale: string) {
 
 export const INITIAL_LOCALE = getNegotiatedBrowserLocale();
 
-const useInitialLoad = hookifyPromise(loadAndActivate(INITIAL_LOCALE));
-
-const LinguiContext = createContext({
-  locale: INITIAL_LOCALE,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  setLocale(_locale: Locale) {},
-});
+const LinguiContext = createContext<{
+  locale: string;
+  setLocale: (locale: Locale) => void;
+} | null>(null);
 
 export default function LinguiProvider(props: Omit<I18nProviderProps, "i18n">) {
-  useInitialLoad();
+  useEffect(() => {
+    (async () => {
+      await loadAndActivate(INITIAL_LOCALE);
+    })();
+  }, []);
 
   const [locale, setLocale] = useState(INITIAL_LOCALE);
 
@@ -78,5 +78,5 @@ export default function LinguiProvider(props: Omit<I18nProviderProps, "i18n">) {
 }
 
 export function useSetLocale(): (locale: Locale) => void {
-  return useContext(LinguiContext).setLocale;
+  return useContext(LinguiContext)!.setLocale;
 }

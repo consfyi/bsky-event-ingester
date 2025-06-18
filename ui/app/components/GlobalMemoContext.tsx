@@ -13,9 +13,9 @@ interface CacheItem {
   value: unknown;
 }
 
-const GlobalMemoContext = createContext<
-  MutableRefObject<Record<string, CacheItem>>
->(undefined as unknown as MutableRefObject<Record<string, CacheItem>>);
+const GlobalMemoContext = createContext<MutableRefObject<
+  Record<string, CacheItem>
+> | null>(null);
 
 export function GlobalMemoProvider({
   children,
@@ -36,7 +36,7 @@ export function useGlobalMemo<T>(
   factory: () => T,
   deps: DependencyList
 ): T {
-  const cache = useContext(GlobalMemoContext).current;
+  const cache = useContext(GlobalMemoContext)!.current;
 
   if (!Object.prototype.hasOwnProperty.call(cache, key)) {
     cache[key] = {
