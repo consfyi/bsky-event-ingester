@@ -70,7 +70,7 @@ import { GlobalMemoProvider } from "./components/GlobalMemoContext";
 import LinguiProvider, {
   AVAILABLE_LOCALES,
   INITIAL_LOCALE,
-  useSetLocale,
+  useLinguiContext,
 } from "./components/LinguiProvider";
 import { LABELER_DID } from "./config";
 import { useGetPreferences, usePutPreferences } from "./endpoints";
@@ -320,7 +320,7 @@ function Header() {
 
 function Footer() {
   const { i18n } = useLingui();
-  const setLocale = useSetLocale();
+  const { setLocale, pending: localePending } = useLinguiContext();
 
   return (
     <Box
@@ -379,8 +379,12 @@ function Footer() {
           size="xs"
           mb="sm"
           value={i18n.locale}
+          disabled={localePending}
           onChange={(value) => {
-            setLocale(value!);
+            if (value == null) {
+              return;
+            }
+            setLocale(value);
           }}
           data={AVAILABLE_LOCALES.map((locale) => ({
             value: locale,

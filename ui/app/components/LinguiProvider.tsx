@@ -45,6 +45,7 @@ export const INITIAL_LOCALE = getNegotiatedBrowserLocale();
 
 const LinguiContext = createContext<{
   locale: string;
+  pending: boolean;
   setLocale: (locale: Locale) => void;
 } | null>(null);
 
@@ -55,28 +56,31 @@ export default function LinguiProvider(props: Omit<I18nProviderProps, "i18n">) {
     })();
   }, []);
 
+  const [pending, setPending] = useState(false);
   const [locale, setLocale] = useState(INITIAL_LOCALE);
 
   const { setDirection } = useDirection();
 
   useEffect(() => {
     (async () => {
+      setPending(true);
       await loadAndActivate(locale);
       setDirection(
         (new IntlLocale(locale).textInfo.direction as Direction | undefined) ??
           "ltr"
       );
       document.documentElement.lang = locale;
+      setPending(false);
     })();
-  }, [locale, setDirection]);
+  }, [locale, setDirection, setPending]);
 
   return (
-    <LinguiContext.Provider value={{ locale, setLocale }}>
+    <LinguiContext.Provider value={{ locale, pending, setLocale }}>
       <I18nProvider i18n={i18n} {...props} />
     </LinguiContext.Provider>
   );
 }
 
-export function useSetLocale(): (locale: Locale) => void {
-  return useContext(LinguiContext)!.setLocale;
+export function useLinguiContext() {
+  return useContext(LinguiContext)!;
 }
