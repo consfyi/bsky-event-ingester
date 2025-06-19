@@ -528,24 +528,11 @@ function Filters({
 
   const isLoggedIn = useIsLoggedIn();
 
-  useEffect(() => {
-    if (isLoggedIn) {
-      return;
-    }
-    setViewOptions((vo) => ({
-      ...vo,
-      sort: {
-        ...vo.sort,
-        by: vo.sort.by == "followed" ? "attendees" : vo.sort.by,
-      },
-    }));
-  }, [isLoggedIn, setViewOptions]);
-
   const [sortMenuOpen, setSortMenuOpen] = useState(false);
   const [filterDrawerOpen, setFilterDrawerOpen] = useState(false);
 
-  const actuallyShowOnlyAttending = isLoggedIn && viewOptions.filter.attending;
-  const actuallyShowOnlyFollowed = isLoggedIn && viewOptions.filter.followed;
+  const attendingFiltered = isLoggedIn && viewOptions.filter.attending;
+  const followedFiltered = isLoggedIn && viewOptions.filter.followed;
 
   const sortByStrings: Record<
     SortBy,
@@ -612,13 +599,10 @@ function Filters({
   );
 
   const numFilters = [
-    actuallyShowOnlyFollowed,
-    actuallyShowOnlyAttending,
-    !isEqual(
-      viewOptions.filter.continents,
-      DEFAULT_VIEW_OPTIONS.filter.continents
-    ),
-    !isEqual(viewOptions.filter.duration, DEFAULT_VIEW_OPTIONS.filter.duration),
+    followedFiltered,
+    attendingFiltered,
+    continentsFiltered,
+    durationFiltered,
   ].reduce((acc, v) => acc + (v ? 1 : 0), 0);
 
   return (
@@ -697,7 +681,7 @@ function Filters({
                   },
                 });
               }}
-              {...(actuallyShowOnlyAttending
+              {...(attendingFiltered
                 ? {
                     color: "red",
                     variant: "light",
@@ -920,7 +904,7 @@ function Filters({
                   },
                 });
               }}
-              {...(actuallyShowOnlyFollowed
+              {...(followedFiltered
                 ? {
                     variant: "light",
                   }
@@ -1075,7 +1059,7 @@ function Filters({
           <>
             <Checkbox
               mb="sm"
-              checked={actuallyShowOnlyAttending}
+              checked={attendingFiltered}
               color="red"
               icon={(props) => <IconHeartFilled {...props} />}
               label={<Trans>Attending only</Trans>}
@@ -1092,7 +1076,7 @@ function Filters({
             <Checkbox
               mb="sm"
               disabled={followedConAttendees == null}
-              checked={actuallyShowOnlyFollowed}
+              checked={followedFiltered}
               label={<Trans>With followed only</Trans>}
               onChange={(e) => {
                 setViewOptions({
