@@ -20,7 +20,7 @@
     "@data-client/endpoint": "^0.14.26",
     "@data-client/react": "^0.14.25",
     "@date-fns/tz": "^1.2.0",
-    "@fluent/langneg": "^0.7.0",
+    "@formatjs/intl-localematcher": "^0.6.1",
     "@lingui/core": "^5.3.1",
     "@lingui/detect-locale": "^5.3.1",
     "@lingui/macro": "^5.3.1",

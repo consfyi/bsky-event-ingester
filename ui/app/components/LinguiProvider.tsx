@@ -1,4 +1,4 @@
-import { negotiateLanguages } from "@fluent/langneg";
+import { match } from "@formatjs/intl-localematcher";
 import { i18n, Locale } from "@lingui/core";
 import { I18nProvider, I18nProviderProps } from "@lingui/react";
 import { Direction, useDirection } from "@mantine/core";
@@ -24,14 +24,7 @@ function getNegotiatedBrowserLocale(): Locale {
 
   requestedLocales.push(...navigator.languages);
 
-  const [negotiatedLocale] = negotiateLanguages(
-    requestedLocales,
-    AVAILABLE_LOCALES,
-    {
-      defaultLocale: "en",
-      strategy: "matching",
-    }
-  );
+  const negotiatedLocale = match(requestedLocales, AVAILABLE_LOCALES, "en");
   return negotiatedLocale;
 }
 
