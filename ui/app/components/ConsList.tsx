@@ -490,13 +490,11 @@ const FilterOptions = z.object({
   query: z._default(z.string(), ""),
   attending: z._default(z.boolean(), false),
   followed: z._default(z.boolean(), false),
-  continents: z._default(z.array(Continent), () =>
+  continents: z._default(
+    z.array(Continent),
     Object.values(Continent.def.entries)
   ),
-  duration: z._default(
-    z.tuple([z.number(), z.number()]),
-    () => [1, 7] satisfies [number, number]
-  ),
+  duration: z._default(z.tuple([z.number(), z.number()]), [1, 7]),
 });
 type FilterOptions = z.infer<typeof FilterOptions>;
 
@@ -507,8 +505,8 @@ const SortOptions = z.object({
 type SortOptions = z.infer<typeof SortOptions>;
 
 const ViewOptions = z.object({
-  filter: z._default(FilterOptions, () => FilterOptions.parse({})),
-  sort: z._default(SortOptions, () => SortOptions.parse({})),
+  filter: z._default(FilterOptions, FilterOptions.parse({})),
+  sort: z._default(SortOptions, SortOptions.parse({})),
 });
 type ViewOptions = z.infer<typeof ViewOptions>;
 
