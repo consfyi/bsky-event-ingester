@@ -86,7 +86,7 @@ msgstr "フォロー中の参加者数"
 
 #: app/components/ConsList.tsx:571
 msgid "Name"
-msgstr "名前順"
+msgstr "名前"
 
 #: app/components/ConsList.tsx:572
 msgid "A to Z"
