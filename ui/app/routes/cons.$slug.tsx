@@ -259,7 +259,7 @@ function AttendeesList({
       ) : null}
     </>
   ) : (
-    <Box>
+    <Box mb="sm">
       <Text c="dimmed" size="sm" h={38} pt={4}>
         <Trans>No known attendees yet.</Trans>
       </Text>
