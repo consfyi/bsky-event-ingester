@@ -50,7 +50,7 @@ import {
   isAfter,
   setDate,
 } from "date-fns";
-import { groupBy, isEqual, sortBy } from "lodash-es";
+import { deburr, groupBy, isEqual, sortBy } from "lodash-es";
 import { Fragment, Suspense, useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router";
 import regexpEscape from "regexp.escape";
@@ -1280,7 +1280,7 @@ export default function ConsList({ cons }: { cons: ConWithPost[] }) {
   const queryRe = new RegExp(
     `^${Array.prototype.map
       .call(
-        viewOptions.filter.query.toLocaleLowerCase(i18n.locale),
+        deburr(viewOptions.filter.query.toLocaleLowerCase(i18n.locale)),
         (c) => `${regexpEscape(c)}.*`
       )
       .join("")}`
@@ -1297,7 +1297,7 @@ export default function ConsList({ cons }: { cons: ConWithPost[] }) {
     return (
       // Query
       // Followed filter
-      con.name.toLocaleLowerCase(i18n.locale).match(queryRe) != null &&
+      deburr(con.name.toLocaleLowerCase(i18n.locale)).match(queryRe) != null &&
       // Attending filter
       (!actuallyShowOnlyAttending || con.post.viewer?.like != null) &&
       // Continents filter
