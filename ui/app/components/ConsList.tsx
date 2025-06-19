@@ -557,6 +557,11 @@ function Filters({
       asc: t`Soonest to latest`,
       desc: t`Latest to soonest`,
     },
+    name: {
+      name: t`Name`,
+      asc: t`A to Z`,
+      desc: t`Z to A`,
+    },
     attendees: {
       name: t({ message: "Attendees", context: "number of attendees" }),
       asc: t`Fewest to most`,
@@ -566,11 +571,6 @@ function Filters({
       name: t`Followed attendees`,
       asc: t`Fewest to most`,
       desc: t`Most to fewest`,
-    },
-    name: {
-      name: t`Name`,
-      asc: t`A to Z`,
-      desc: t`Z to A`,
     },
   };
 
