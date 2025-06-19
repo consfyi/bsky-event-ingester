@@ -164,8 +164,8 @@ function Header() {
                 variant="outline"
                 size="sm"
                 color="gray"
-                w={34}
-                h={34}
+                w={36}
+                h={36}
                 onClick={() => {
                   setColorScheme(colorScheme == "light" ? "dark" : "light");
                 }}
