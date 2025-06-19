@@ -189,7 +189,7 @@ msgstr "フォロー中のユーザーのみ"
 
 #: app/components/ConsList.tsx:974
 msgid "Sort by"
-msgstr "並び替え"
+msgstr "並び順"
 
 #: app/components/ConsList.tsx:1016
 msgid "Order"
