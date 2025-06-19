@@ -507,7 +507,8 @@ const FilterOptions = z.object({
     z.array(Continent),
     Object.values(Continent.def.entries)
   ),
-  duration: z._default(z.tuple([z.number(), z.number()]), [1, 7]),
+  minDays: z._default(z.number(), 1),
+  maxDays: z._default(z.number(), 7),
 });
 type FilterOptions = z.infer<typeof FilterOptions>;
 
@@ -621,10 +622,9 @@ function Filters({
     viewOptions.filter.continents,
     DEFAULT_VIEW_OPTIONS.filter.continents
   );
-  const durationFiltered = !isEqual(
-    viewOptions.filter.duration,
-    DEFAULT_VIEW_OPTIONS.filter.duration
-  );
+  const durationFiltered =
+    viewOptions.filter.minDays != DEFAULT_VIEW_OPTIONS.filter.minDays ||
+    viewOptions.filter.maxDays != DEFAULT_VIEW_OPTIONS.filter.maxDays;
 
   const numFilters = [
     followedFiltered,
@@ -848,33 +848,32 @@ function Filters({
               >
                 <Text span size="sm" fw={500}>
                   {durationFiltered ? (
-                    viewOptions.filter.duration[0] ==
-                    viewOptions.filter.duration[1] ? (
-                      viewOptions.filter.duration[0] >=
-                      DEFAULT_VIEW_OPTIONS.filter.duration[1] ? (
+                    viewOptions.filter.minDays == viewOptions.filter.maxDays ? (
+                      viewOptions.filter.minDays >=
+                      DEFAULT_VIEW_OPTIONS.filter.maxDays ? (
                         <Plural
-                          value={DEFAULT_VIEW_OPTIONS.filter.duration[1]}
+                          value={DEFAULT_VIEW_OPTIONS.filter.maxDays}
                           one="# day or more"
                           other="# days or more"
                         />
                       ) : (
                         <Plural
-                          value={viewOptions.filter.duration[0]}
+                          value={viewOptions.filter.minDays}
                           one="# day"
                           other="# days"
                         />
                       )
-                    ) : viewOptions.filter.duration[1] >=
-                      DEFAULT_VIEW_OPTIONS.filter.duration[1] ? (
+                    ) : viewOptions.filter.maxDays >=
+                      DEFAULT_VIEW_OPTIONS.filter.maxDays ? (
                       <Plural
-                        value={viewOptions.filter.duration[0]}
+                        value={viewOptions.filter.minDays}
                         one="# day or more"
                         other="# days or more"
                       />
                     ) : (
                       <Trans>
-                        {viewOptions.filter.duration[0]} to{" "}
-                        {viewOptions.filter.duration[1]} days
+                        {viewOptions.filter.minDays} to{" "}
+                        {viewOptions.filter.maxDays} days
                       </Trans>
                     )
                   ) : (
@@ -888,28 +887,31 @@ function Filters({
                 <RangeSlider
                   w={200}
                   min={1}
-                  max={DEFAULT_VIEW_OPTIONS.filter.duration[1]}
+                  max={DEFAULT_VIEW_OPTIONS.filter.maxDays}
                   minRange={0}
-                  value={viewOptions.filter.duration}
-                  onChange={(v) => {
+                  value={[
+                    viewOptions.filter.minDays,
+                    viewOptions.filter.maxDays,
+                  ]}
+                  onChange={([minDays, maxDays]) => {
                     setViewOptions({
                       ...viewOptions,
-                      filter: { ...viewOptions.filter, duration: v },
+                      filter: { ...viewOptions.filter, minDays, maxDays },
                     });
                   }}
                   label={(value) =>
-                    value < DEFAULT_VIEW_OPTIONS.filter.duration[1] ? (
+                    value < DEFAULT_VIEW_OPTIONS.filter.maxDays ? (
                       <Plural value={[value][0]} one="# day" other="# days" />
                     ) : (
                       <Plural
-                        value={DEFAULT_VIEW_OPTIONS.filter.duration[1]}
+                        value={DEFAULT_VIEW_OPTIONS.filter.maxDays}
                         one="# day or more"
                         other="# days or more"
                       />
                     )
                   }
                   marks={[
-                    ...Array(DEFAULT_VIEW_OPTIONS.filter.duration[1]).keys(),
+                    ...Array(DEFAULT_VIEW_OPTIONS.filter.maxDays).keys(),
                   ].map((v) => ({
                     value: v + 1,
                   }))}
@@ -1191,27 +1193,27 @@ function Filters({
           w="100%"
           min={1}
           mb="sm"
-          max={DEFAULT_VIEW_OPTIONS.filter.duration[1]}
+          max={DEFAULT_VIEW_OPTIONS.filter.maxDays}
           minRange={0}
-          value={viewOptions.filter.duration}
-          onChange={(v) => {
+          value={[viewOptions.filter.minDays, viewOptions.filter.maxDays]}
+          onChange={([minDays, maxDays]) => {
             setViewOptions({
               ...viewOptions,
-              filter: { ...viewOptions.filter, duration: v },
+              filter: { ...viewOptions.filter, minDays, maxDays },
             });
           }}
           label={(value) =>
-            value < DEFAULT_VIEW_OPTIONS.filter.duration[1] ? (
+            value < DEFAULT_VIEW_OPTIONS.filter.maxDays ? (
               <Plural value={[value][0]} one="# day" other="# days" />
             ) : (
               <Plural
-                value={DEFAULT_VIEW_OPTIONS.filter.duration[1]}
+                value={DEFAULT_VIEW_OPTIONS.filter.maxDays}
                 one="# day or more"
                 other="# days or more"
               />
             )
           }
-          marks={[...Array(DEFAULT_VIEW_OPTIONS.filter.duration[1]).keys()].map(
+          marks={[...Array(DEFAULT_VIEW_OPTIONS.filter.maxDays).keys()].map(
             (v) => ({
               value: v + 1,
             })
@@ -1284,14 +1286,13 @@ export default function ConsList({ cons }: { cons: ConWithPost[] }) {
       .join("")}`
   );
 
-  const [minDuration, tempMaxDuration] = viewOptions.filter.duration;
-  const maxDuration =
-    tempMaxDuration >= DEFAULT_VIEW_OPTIONS.filter.duration[1]
+  const maxDays =
+    viewOptions.filter.maxDays >= DEFAULT_VIEW_OPTIONS.filter.maxDays
       ? Infinity
-      : tempMaxDuration;
+      : viewOptions.filter.maxDays;
 
   const filteredCons = cons.filter((con) => {
-    const duration = differenceInDays(con.end, con.start) + 1;
+    const days = differenceInDays(con.end, con.start) + 1;
 
     return (
       // Query
@@ -1304,8 +1305,8 @@ export default function ConsList({ cons }: { cons: ConWithPost[] }) {
         getContinentForCountry(con.country)
       ) &&
       // Duration filter
-      duration >= minDuration &&
-      duration <= maxDuration &&
+      days >= viewOptions.filter.minDays &&
+      days <= maxDays &&
       (!actuallyShowOnlyFollowed ||
         followedConAttendees == null ||
         (followedConAttendees[con.identifier] ?? []).length > 0)
