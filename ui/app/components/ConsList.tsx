@@ -416,24 +416,7 @@ function ConsByAttendees({
     return sorted;
   }, [cons, sortDesc]);
 
-  return (
-    <Box px="xs">
-      {sortedCons.map((con) => {
-        return (
-          <Box key={con.identifier} mb="sm">
-            <ConRow
-              con={con}
-              showMonthInIcon
-              showEndDateOnly={false}
-              showLocation
-              showFollowed
-              showLikeButton
-            />
-          </Box>
-        );
-      })}
-    </Box>
-  );
+  return <ConsBy cons={sortedCons} />;
 }
 
 function ConsByFollowed({
@@ -457,9 +440,35 @@ function ConsByFollowed({
     return sorted;
   }, [cons, followedConAttendees, sortDesc]);
 
+  return <ConsBy cons={sortedCons} />;
+}
+
+function ConsByName({
+  cons,
+  sortDesc,
+}: {
+  cons: ConWithPost[];
+  sortDesc: boolean;
+}) {
+  const { i18n } = useLingui();
+  const collator = useMemo(() => new Intl.Collator(i18n.locale), [i18n.locale]);
+
+  const sortedCons = useMemo(() => {
+    const sorted = cons.slice();
+    sorted.sort((x, y) => collator.compare(x.name, y.name));
+    if (sortDesc) {
+      sorted.reverse();
+    }
+    return sorted;
+  }, [cons, sortDesc, collator]);
+
+  return <ConsBy cons={sortedCons} />;
+}
+
+function ConsBy({ cons }: { cons: ConWithPost[] }) {
   return (
     <Box px="xs">
-      {sortedCons.map((con) => {
+      {cons.map((con) => {
         return (
           <Box key={con.identifier} mb="sm">
             <ConRow
@@ -477,11 +486,12 @@ function ConsByFollowed({
   );
 }
 
-const SortBy = z.enum(["date", "attendees", "followed"]);
+const SortBy = z.enum(["date", "attendees", "followed", "name"]);
 type SortBy = z.infer<typeof SortBy>;
 
 const DEFAULT_SORT_DESC_OPTIONS: Record<SortBy, boolean> = {
   date: false,
+  name: false,
   attendees: true,
   followed: true,
 };
@@ -556,6 +566,11 @@ function Filters({
       name: t`Followed attendees`,
       asc: t`Fewest to most`,
       desc: t`Most to fewest`,
+    },
+    name: {
+      name: t`Name`,
+      asc: t`A to Z`,
+      desc: t`Z to A`,
     },
   };
 
@@ -1304,6 +1319,8 @@ export default function ConsList({ cons }: { cons: ConWithPost[] }) {
               cons={filteredCons}
               sortDesc={viewOptions.sort.desc}
             />
+          ) : viewOptions.sort.by == "name" ? (
+            <ConsByName cons={filteredCons} sortDesc={viewOptions.sort.desc} />
           ) : viewOptions.sort.by == "date" ? (
             <ConsByDate
               cons={filteredCons}
