@@ -23,6 +23,7 @@ import {
   Tooltip,
 } from "@mantine/core";
 import {
+  Icon,
   IconAdjustmentsHorizontal,
   IconCalendar,
   IconCalendarWeek,
@@ -32,8 +33,10 @@ import {
   IconMapPin,
   IconMinus,
   IconSearch,
-  IconSortAscending,
-  IconSortDescending,
+  IconSortAscendingLetters,
+  IconSortAscendingNumbers,
+  IconSortDescendingLetters,
+  IconSortDescendingNumbers,
   IconUsers,
   IconX,
 } from "@tabler/icons-react";
@@ -486,7 +489,7 @@ function ConsBy({ cons }: { cons: ConWithPost[] }) {
   );
 }
 
-const SortBy = z.enum(["date", "attendees", "followed", "name"]);
+const SortBy = z.enum(["date", "name", "attendees", "followed"]);
 type SortBy = z.infer<typeof SortBy>;
 
 const DEFAULT_SORT_DESC_OPTIONS: Record<SortBy, boolean> = {
@@ -544,37 +547,47 @@ function Filters({
   const attendingFiltered = isLoggedIn && viewOptions.filter.attending;
   const followedFiltered = isLoggedIn && viewOptions.filter.followed;
 
-  const sortByStrings: Record<
+  const sortByDisplays: Record<
     SortBy,
     {
       name: string;
       asc: string;
+      AscIcon: Icon;
       desc: string;
+      DescIcon: Icon;
     }
   > = {
     date: {
       name: t`Date`,
       asc: t`Soonest to latest`,
+      AscIcon: IconSortAscendingNumbers,
       desc: t`Latest to soonest`,
+      DescIcon: IconSortDescendingNumbers,
     },
     name: {
       name: t`Name`,
       asc: t`A to Z`,
+      AscIcon: IconSortAscendingLetters,
       desc: t`Z to A`,
+      DescIcon: IconSortDescendingLetters,
     },
     attendees: {
       name: t({ message: "Attendees", context: "number of attendees" }),
       asc: t`Fewest to most`,
+      AscIcon: IconSortAscendingNumbers,
       desc: t`Most to fewest`,
+      DescIcon: IconSortDescendingNumbers,
     },
     followed: {
       name: t`Followed attendees`,
       asc: t`Fewest to most`,
+      AscIcon: IconSortAscendingNumbers,
       desc: t`Most to fewest`,
+      DescIcon: IconSortDescendingNumbers,
     },
   };
 
-  const currentSortByStrings = sortByStrings[viewOptions.sort.by];
+  const currentSortByDisplay = sortByDisplays[viewOptions.sort.by];
 
   const continentCount = useMemo(() => {
     const counts: Partial<Record<Continent, number>> = {};
@@ -950,13 +963,13 @@ function Filters({
               style={{ zIndex: 4, flexShrink: 0 }}
               leftSection={
                 viewOptions.sort.desc ? (
-                  <IconSortDescending
-                    title={currentSortByStrings.desc}
+                  <currentSortByDisplay.DescIcon
+                    title={currentSortByDisplay.desc}
                     size={14}
                   />
                 ) : (
-                  <IconSortAscending
-                    title={currentSortByStrings.asc}
+                  <currentSortByDisplay.AscIcon
+                    title={currentSortByDisplay.asc}
                     size={14}
                   />
                 )
@@ -964,7 +977,7 @@ function Filters({
               rightSection={<IconChevronDown size={14} />}
             >
               <Text span size="sm" fw={500}>
-                {currentSortByStrings.name}
+                {currentSortByDisplay.name}
               </Text>
             </Button>
           </Menu.Target>
@@ -1008,7 +1021,7 @@ function Filters({
                     )
                   }
                 >
-                  {sortByStrings[sortBy].name}
+                  {sortByDisplays[sortBy].name}
                 </Menu.Item>
               );
             })}
@@ -1030,11 +1043,14 @@ function Filters({
                   ) : (
                     <EmptyIcon size={14} />
                   )}
-                  <IconSortAscending size={14} />
+                  {(() => {
+                    const Icon = sortByDisplays[viewOptions.sort.by].AscIcon;
+                    return <Icon size={14} />;
+                  })()}
                 </Group>
               }
             >
-              {sortByStrings[viewOptions.sort.by].asc}
+              {sortByDisplays[viewOptions.sort.by].asc}
             </Menu.Item>
             <Menu.Item
               aria-selected={viewOptions.sort.desc}
@@ -1051,11 +1067,14 @@ function Filters({
                   ) : (
                     <EmptyIcon size={14} />
                   )}
-                  <IconSortDescending size={14} />
+                  {(() => {
+                    const Icon = sortByDisplays[viewOptions.sort.by].DescIcon;
+                    return <Icon size={14} />;
+                  })()}
                 </Group>
               }
             >
-              {sortByStrings[viewOptions.sort.by].desc}
+              {sortByDisplays[viewOptions.sort.by].desc}
             </Menu.Item>
           </Menu.Dropdown>
         </Menu>
