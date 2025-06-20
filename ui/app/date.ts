@@ -14,7 +14,7 @@ export function* iterDates<DateType extends Date>(
   start: DateType,
   end: DateType,
   next: (date: DateType) => DateType
-): Generator<DateType> {
+): Iterable<DateType> {
   while (start < end) {
     yield start;
     start = next(start);
