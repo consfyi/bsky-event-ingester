@@ -20,7 +20,7 @@ import {
   IconMapPin,
 } from "@tabler/icons-react";
 import { addDays, differenceInDays, isAfter } from "date-fns";
-import { range, sortBy } from "lodash-es";
+import { sortBy, times } from "lodash-es";
 import { Suspense, useEffect, useMemo } from "react";
 import { Link, useParams } from "react-router";
 import Avatar from "~/components/Avatar";
@@ -346,11 +346,9 @@ export default function Index() {
                 <>
                   {knownLikeCount > 0 || unknownLikeCount == 0 ? (
                     <SimpleGrid cols={{ base: 1, sm: 2, lg: 5 }} mb="sm">
-                      {range(knownLikeCount > 0 ? knownLikeCount : 1).map(
-                        (i) => (
-                          <ActorSkeleton key={i} />
-                        )
-                      )}
+                      {times(knownLikeCount > 0 ? knownLikeCount : 1, (i) => (
+                        <ActorSkeleton key={i} />
+                      ))}
                     </SimpleGrid>
                   ) : null}
                   {unknownLikeCount > 0 ? (
@@ -367,7 +365,7 @@ export default function Index() {
                         mb="sm"
                       />
                       <SimpleGrid cols={{ base: 1, sm: 2, lg: 5 }} mb="sm">
-                        {range(unknownLikeCount).map((i) => (
+                        {times(unknownLikeCount, (i) => (
                           <ActorSkeleton key={i} />
                         ))}
                       </SimpleGrid>
