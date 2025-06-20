@@ -309,7 +309,7 @@ msgstr "フォローしていないユーザー{0}人"
 
 #: app/routes/cons.$slug.tsx:264
 msgid "No known attendees yet."
-msgstr "まだ把握されている参加者はいません"
+msgstr "まだ把握されている参加者はいません。"
 
 #: app/routes/cons.$slug.tsx:323
 msgid "Attendees"
