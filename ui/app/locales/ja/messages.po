@@ -72,7 +72,7 @@ msgstr "遅い順"
 
 #: app/components/ConsList.tsx:568
 msgid "Name"
-msgstr "名前"
+msgstr "名称"
 
 #: app/components/ConsList.tsx:569
 msgid "A to Z"
