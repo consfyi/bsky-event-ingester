@@ -1,14 +1,12 @@
-import { TZDate } from "@date-fns/tz";
-
-export function reinterpretAsLocalDate(tzDate: TZDate) {
+export function reinterpretAsLocalDate<DateType extends Date>(d: DateType) {
   return new Date(
-    tzDate.getFullYear(),
-    tzDate.getMonth(),
-    tzDate.getDate(),
-    tzDate.getHours(),
-    tzDate.getMinutes(),
-    tzDate.getSeconds(),
-    tzDate.getMilliseconds()
+    d.getFullYear(),
+    d.getMonth(),
+    d.getDate(),
+    d.getHours(),
+    d.getMinutes(),
+    d.getSeconds(),
+    d.getMilliseconds()
   );
 }
 

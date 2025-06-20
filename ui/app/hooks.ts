@@ -1,6 +1,7 @@
 import type { ActorIdentifier, Did, ResourceUri } from "@atcute/lexicons";
 import { useDLE, useSuspense } from "@data-client/react";
-import { TZDate } from "@date-fns/tz";
+import type { TZDate } from "@date-fns/tz";
+import { TZDateMini } from "@date-fns/tz";
 import { addDays, isAfter, parse as parseDate } from "date-fns";
 import { sortBy } from "lodash-es";
 import { useSyncExternalStore } from "react";
@@ -129,7 +130,7 @@ export function useCons() {
           const [strings] = def.locales;
           const [start, end] = fullDef.fbl_eventInfo.date.split("/");
 
-          const refDate = new TZDate(
+          const refDate = new TZDateMini(
             new Date(),
             fullDef.fbl_eventInfo.geocoded?.timezone ?? "UTC"
           );
