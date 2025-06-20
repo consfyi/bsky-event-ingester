@@ -13,12 +13,13 @@ export function reinterpretAsLocalDate(tzDate: TZDate) {
   );
 }
 
-export function* monthRange<DateType extends Date>(
+export function* iterDates<DateType extends Date>(
   start: DateType,
-  end: DateType
+  end: DateType,
+  next: (date: DateType) => DateType
 ): Generator<DateType> {
   while (start < end) {
     yield start;
-    start = addMonths(start, 1);
+    start = next(start);
   }
 }
