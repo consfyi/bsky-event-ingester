@@ -448,7 +448,7 @@ function Welcome() {
   return (
     <Collapse in={!closed}>
       <Alert
-        mt={{ lg: "xs" }}
+        my={{ lg: "xs" }}
         mx={{ base: 0, lg: "xs" }}
         icon={<IconPaw />}
         title={<Trans>Welcome!</Trans>}
@@ -542,6 +542,7 @@ function NotSubscribedToLabelerAlert() {
     <Collapse in={!subscribedToLabeler}>
       <Alert
         my={{ lg: "xs" }}
+        mx={{ base: 0, lg: "xs" }}
         icon={<IconAlertTriangle />}
         title={<Trans>Not subscribed to labeler</Trans>}
         color="yellow"
