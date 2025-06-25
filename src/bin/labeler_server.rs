@@ -9,7 +9,7 @@ struct Config {
 
 #[derive(Copy, Clone)]
 enum Message<'a> {
-    Labels { seq: i64, labels: &'a [u8] },
+    Labels { seq: i64, labels: &'a [&'a [u8]] },
     Error { error: EventStreamError },
 }
 
@@ -58,9 +58,11 @@ fn encode_message(msg: Message) -> Vec<u8> {
                 //
                 .str("labels")
                 .unwrap()
-                .array(1)
+                .array(labels.len() as u64)
                 .unwrap();
-            writer.writer_mut().extend(labels);
+            for label in labels {
+                writer.writer_mut().extend(*label);
+            }
         }
 
         Message::Error { error } => {
@@ -171,7 +173,7 @@ async fn subscribe_labels(
                             sink.send(axum::extract::ws::Message::Binary(
                                 encode_message(Message::Labels {
                                     seq: row.seq,
-                                    labels: &row.payload,
+                                    labels: &[&row.payload],
                                 }).into(),
                             ))
                             .await?;
