@@ -108,14 +108,13 @@ async fn subscribe_labels(
         match async {
             let mut seq = {
                 let mut db_conn = db_pool.acquire().await?;
-                sqlx::query!(
+                sqlx::query_scalar!(
                     r#"
                     SELECT COALESCE((SELECT MAX(seq) FROM labels), 0) AS "seq!"
                     "#
                 )
                 .fetch_one(&mut *db_conn)
                 .await?
-                .seq
             };
 
             if let Some(cursor) = params.cursor {

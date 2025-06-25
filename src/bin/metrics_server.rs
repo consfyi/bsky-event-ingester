@@ -71,14 +71,13 @@ const METRICS: &[Metric] = &[
         r#type: MetricType::Gauge,
         fetch: |tx| {
             Box::pin(async move {
-                let row = sqlx::query!(
+                Ok(sqlx::query_scalar!(
                     r#"
                     SELECT COALESCE((SELECT MAX(seq) FROM labels), 0) AS "seq!"
                     "#
                 )
                 .fetch_one(&mut **tx)
-                .await?;
-                Ok(row.seq as f64)
+                .await? as f64)
             })
         },
     },
@@ -87,14 +86,13 @@ const METRICS: &[Metric] = &[
         r#type: MetricType::Gauge,
         fetch: |tx| {
             Box::pin(async move {
-                let row = sqlx::query!(
+                Ok(sqlx::query_scalar!(
                     r#"
                     SELECT COALESCE((SELECT cursor FROM jetstream_cursor), 0) AS "cursor!"
                     "#
                 )
                 .fetch_one(&mut **tx)
-                .await?;
-                Ok(row.cursor as f64)
+                .await? as f64)
             })
         },
     },
@@ -103,14 +101,14 @@ const METRICS: &[Metric] = &[
         r#type: MetricType::Gauge,
         fetch: |tx| {
             Box::pin(async move {
-                let row = sqlx::query!(
+                Ok(sqlx::query_scalar!(
                     r#"
                     SELECT CURRENT_TIMESTAMP AS "current_timestamp!"
                     "#
                 )
                 .fetch_one(&mut **tx)
-                .await?;
-                Ok(row.current_timestamp.timestamp_micros() as f64)
+                .await?
+                .timestamp_micros() as f64)
             })
         },
     },

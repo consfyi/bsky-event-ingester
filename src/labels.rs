@@ -37,7 +37,7 @@ pub async fn emit(
     label: &atrium_api::com::atproto::label::defs::Label,
     like_rkey: &str,
 ) -> Result<i64, EmitError> {
-    let seq = sqlx::query!(
+    let seq = sqlx::query_scalar!(
         r#"
         INSERT INTO labels (val, uri, neg, payload, like_rkey)
         VALUES ($1, $2, $3, $4, $5)
@@ -50,8 +50,7 @@ pub async fn emit(
         like_rkey,
     )
     .fetch_one(&mut **tx)
-    .await?
-    .seq;
+    .await?;
 
     sqlx::query!("NOTIFY labels").execute(&mut **tx).await?;
 

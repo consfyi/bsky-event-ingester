@@ -799,10 +799,9 @@ async fn service_jetstream(
 ) -> Result<(), anyhow::Error> {
     let mut cursor = {
         let mut db_conn = db_pool.acquire().await?;
-        sqlx::query!(r#"SELECT cursor FROM jetstream_cursor"#)
+        sqlx::query_scalar!(r#"SELECT cursor FROM jetstream_cursor"#)
             .fetch_optional(&mut *db_conn)
             .await?
-            .map(|d| d.cursor)
     };
 
     loop {
@@ -928,7 +927,7 @@ async fn service_jetstream_once(
                 jetstream_oxide::events::commit::CommitEvent::Delete { info, commit } => {
                     let uri = info.did.to_string();
 
-                    let Some(val) = sqlx::query!(
+                    let Some(val) = sqlx::query_scalar!(
                         r#"
                         SELECT val FROM labels
                         WHERE like_rkey = $1 AND uri = $2 AND NOT neg
@@ -940,7 +939,7 @@ async fn service_jetstream_once(
                     )
                     .fetch_optional(&mut *db_conn)
                     .await?
-                    .map(|v| v.val) else {
+                    else {
                         return Ok(());
                     };
 
