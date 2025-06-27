@@ -106,15 +106,24 @@ struct Event {
 
 impl Event {
     fn end_time(&self) -> chrono::DateTime<chrono::Utc> {
-        (self.end_date + chrono::Days::new(1))
-            .and_time(chrono::NaiveTime::MIN)
-            .and_local_timezone(
-                self.geocoded
-                    .as_ref()
-                    .and_then(|g| g.timezone)
-                    .unwrap_or(chrono_tz::UTC),
-            )
-            .unwrap()
+        let date = self.end_date + chrono::Days::new(1);
+        let tz = self
+            .geocoded
+            .as_ref()
+            .and_then(|g| g.timezone)
+            .unwrap_or(chrono_tz::UTC);
+
+        date.and_time(chrono::NaiveTime::MIN)
+            .and_local_timezone(tz)
+            .earliest()
+            .unwrap_or_else(|| {
+                // Some timezones (e.g. America/Santiago going into DST have no
+                // midnight, so we pick 1am here)
+                date.and_time(chrono::NaiveTime::MIN + chrono::Duration::hours(1))
+                    .and_local_timezone(tz)
+                    .earliest()
+                    .unwrap()
+            })
             .to_utc()
     }
 }
