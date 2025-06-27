@@ -65,6 +65,7 @@ import {
   useFollowedConAttendees,
   useFollowedConAttendeesDLE,
   useIsLoggedIn,
+  useNow,
 } from "~/hooks";
 import classes from "./ConsList.module.css";
 
@@ -120,7 +121,7 @@ export function ConRow({
       ? followedConAttendees[con.identifier] ?? []
       : null;
 
-  const now = new Date();
+  const now = useNow();
   const active = isAfter(now, con.start) && !isAfter(now, addDays(con.end, 1));
 
   return (

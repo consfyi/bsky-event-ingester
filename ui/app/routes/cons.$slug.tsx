@@ -36,6 +36,7 @@ import {
   useConsWithPosts,
   useFollowedConAttendeesDLE,
   useLikes,
+  useNow,
   useSelf,
   useSelfFollowsDLE,
 } from "~/hooks";
@@ -93,7 +94,7 @@ function Header({ con }: { con: ConWithPost }) {
     [i18n.locale]
   );
 
-  const now = new Date();
+  const now = useNow();
   const active = isAfter(now, con.start) && !isAfter(now, addDays(con.end, 1));
 
   return (

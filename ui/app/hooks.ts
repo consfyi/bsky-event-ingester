@@ -4,7 +4,7 @@ import type { TZDate } from "@date-fns/tz";
 import { TZDateMini } from "@date-fns/tz";
 import { addDays, isAfter, parse as parseDate } from "date-fns";
 import { sortBy } from "lodash-es";
-import { useSyncExternalStore } from "react";
+import { useState, useSyncExternalStore } from "react";
 import { LABELER_DID } from "~/config";
 import { Client, createClient } from "./bluesky";
 import { useGlobalMemo } from "./components/GlobalMemoContext";
@@ -107,12 +107,11 @@ export type ConWithPost = Con & { post: Post };
 
 export function useCons() {
   const labelerView = useSuspense(useGetLabelerView(), { did: LABELER_DID });
+  const now = useNow();
 
   const cons = useGlobalMemo(
     "cons",
     () => {
-      const now = new Date();
-
       const cons = labelerView.policies!.labelValueDefinitions!.flatMap(
         (def) => {
           const fullDef = def as typeof def & {
@@ -131,7 +130,7 @@ export function useCons() {
           const [start, end] = fullDef.fbl_eventInfo.date.split("/");
 
           const refDate = new TZDateMini(
-            new Date(),
+            now,
             fullDef.fbl_eventInfo.geocoded?.timezone ?? "UTC"
           );
 
@@ -161,7 +160,7 @@ export function useCons() {
 
       return cons;
     },
-    [labelerView]
+    [labelerView, now]
   );
   return cons;
 }
@@ -271,4 +270,9 @@ export function useFollowedConAttendeesDLE() {
 export function useIsLoggedIn() {
   const client = useClient();
   return client.did != null;
+}
+
+export function useNow() {
+  const [now] = useState(() => new Date());
+  return now;
 }
