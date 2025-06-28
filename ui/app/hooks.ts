@@ -130,7 +130,7 @@ export function useCons() {
           const [start, end] = fullDef.fbl_eventInfo.date.split("/");
 
           const refDate = new TZDateMini(
-            now,
+            new Date(),
             fullDef.fbl_eventInfo.geocoded?.timezone ?? "UTC"
           );
 
