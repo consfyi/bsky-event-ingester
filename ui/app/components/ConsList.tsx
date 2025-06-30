@@ -434,10 +434,13 @@ function ConsByFollowed({
   const followedConAttendees = useFollowedConAttendees();
 
   const sortedCons = useMemo(() => {
-    const sorted = sortBy(cons, (con) =>
-      followedConAttendees == null
-        ? con.post.likeCount
-        : (followedConAttendees[con.identifier] ?? []).length
+    const sorted = sortBy(
+      cons,
+      (con) =>
+        followedConAttendees == null
+          ? con.post.likeCount
+          : (followedConAttendees[con.identifier] ?? []).length,
+      (con) => con.post.likeCount
     );
     if (sortDesc) {
       sorted.reverse();
