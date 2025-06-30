@@ -50,7 +50,8 @@ import {
   isAfter,
   setDate,
 } from "date-fns";
-import { deburr, groupBy, isEqual, sortBy } from "lodash-es";
+import deepEqual from "deep-equal";
+import { compareDesc, compareMany, comparing, groupBy, sorted } from "iter-fns";
 import { Fragment, Suspense, useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router";
 import regexpEscape from "regexp.escape";
@@ -67,6 +68,7 @@ import {
   useIsLoggedIn,
   useNow,
 } from "~/hooks";
+import removeDiacritics from "~/removeDiacritics";
 import classes from "./ConsList.module.css";
 
 const MAX_AVATARS_IN_STACK = 3;
@@ -321,7 +323,7 @@ function ConsByDate({
     });
     if (sortDesc) {
       for (const k in groups) {
-        groups[k].reverse();
+        groups[k]!.reverse();
       }
     }
     return groups;
@@ -414,11 +416,14 @@ function ConsByAttendees({
   sortDesc: boolean;
 }) {
   const sortedCons = useMemo(() => {
-    const sorted = sortBy(cons, (con) => con.post.likeCount);
+    const sortedCons = sorted(
+      cons,
+      comparing((con) => con.post.likeCount)
+    );
     if (sortDesc) {
-      sorted.reverse();
+      sortedCons.reverse();
     }
-    return sorted;
+    return sortedCons;
   }, [cons, sortDesc]);
 
   return <ConsBy cons={sortedCons} />;
@@ -434,18 +439,21 @@ function ConsByFollowed({
   const followedConAttendees = useFollowedConAttendees();
 
   const sortedCons = useMemo(() => {
-    const sorted = sortBy(
+    const sortedCons = sorted(
       cons,
-      (con) =>
-        followedConAttendees == null
-          ? con.post.likeCount
-          : (followedConAttendees[con.identifier] ?? []).length,
-      (con) => con.post.likeCount
+      compareMany(
+        comparing((con) =>
+          followedConAttendees == null
+            ? con.post.likeCount
+            : (followedConAttendees[con.identifier] ?? []).length
+        ),
+        comparing((con) => con.post.likeCount)
+      )
     );
     if (sortDesc) {
-      sorted.reverse();
+      sortedCons.reverse();
     }
-    return sorted;
+    return sortedCons;
   }, [cons, followedConAttendees, sortDesc]);
 
   return <ConsBy cons={sortedCons} />;
@@ -606,9 +614,9 @@ function Filters({
 
   const sortedContinents = useMemo(
     () =>
-      sortBy(
+      sorted(
         DEFAULT_VIEW_OPTIONS.filter.continents,
-        (code) => -(continentCount[code] ?? 0)
+        compareDesc(comparing((code) => continentCount[code] ?? 0))
       ),
     [continentCount]
   );
@@ -623,7 +631,7 @@ function Filters({
     XX: t`Unknown`,
   };
 
-  const continentsFiltered = !isEqual(
+  const continentsFiltered = !deepEqual(
     viewOptions.filter.continents,
     DEFAULT_VIEW_OPTIONS.filter.continents
   );
@@ -817,7 +825,7 @@ function Filters({
                         filter: {
                           ...viewOptions.filter,
                           continents: !selected
-                            ? sortBy([...viewOptions.filter.continents, code])
+                            ? sorted([...viewOptions.filter.continents, code])
                             : viewOptions.filter.continents.filter(
                                 (c) => c != code
                               ),
@@ -1174,7 +1182,7 @@ function Filters({
                   filter: {
                     ...viewOptions.filter,
                     continents: e.target.checked
-                      ? sortBy([...viewOptions.filter.continents, code])
+                      ? sorted([...viewOptions.filter.continents, code])
                       : viewOptions.filter.continents.filter((c) => c != code),
                   },
                 });
@@ -1265,7 +1273,7 @@ export default function ConsList({ cons }: { cons: ConWithPost[] }) {
   useEffect(() => {
     setSearchParams(
       (prev) => {
-        if (isEqual(viewOptions, DEFAULT_VIEW_OPTIONS)) {
+        if (deepEqual(viewOptions, DEFAULT_VIEW_OPTIONS)) {
           prev.delete("q");
         } else {
           prev.set("q", JSON.stringify(viewOptions));
@@ -1285,7 +1293,9 @@ export default function ConsList({ cons }: { cons: ConWithPost[] }) {
   const queryRe = new RegExp(
     `^${Array.prototype.map
       .call(
-        deburr(viewOptions.filter.query.toLocaleLowerCase(i18n.locale)),
+        removeDiacritics(
+          viewOptions.filter.query.toLocaleLowerCase(i18n.locale)
+        ),
         (c) => `${regexpEscape(c)}.*`
       )
       .join("")}`
@@ -1302,7 +1312,9 @@ export default function ConsList({ cons }: { cons: ConWithPost[] }) {
     return (
       // Query
       // Followed filter
-      deburr(con.name.toLocaleLowerCase(i18n.locale)).match(queryRe) != null &&
+      removeDiacritics(con.name.toLocaleLowerCase(i18n.locale)).match(
+        queryRe
+      ) != null &&
       // Attending filter
       (!actuallyShowOnlyAttending || con.post.viewer?.like != null) &&
       // Continents filter
@@ -1362,7 +1374,7 @@ export default function ConsList({ cons }: { cons: ConWithPost[] }) {
                 <Trans>No cons to display.</Trans>
               </Text>
 
-              {!isEqual(viewOptions.filter, DEFAULT_VIEW_OPTIONS.filter) ? (
+              {!deepEqual(viewOptions.filter, DEFAULT_VIEW_OPTIONS.filter) ? (
                 <Box>
                   <Button
                     onClick={() => {

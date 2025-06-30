@@ -3,7 +3,7 @@ import { useDLE, useSuspense } from "@data-client/react";
 import type { TZDate } from "@date-fns/tz";
 import { TZDateMini } from "@date-fns/tz";
 import { addDays, isAfter, parse as parseDate } from "date-fns";
-import { sortBy } from "lodash-es";
+import { comparing, sorted } from "iter-fns";
 import { useState, useSyncExternalStore } from "react";
 import { LABELER_DID } from "~/config";
 import { Client, createClient } from "./bluesky";
@@ -241,7 +241,10 @@ function useFollowedConAttendeesGlobalMemo(data: Profile[] | undefined) {
         }
       }
       for (const k in cons) {
-        cons[k] = sortBy(cons[k], (v) => v.handle);
+        cons[k] = sorted(
+          cons[k],
+          comparing((v) => v.handle)
+        );
       }
       return cons;
     },

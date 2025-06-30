@@ -20,7 +20,6 @@ import {
   IconMapPin,
 } from "@tabler/icons-react";
 import { addDays, differenceInDays, isAfter } from "date-fns";
-import { sortBy, times } from "lodash-es";
 import { Suspense, useEffect, useMemo } from "react";
 import { Link, useParams } from "react-router";
 import Avatar from "~/components/Avatar";
@@ -41,6 +40,7 @@ import {
   useSelfFollowsDLE,
 } from "~/hooks";
 import { Route } from "./+types/cons.$slug";
+import { comparing, map, Range, sorted, toArray } from "iter-fns";
 
 function ActorSkeleton() {
   return (
@@ -219,8 +219,14 @@ function AttendeesList({
       out.push(like.actor!);
     }
 
-    knownLikes = sortBy(knownLikes, (actor) => actor.handle);
-    unknownLikes = sortBy(unknownLikes, (actor) => actor.handle);
+    knownLikes = sorted(
+      knownLikes,
+      comparing((actor) => actor.handle)
+    );
+    unknownLikes = sorted(
+      unknownLikes,
+      comparing((actor) => actor.handle)
+    );
 
     if (isSelfAttending && self != null) {
       knownLikes.unshift(self);
@@ -347,9 +353,12 @@ export default function Index() {
                 <>
                   {knownLikeCount > 0 || unknownLikeCount == 0 ? (
                     <SimpleGrid cols={{ base: 1, sm: 2, lg: 5 }} mb="sm">
-                      {times(knownLikeCount > 0 ? knownLikeCount : 1, (i) => (
-                        <ActorSkeleton key={i} />
-                      ))}
+                      {toArray(
+                        map(
+                          Range.to(knownLikeCount > 0 ? knownLikeCount : 1),
+                          (i) => <ActorSkeleton key={i} />
+                        )
+                      )}
                     </SimpleGrid>
                   ) : null}
                   {unknownLikeCount > 0 ? (
@@ -366,9 +375,11 @@ export default function Index() {
                         mb="sm"
                       />
                       <SimpleGrid cols={{ base: 1, sm: 2, lg: 5 }} mb="sm">
-                        {times(unknownLikeCount, (i) => (
-                          <ActorSkeleton key={i} />
-                        ))}
+                        {toArray(
+                          map(Range.to(unknownLikeCount), (i) => (
+                            <ActorSkeleton key={i} />
+                          ))
+                        )}
                       </SimpleGrid>
                     </>
                   ) : null}
