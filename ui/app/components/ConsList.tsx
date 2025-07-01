@@ -60,7 +60,7 @@ import Avatar from "~/components/Avatar";
 import Flag from "~/components/Flag";
 import LikeButton from "~/components/LikeButton";
 import { Continent, getContinentForCountry } from "~/continents";
-import { iterDates, reinterpretAsLocalDate } from "~/date";
+import { reinterpretAsLocalDate } from "~/date";
 import {
   ConWithPost,
   useFollowedConAttendees,
@@ -334,14 +334,15 @@ function ConsByDate({
       return [];
     }
     const months = [];
-    for (const d of iterDates(
-      setDate(reinterpretAsLocalDate(cons![0].start), 1),
-      addMonths(
-        setDate(reinterpretAsLocalDate(cons![cons!.length - 1].start), 1),
-        1
-      ),
-      (d) => addMonths(d, 1)
-    )) {
+    for (
+      let d = setDate(reinterpretAsLocalDate(cons![0].start), 1),
+        endDate = addMonths(
+          setDate(reinterpretAsLocalDate(cons![cons!.length - 1].start), 1),
+          1
+        );
+      d < endDate;
+      d = addMonths(d, 1)
+    ) {
       if (hideEmptyGroups && (consByMonth[yearMonthKey(d)] ?? []).length == 0) {
         continue;
       }
