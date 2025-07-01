@@ -81,8 +81,8 @@ importers:
         specifier: ^4.1.0
         version: 4.4.0
       iter-fns:
-        specifier: ^0.6.2
-        version: 0.6.2
+        specifier: ^0.7.0
+        version: 0.7.0
       pigeon-maps:
         specifier: ^0.22.1
         version: 0.22.1(react@18.3.1)
@@ -2178,8 +2178,8 @@ packages:
   isexe@2.0.0:
     resolution: {integrity: sha512-RHxMLp9lnKHGHRng9QFhRCMbYAcVpn69smSGcq3f36xjgVVWThj4qqLbTLlq7Ssj8B+fIQ1EuCEGI2lKsyQeIw==}
 
-  iter-fns@0.6.2:
-    resolution: {integrity: sha512-hcf7VHS+VLz+vjhsD9ab1iN3m2dBySp31LrFRxfaCGA1Wa0HmubmmOwf6/x60KdpFqMPuyKt91Yx6uiR84P+uQ==}
+  iter-fns@0.7.0:
+    resolution: {integrity: sha512-gqW9RNJr6eXUMCDIjhvqKwrHJyWOcAxg80Ngau8eNPhOmHEBe7UNbEmdpmUWSXprYtpBGHbO/kexfybMF+UY6A==}
 
   iterator.prototype@1.1.5:
     resolution: {integrity: sha512-H0dkQoCa3b2VEeKQBOxFph+JAbcrQdE7KC0UkqwpLmv2EC4P41QXP+rqo9wYodACiG5/WM5s9oDApTU8utwj9g==}
@@ -5734,7 +5734,7 @@ snapshots:
 
   isexe@2.0.0: {}
 
-  iter-fns@0.6.2: {}
+  iter-fns@0.7.0: {}
 
   iterator.prototype@1.1.5:
     dependencies:
