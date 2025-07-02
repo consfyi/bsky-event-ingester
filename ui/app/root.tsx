@@ -239,11 +239,12 @@ function Header() {
                     try {
                       await startLogin(realPdsHost);
                     } catch (e) {
-                      setIsPending(false);
                       if (!usingDefaultPdsHost) {
                         setMenuOpen(true);
                         setLoginError(e);
                       }
+                    } finally {
+                      setIsPending(false);
                     }
                   })();
                 }}
