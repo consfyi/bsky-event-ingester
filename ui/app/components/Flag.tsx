@@ -8,10 +8,10 @@ export default function Flag({
   size,
   ...props
 }: { country: string; size: number } & Omit<BoxProps, "w" | "h">) {
-  const { i18n } = useLingui();
+  const { i18n, t } = useLingui();
   const countryNames = useMemo(
     () => new Intl.DisplayNames(i18n.locale, { type: "region" }),
-    [i18n.locale]
+    [t]
   );
 
   const countryName = useMemo(() => countryNames.of(country), [country]);

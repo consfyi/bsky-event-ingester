@@ -91,7 +91,7 @@ function Header({ con }: { con: ConWithPost }) {
         month: "short",
         year: "numeric",
       }),
-    [i18n.locale]
+    [t]
   );
 
   const now = useNow();

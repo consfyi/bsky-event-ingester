@@ -106,7 +106,7 @@ export function ConRow({
         month: "short",
         year: "numeric",
       }),
-    [i18n.locale]
+    [Tooltip]
   );
 
   const listFormat = useMemo(
@@ -115,7 +115,7 @@ export function ConRow({
         type: "conjunction",
         style: "long",
       }),
-    [i18n.locale]
+    [t]
   );
 
   const follows =
