@@ -1,51 +1,396 @@
 import { useLingui } from "@lingui/react/macro";
-import { Grid, Title } from "@mantine/core";
-import { getDate, getDay, getDaysInMonth } from "date-fns";
-import { Range, rotateLeft, toArray } from "iter-fns";
-import { useMemo } from "react";
+import { Anchor, Table, Text, useMantineTheme } from "@mantine/core";
+import {
+  addDays,
+  addWeeks,
+  Day,
+  differenceInCalendarDays,
+  endOfWeek,
+  getDate,
+  getDay,
+  getMonth,
+  getYear,
+  isBefore,
+  isEqual,
+  isSameDay,
+  startOfDay,
+  startOfWeek,
+} from "date-fns";
+import { map, max, min, Range, toArray } from "iter-fns";
+import { Fragment, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Link } from "react-router";
+import { reinterpretAsLocalDate } from "~/date";
+import { useNow } from "~/hooks";
 
-function weekdayNames(
-  locale: string,
-  format: Intl.DateTimeFormatOptions["weekday"]
-): string[] {
-  const dateTimeFormat = new Intl.DateTimeFormat(locale, { weekday: format });
-  return Array.from({ length: 7 }, (_, i) =>
-    dateTimeFormat.format(new Date(Date.UTC(2021, 5, i)))
-  );
+function normalizeDate(d: Date): Date {
+  return startOfDay(reinterpretAsLocalDate(d));
 }
 
-export default function Calendar({
-  month,
-  year,
-}: {
-  month: number;
-  year: number;
-}) {
+export interface Event {
+  link: string;
+  label: React.ReactNode;
+  start: Date;
+  end: Date;
+}
+
+interface Segment {
+  event: Event;
+  start: Date;
+  end: Date;
+}
+
+function segment(event: Event, weekStartsOn: Day): Segment[] {
+  const segments: Segment[] = [];
+
+  let segmentStart = event.start;
+
+  while (
+    isBefore(segmentStart, event.end) ||
+    isEqual(segmentStart, event.end)
+  ) {
+    const weekStart = startOfWeek(segmentStart, { weekStartsOn });
+    const weekEnd = endOfWeek(segmentStart, { weekStartsOn });
+
+    const segment: Segment = {
+      event,
+      start: segmentStart > weekStart ? segmentStart : weekStart,
+      end: event.end < weekEnd ? event.end : weekEnd,
+    };
+
+    segments.push(segment);
+
+    segmentStart = addWeeks(weekStart, 1);
+  }
+
+  return segments;
+}
+
+function packLanes(
+  events: Event[],
+  calendarStartDate: Date,
+  numWeeks: number,
+  weekStartsOn: Day
+): (Segment | null)[][][] {
+  const weeks = Array.from({ length: numWeeks }, () =>
+    Array.from({ length: 7 }, () => [] as (Segment | null)[])
+  );
+
+  for (const event of events) {
+    for (const seg of segment(event, weekStartsOn)) {
+      const weekStart = startOfWeek(seg.start, { weekStartsOn });
+
+      const week =
+        weeks[
+          Math.floor(differenceInCalendarDays(weekStart, calendarStartDate) / 7)
+        ];
+
+      const dayIndex = differenceInCalendarDays(seg.start, weekStart);
+
+      const span = differenceInCalendarDays(seg.end, seg.start);
+
+      let laneIndex = 0;
+      while (true) {
+        let fits = true;
+        for (
+          let offset = 0;
+          offset <= span && dayIndex + offset < 7;
+          ++offset
+        ) {
+          if (week[dayIndex + offset][laneIndex] !== undefined) {
+            fits = false;
+            break;
+          }
+        }
+        if (fits) {
+          break;
+        }
+        ++laneIndex;
+      }
+
+      for (let offset = 0; offset <= span && dayIndex + offset < 7; ++offset) {
+        if (!week[dayIndex + offset][laneIndex]) {
+          week[dayIndex + offset][laneIndex] = offset == 0 ? seg : null;
+        }
+      }
+    }
+  }
+
+  return weeks;
+}
+
+export default function Calendar({ events }: { events: Event[] }) {
   const { t, i18n } = useLingui();
 
-  const names = useMemo(() => weekdayNames(i18n.locale, "short"), [t]);
+  const theme = useMantineTheme();
 
-  const weekdayOrder = useMemo(() => {
-    const firstDay = 7; // TODO: Should be from locale.
+  const weekInfo = useMemo(() => {
+    const locale = new Intl.Locale(i18n.locale);
+    const weekInfo = (
+      locale as { getWeekInfo?(): { firstDay: number; weekend: number[] } }
+    ).getWeekInfo?.() ?? { firstDay: 7, weekend: [6, 7] };
 
-    const weekdayOrder = toArray(Range.to(7));
-    rotateLeft(weekdayOrder, firstDay);
-    return weekdayOrder;
+    return {
+      firstDay: (weekInfo.firstDay % 7) as Day,
+      weekend: weekInfo.weekend.map((d) => (d % 7) as Day),
+    };
   }, [t]);
 
-  const firstDate = new Date(year, month, 1);
-  const daysInMonth = getDaysInMonth(firstDate);
-  const firstDayWeekday = getDay(firstDate);
+  const checkpointRefs = useRef<Record<number, HTMLDivElement>>({});
+  checkpointRefs.current = {};
+
+  const observerRef = useRef<IntersectionObserver | null>(null);
+
+  const [visibleMonths, setVisibleMonths] = useState<number[]>([]);
+
+  useLayoutEffect(() => {
+    if (observerRef.current != null) {
+      observerRef.current.disconnect();
+      observerRef.current = null;
+    }
+
+    observerRef.current = new IntersectionObserver(
+      (entries) => {
+        setVisibleMonths((visibleMonths) => {
+          const set = new Set<number>(visibleMonths);
+          for (const entry of entries) {
+            const k = parseInt(
+              (entry.target as HTMLElement).dataset.month!,
+              10
+            );
+            if (entry.isIntersecting) {
+              set.add(k);
+            } else {
+              set.delete(k);
+            }
+          }
+          return toArray(set);
+        });
+      },
+      { rootMargin: "-50px 0px 0px 0px" }
+    );
+
+    for (const el of Object.values(checkpointRefs.current)) {
+      observerRef.current.observe(el);
+    }
+
+    return () => {
+      if (observerRef.current != null) {
+        observerRef.current.disconnect();
+      }
+    };
+  }, [events]);
+
+  const now = useNow();
+
+  const startDate = useMemo(() => {
+    const d = normalizeDate(min(map(events, (con) => con.start))!);
+    return normalizeDate(now) < d ? normalizeDate(now) : d;
+  }, [events, now]);
+
+  const firstDayWeekday = getDay(startDate);
+  const daysToPad = (firstDayWeekday - weekInfo.firstDay + 7) % 7;
+
+  const calendarStartDate = addDays(startDate, -daysToPad);
+
+  const numWeeks = useMemo(
+    () =>
+      Math.ceil(
+        differenceInCalendarDays(
+          normalizeDate(max(map(events, (con) => addDays(con.end, 6)))!),
+          calendarStartDate
+        ) / 7
+      ),
+    [events, calendarStartDate]
+  );
+
+  const packed = useMemo(
+    () => packLanes(events, calendarStartDate, numWeeks, weekInfo.firstDay),
+    [events]
+  );
+  console.log(packed);
+
+  const highlightedMonthIndex = min(visibleMonths);
 
   return (
-    <Grid columns={7}>
-      {weekdayOrder.map((d) => (
-        <Grid.Col span={1} key={d}>
-          <Title order={2} size="h5" fw={500}>
-            {names[d]}
-          </Title>
-        </Grid.Col>
-      ))}
-    </Grid>
+    <Table layout="fixed" withColumnBorders withRowBorders withTableBorder>
+      <Table.Thead>
+        <Table.Tr>
+          {toArray(
+            map(Range.to(7), (i) => {
+              const d = addDays(calendarStartDate, i);
+              return (
+                <Table.Th
+                  key={i}
+                  bg={
+                    weekInfo.weekend.includes(getDay(d) as Day)
+                      ? "var(--mantine-color-gray-light)"
+                      : ""
+                  }
+                >
+                  {i18n.date(d, {
+                    weekday: "short",
+                  })}
+                </Table.Th>
+              );
+            })
+          )}
+        </Table.Tr>
+      </Table.Thead>
+      <Table.Tbody>
+        {toArray(
+          map(Range.to(numWeeks), (week) => {
+            const weekStart = addDays(calendarStartDate, week * 7);
+            const lanes = packed[week];
+
+            return (
+              <Table.Tr
+                key={week}
+                data-month={getYear(weekStart) * 12 + getMonth(weekStart)}
+                ref={(el) => {
+                  if (
+                    el == null ||
+                    Math.ceil((getDate(weekStart) + getDay(weekStart)) / 7) != 1
+                  ) {
+                    return;
+                  }
+
+                  checkpointRefs.current[
+                    getYear(weekStart) * 12 + getMonth(weekStart)
+                  ] = el;
+                }}
+              >
+                {toArray(
+                  map(Range.to(7), (offset) => {
+                    const d = addDays(weekStart, offset);
+                    const segments = lanes[offset];
+
+                    return (
+                      <Table.Td
+                        p={0}
+                        h={100}
+                        key={offset}
+                        align="left"
+                        valign="top"
+                        pos="relative"
+                        bg={
+                          weekInfo.weekend.includes(getDay(d) as Day)
+                            ? "var(--mantine-color-gray-light)"
+                            : ""
+                        }
+                      >
+                        <Text
+                          px="xs"
+                          size="md"
+                          {...(isSameDay(d, now)
+                            ? { color: "red", fw: 500 }
+                            : {
+                                color:
+                                  getYear(d) * 12 + getMonth(d) ==
+                                  highlightedMonthIndex
+                                    ? ""
+                                    : "var(--mantine-color-dimmed)",
+                              })}
+                        >
+                          {getDate(d) == 1
+                            ? i18n.date(d, {
+                                month: "short",
+                                year: getMonth(d) == 0 ? "numeric" : undefined,
+                              })
+                            : getDate(d)}
+                        </Text>
+                        {segments.map((seg, i) => {
+                          const length =
+                            seg != null
+                              ? differenceInCalendarDays(
+                                  addDays(seg.end, 1),
+                                  seg.start
+                                )
+                              : 1;
+
+                          const colors =
+                            seg != null
+                              ? theme.variantColorResolver({
+                                  theme,
+                                  color: [
+                                    "red",
+                                    "orange",
+                                    "yellow",
+                                    "green",
+                                    "blue",
+                                    "indigo",
+                                    "violet",
+                                  ][getDay(seg.event.start)],
+                                  variant: "light",
+                                })
+                              : null;
+
+                          return (
+                            <Fragment key={i}>
+                              {seg != null ? (
+                                <Anchor
+                                  underline="never"
+                                  to={seg.event.link}
+                                  component={Link}
+                                >
+                                  <Text
+                                    h="1lh"
+                                    mb={1}
+                                    px="xs"
+                                    pos="relative"
+                                    size="xs"
+                                    c={colors != null ? colors.color : ""}
+                                    bg={colors != null ? colors.background : ""}
+                                    w={`calc(${length} * (100% + 1px) - 1px)`}
+                                    left={0}
+                                    truncate
+                                    style={{
+                                      borderTopLeftRadius:
+                                        seg != null &&
+                                        isSameDay(seg.start, seg.event.start)
+                                          ? "100px"
+                                          : 0,
+                                      borderBottomLeftRadius:
+                                        seg != null &&
+                                        isSameDay(seg.start, seg.event.start)
+                                          ? "100px"
+                                          : 0,
+                                      borderTopRightRadius:
+                                        seg != null &&
+                                        isSameDay(seg.end, seg.event.end)
+                                          ? "100px"
+                                          : 0,
+                                      borderBottomRightRadius:
+                                        seg != null &&
+                                        isSameDay(seg.end, seg.event.end)
+                                          ? "100px"
+                                          : 0,
+                                      zIndex: 1,
+                                    }}
+                                  >
+                                    {seg.event.label}
+                                  </Text>
+                                </Anchor>
+                              ) : (
+                                <Text
+                                  h="1lh"
+                                  mb={1}
+                                  px="xs"
+                                  pos="relative"
+                                  size="xs"
+                                />
+                              )}
+                            </Fragment>
+                          );
+                        })}
+                      </Table.Td>
+                    );
+                  })
+                )}
+              </Table.Tr>
+            );
+          })
+        )}
+      </Table.Tbody>
+    </Table>
   );
 }
