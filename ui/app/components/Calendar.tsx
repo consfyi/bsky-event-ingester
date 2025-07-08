@@ -11,8 +11,8 @@ import {
   getMonth,
   getYear,
   isBefore,
-  isEqual,
   isSameDay,
+  startOfDay,
   startOfWeek,
 } from "date-fns";
 import { map, max, min, Range, toArray } from "iter-fns";
@@ -37,16 +37,17 @@ interface Segment {
 function segment(event: Event, weekStartsOn: Day): Segment[] {
   const segments: Segment[] = [];
 
-  let segmentStart = event.start;
+  let segmentStart = startOfDay(event.start);
+  const eventEnd = startOfDay(event.end);
 
-  while (isBefore(segmentStart, event.end)) {
+  while (isBefore(segmentStart, eventEnd)) {
     const weekStart = startOfWeek(segmentStart, { weekStartsOn });
     const weekEnd = addDays(endOfWeek(segmentStart, { weekStartsOn }), 1);
 
     const segment: Segment = {
       event,
       start: segmentStart > weekStart ? segmentStart : weekStart,
-      end: event.end < weekEnd ? event.end : weekEnd,
+      end: eventEnd < weekEnd ? eventEnd : weekEnd,
     };
 
     segments.push(segment);
