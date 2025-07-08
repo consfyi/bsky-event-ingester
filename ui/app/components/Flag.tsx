@@ -6,8 +6,12 @@ import classes from "./Flag.module.css";
 export default function Flag({
   country,
   size,
+  circular = false,
   ...props
-}: { country: string; size: number } & Omit<BoxProps, "w" | "h">) {
+}: { country: string; size: number; circular?: boolean } & Omit<
+  BoxProps,
+  "w" | "h"
+>) {
   const { i18n, t } = useLingui();
   const countryNames = useMemo(
     () => new Intl.DisplayNames(i18n.locale, { type: "region" }),
@@ -19,9 +23,9 @@ export default function Flag({
   return (
     <Box
       component="span"
-      className={classes.flag}
+      className={`${classes.flag} ${circular ? classes.circular : ""}`}
       h={size}
-      w={(size / 3) * 4}
+      w={circular ? size : (size / 3) * 4}
       {...props}
     >
       <Image

@@ -24,3 +24,11 @@
   height: 100%;
   object-fit: cover;
 }
+
+.flag.circular {
+  border-radius: 100%;
+}
+
+.flag.circular::before {
+  border-radius: 100%;
+}
