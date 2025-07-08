@@ -16,7 +16,7 @@ import {
   startOfDay,
   startOfWeek,
 } from "date-fns";
-import { map, max, min, Range, toArray } from "iter-fns";
+import { comparing, map, max, min, Range, sorted, toArray } from "iter-fns";
 import { Fragment, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router";
 import { useNow } from "~/hooks";
@@ -78,7 +78,10 @@ function packLanes(
     Array.from({ length: 7 }, () => [] as (Segment | null)[])
   );
 
-  for (const event of events) {
+  for (const event of sorted(
+    events,
+    comparing((event) => event.start)
+  )) {
     for (const seg of segment(event, weekStartsOn)) {
       const weekStart = startOfWeek(seg.start, { weekStartsOn });
 
@@ -88,23 +91,25 @@ function packLanes(
         ];
 
       const dayIndex = differenceInCalendarDays(seg.start, weekStart);
-
-      const span = differenceInCalendarDays(seg.end, seg.start);
+      const length = differenceInCalendarDays(seg.end, seg.start);
 
       let laneIndex = 0;
       findLane: while (true) {
-        for (let offset = 0; offset < span && dayIndex + offset < 7; ++offset) {
+        for (
+          let offset = 0;
+          offset < length && dayIndex + offset < 7;
+          ++offset
+        ) {
           if (week[dayIndex + offset][laneIndex] !== undefined) {
             ++laneIndex;
             continue findLane;
           }
         }
+        week[dayIndex][laneIndex] = seg;
         break;
       }
 
-      week[dayIndex][laneIndex] = seg;
-
-      for (let offset = 1; offset < span && dayIndex + offset < 7; ++offset) {
+      for (let offset = 1; offset < length && dayIndex + offset < 7; ++offset) {
         week[dayIndex + offset][laneIndex] = null;
       }
     }
