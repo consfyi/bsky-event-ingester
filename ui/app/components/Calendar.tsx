@@ -92,24 +92,20 @@ function packLanes(
       const span = differenceInCalendarDays(seg.end, seg.start);
 
       let laneIndex = 0;
-      while (true) {
-        let fits = true;
+      findLane: while (true) {
         for (let offset = 0; offset < span && dayIndex + offset < 7; ++offset) {
           if (week[dayIndex + offset][laneIndex] !== undefined) {
-            fits = false;
-            break;
+            ++laneIndex;
+            continue findLane;
           }
         }
-        if (fits) {
-          break;
-        }
-        ++laneIndex;
+        break;
       }
 
-      for (let offset = 0; offset < span && dayIndex + offset < 7; ++offset) {
-        if (week[dayIndex + offset][laneIndex] == null) {
-          week[dayIndex + offset][laneIndex] = offset == 0 ? seg : null;
-        }
+      week[dayIndex][laneIndex] = seg;
+
+      for (let offset = 1; offset < span && dayIndex + offset < 7; ++offset) {
+        week[dayIndex + offset][laneIndex] = null;
       }
     }
   }
