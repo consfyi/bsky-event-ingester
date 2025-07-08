@@ -28,6 +28,7 @@ function normalizeDate(d: Date): Date {
 
 export interface Event {
   link: string;
+  title: string;
   label: React.ReactNode;
   start: Date;
   end: Date;
@@ -328,6 +329,7 @@ export default function Calendar({ events }: { events: Event[] }) {
                             <Fragment key={i}>
                               {seg != null ? (
                                 <Anchor
+                                  title={seg.event.title}
                                   underline="never"
                                   to={seg.event.link}
                                   component={Link}

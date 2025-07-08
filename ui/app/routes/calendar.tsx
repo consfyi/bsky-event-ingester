@@ -35,6 +35,7 @@ export default function Index() {
                     {con.name}
                   </>
                 ),
+                title: con.name,
                 link: `/cons/${con.slug}`,
                 start: reinterpretAsLocalDate(con.start),
                 end: reinterpretAsLocalDate(con.end),
