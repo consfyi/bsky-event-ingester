@@ -87,16 +87,12 @@ function packLanes(
 
       const dayIndex = differenceInCalendarDays(seg.start, weekStart);
 
-      const span = differenceInCalendarDays(seg.end, seg.start);
+      const span = differenceInCalendarDays(addDays(seg.end, 1), seg.start);
 
       let laneIndex = 0;
       while (true) {
         let fits = true;
-        for (
-          let offset = 0;
-          offset <= span && dayIndex + offset < 7;
-          ++offset
-        ) {
+        for (let offset = 0; offset < span && dayIndex + offset < 7; ++offset) {
           if (week[dayIndex + offset][laneIndex] !== undefined) {
             fits = false;
             break;
@@ -108,11 +104,21 @@ function packLanes(
         ++laneIndex;
       }
 
-      for (let offset = 0; offset <= span && dayIndex + offset < 7; ++offset) {
-        if (!week[dayIndex + offset][laneIndex]) {
+      for (let offset = 0; offset < span && dayIndex + offset < 7; ++offset) {
+        if (week[dayIndex + offset][laneIndex] == null) {
           week[dayIndex + offset][laneIndex] = offset == 0 ? seg : null;
         }
       }
+    }
+  }
+
+  for (const week of weeks) {
+    for (const day of week) {
+      let lastFilled = day.length - 1;
+      while (lastFilled >= 0 && day[lastFilled] == null) {
+        --lastFilled;
+      }
+      day.length = lastFilled + 1;
     }
   }
 
