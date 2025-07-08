@@ -10,6 +10,7 @@ import {
   getDay,
   getMonth,
   getYear,
+  isAfter,
   isBefore,
   isSameDay,
   startOfDay,
@@ -32,28 +33,37 @@ interface Segment {
   event: Event;
   start: Date;
   end: Date;
+  hasStart: boolean;
+  hasEnd: boolean;
 }
 
 function segment(event: Event, weekStartsOn: Day): Segment[] {
   const segments: Segment[] = [];
 
-  let segmentStart = startOfDay(event.start);
-  const eventEnd = startOfDay(event.end);
+  let segmentStart = startOfDay(new Date(event.start));
+  const eventEnd = startOfDay(new Date(event.end));
 
   while (isBefore(segmentStart, eventEnd)) {
     const weekStart = startOfWeek(segmentStart, { weekStartsOn });
-    const weekEnd = addDays(endOfWeek(segmentStart, { weekStartsOn }), 1);
+    const weekEnd = startOfDay(
+      addDays(endOfWeek(segmentStart, { weekStartsOn }), 1)
+    );
 
     const segment: Segment = {
       event,
-      start: segmentStart > weekStart ? segmentStart : weekStart,
-      end: eventEnd < weekEnd ? eventEnd : weekEnd,
+      start: isAfter(segmentStart, weekStart) ? segmentStart : weekStart,
+      end: isBefore(eventEnd, weekEnd) ? eventEnd : weekEnd,
+      hasStart: false,
+      hasEnd: false,
     };
 
     segments.push(segment);
 
     segmentStart = addWeeks(weekStart, 1);
   }
+
+  segments[0].hasStart = true;
+  segments[segments.length - 1].hasEnd = true;
 
   return segments;
 }
@@ -182,8 +192,8 @@ export default function Calendar({ events }: { events: Event[] }) {
   const now = useNow();
 
   const startDate = useMemo(() => {
-    const d = min(map(events, (con) => con.start))!;
-    return now < d ? now : d;
+    const d = min(map(events, (con) => new Date(con.start)))!;
+    return startOfDay(isBefore(now, d) ? now : d);
   }, [events, now]);
 
   const firstDayWeekday = getDay(startDate);
@@ -206,7 +216,6 @@ export default function Calendar({ events }: { events: Event[] }) {
     () => packLanes(events, calendarStartDate, numWeeks, weekInfo.firstDay),
     [events]
   );
-  console.log(packed);
 
   const highlightedMonthIndex = min(visibleMonths);
 
@@ -342,26 +351,18 @@ export default function Calendar({ events }: { events: Event[] }) {
                                     left={0}
                                     truncate
                                     style={{
-                                      borderTopLeftRadius:
-                                        seg != null &&
-                                        isSameDay(seg.start, seg.event.start)
-                                          ? "100px"
-                                          : 0,
-                                      borderBottomLeftRadius:
-                                        seg != null &&
-                                        isSameDay(seg.start, seg.event.start)
-                                          ? "100px"
-                                          : 0,
-                                      borderTopRightRadius:
-                                        seg != null &&
-                                        isSameDay(seg.end, seg.event.end)
-                                          ? "100px"
-                                          : 0,
-                                      borderBottomRightRadius:
-                                        seg != null &&
-                                        isSameDay(seg.end, seg.event.end)
-                                          ? "100px"
-                                          : 0,
+                                      borderTopLeftRadius: seg.hasStart
+                                        ? "100px"
+                                        : 0,
+                                      borderBottomLeftRadius: seg.hasStart
+                                        ? "100px"
+                                        : 0,
+                                      borderTopRightRadius: seg.hasEnd
+                                        ? "100px"
+                                        : 0,
+                                      borderBottomRightRadius: seg.hasEnd
+                                        ? "100px"
+                                        : 0,
                                       zIndex: 1,
                                     }}
                                   >
