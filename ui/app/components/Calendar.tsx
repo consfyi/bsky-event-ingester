@@ -280,8 +280,9 @@ export default function Calendar({ events }: { events: Event[] }) {
                         }
                       >
                         <Text
-                          px="xs"
-                          size="md"
+                          m="xs"
+                          mb={2}
+                          size="sm"
                           {...(isSameDay(d, now)
                             ? { color: "red", fw: 500 }
                             : {
@@ -336,7 +337,7 @@ export default function Calendar({ events }: { events: Event[] }) {
                                 >
                                   <Text
                                     h="1lh"
-                                    mb={1}
+                                    mb={2}
                                     px="xs"
                                     pos="relative"
                                     size="xs"
@@ -375,7 +376,7 @@ export default function Calendar({ events }: { events: Event[] }) {
                               ) : (
                                 <Text
                                   h="1lh"
-                                  mb={1}
+                                  mb={2}
                                   px="xs"
                                   pos="relative"
                                   size="xs"
