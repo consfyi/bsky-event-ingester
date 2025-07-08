@@ -134,8 +134,11 @@ export function useCons() {
             fullDef.fbl_eventInfo.geocoded?.timezone ?? "UTC"
           );
 
-          const endDate = parseDate(end, "yyyy-MM-dd", refDate);
-          if (isAfter(now, addDays(endDate, 1))) {
+          const endDate = addDays(
+            parseDate<TZDate, TZDate>(end, "yyyy-MM-dd", refDate),
+            1
+          );
+          if (isAfter(now, endDate)) {
             return [];
           }
 

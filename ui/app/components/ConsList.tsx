@@ -49,6 +49,7 @@ import {
   getYear,
   isAfter,
   setDate,
+  subDays,
 } from "date-fns";
 import deepEqual from "deep-equal";
 import { compareDesc, compareMany, comparing, groupBy, sorted } from "iter-fns";
@@ -124,7 +125,7 @@ export function ConRow({
       : null;
 
   const now = useNow();
-  const active = isAfter(now, con.start) && !isAfter(now, addDays(con.end, 1));
+  const active = isAfter(now, con.start) && !isAfter(now, con.end);
 
   return (
     <Group gap="xs" wrap="nowrap">
@@ -240,11 +241,11 @@ export function ConRow({
               <Trans context="[start date]-[end date] ([duration] days)">
                 {dateTimeFormat.formatRange(
                   reinterpretAsLocalDate(con.start),
-                  reinterpretAsLocalDate(con.end)
+                  reinterpretAsLocalDate(subDays(con.end, 1))
                 )}{" "}
                 (
                 <Plural
-                  value={differenceInDays(con.end, con.start) + 1}
+                  value={differenceInDays(con.end, con.start)}
                   one="# day"
                   other="# days"
                 />
@@ -256,19 +257,19 @@ export function ConRow({
               <IconCalendarWeek title={t`End date`} size={12} />{" "}
               <Trans context="ends [date] ([duration] days)">
                 ends{" "}
-                {i18n.date(reinterpretAsLocalDate(con.end), {
+                {i18n.date(reinterpretAsLocalDate(subDays(con.end, 1)), {
                   weekday: "short",
                   day: "numeric",
                   month: "short",
                   year:
                     getYear(reinterpretAsLocalDate(con.start)) !=
-                    getYear(reinterpretAsLocalDate(con.end))
+                    getYear(reinterpretAsLocalDate(subDays(con.end, 1)))
                       ? "numeric"
                       : undefined,
                 })}{" "}
                 (
                 <Plural
-                  value={differenceInDays(con.end, con.start) + 1}
+                  value={differenceInDays(con.end, con.start)}
                   one="# day"
                   other="# days"
                 />
@@ -1308,7 +1309,7 @@ export default function ConsList({ cons }: { cons: ConWithPost[] }) {
       : viewOptions.filter.maxDays;
 
   const filteredCons = cons.filter((con) => {
-    const days = differenceInDays(con.end, con.start) + 1;
+    const days = differenceInDays(con.end, con.start);
 
     return (
       // Query

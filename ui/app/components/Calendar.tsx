@@ -13,18 +13,12 @@ import {
   isBefore,
   isEqual,
   isSameDay,
-  startOfDay,
   startOfWeek,
 } from "date-fns";
 import { map, max, min, Range, toArray } from "iter-fns";
 import { Fragment, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router";
-import { reinterpretAsLocalDate } from "~/date";
 import { useNow } from "~/hooks";
-
-function normalizeDate(d: Date): Date {
-  return startOfDay(reinterpretAsLocalDate(d));
-}
 
 export interface Event {
   link: string;
@@ -45,12 +39,9 @@ function segment(event: Event, weekStartsOn: Day): Segment[] {
 
   let segmentStart = event.start;
 
-  while (
-    isBefore(segmentStart, event.end) ||
-    isEqual(segmentStart, event.end)
-  ) {
+  while (isBefore(segmentStart, event.end)) {
     const weekStart = startOfWeek(segmentStart, { weekStartsOn });
-    const weekEnd = endOfWeek(segmentStart, { weekStartsOn });
+    const weekEnd = addDays(endOfWeek(segmentStart, { weekStartsOn }), 1);
 
     const segment: Segment = {
       event,
@@ -87,7 +78,7 @@ function packLanes(
 
       const dayIndex = differenceInCalendarDays(seg.start, weekStart);
 
-      const span = differenceInCalendarDays(addDays(seg.end, 1), seg.start);
+      const span = differenceInCalendarDays(seg.end, seg.start);
 
       let laneIndex = 0;
       while (true) {
@@ -190,8 +181,8 @@ export default function Calendar({ events }: { events: Event[] }) {
   const now = useNow();
 
   const startDate = useMemo(() => {
-    const d = normalizeDate(min(map(events, (con) => con.start))!);
-    return normalizeDate(now) < d ? normalizeDate(now) : d;
+    const d = min(map(events, (con) => con.start))!;
+    return now < d ? now : d;
   }, [events, now]);
 
   const firstDayWeekday = getDay(startDate);
@@ -203,7 +194,7 @@ export default function Calendar({ events }: { events: Event[] }) {
     () =>
       Math.ceil(
         differenceInCalendarDays(
-          normalizeDate(max(map(events, (con) => addDays(con.end, 6)))!),
+          max(map(events, (con) => addDays(con.end, 6)))!,
           calendarStartDate
         ) / 7
       ),
@@ -309,10 +300,7 @@ export default function Calendar({ events }: { events: Event[] }) {
                         {segments.map((seg, i) => {
                           const length =
                             seg != null
-                              ? differenceInCalendarDays(
-                                  addDays(seg.end, 1),
-                                  seg.start
-                                )
+                              ? differenceInCalendarDays(seg.end, seg.start)
                               : 1;
 
                           const colors =
