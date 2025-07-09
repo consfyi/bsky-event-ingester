@@ -300,6 +300,7 @@ export default function Calendar({ events }: { events: Event[] }) {
                           m="xs"
                           mb={2}
                           size="sm"
+                          truncate
                           {...(isSameDay(d, now)
                             ? { color: "red", fw: 500 }
                             : {
@@ -313,7 +314,6 @@ export default function Calendar({ events }: { events: Event[] }) {
                           {getDate(d) == 1
                             ? i18n.date(d, {
                                 month: "short",
-                                year: getMonth(d) == 0 ? "numeric" : undefined,
                               })
                             : getDate(d)}
                         </Text>
