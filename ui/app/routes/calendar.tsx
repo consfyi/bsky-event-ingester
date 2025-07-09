@@ -1,6 +1,15 @@
-import { useLingui } from "@lingui/react/macro";
-import { Box, Center, Loader } from "@mantine/core";
-import { Suspense, useEffect } from "react";
+import { Trans, useLingui } from "@lingui/react/macro";
+import {
+  Box,
+  Button,
+  Center,
+  Group,
+  Loader,
+  Slider,
+  Switch,
+  Text,
+} from "@mantine/core";
+import { Suspense, useEffect, useState } from "react";
 import Calendar from "~/components/Calendar";
 import Flag from "~/components/Flag";
 import SimpleErrorBoundary from "~/components/SimpleErrorBoundary";
@@ -14,6 +23,8 @@ export default function Index() {
     document.title = t`Calendar`;
   }, [t]);
 
+  const [useLocalTime, setUseLocalTime] = useState(false);
+
   const cons = useConsWithPosts();
 
   return (
@@ -26,7 +37,18 @@ export default function Index() {
             </Center>
           }
         >
-          <Box mb="sm" p="xs">
+          <Group wrap="nowrap" m="xs" justify="space-between" gap="0">
+            <Box />
+            <Switch
+              onClick={() => {
+                setUseLocalTime(!useLocalTime);
+              }}
+              checked={useLocalTime}
+              labelPosition="left"
+              label={<Trans>Use local time</Trans>}
+            />
+          </Group>
+          <Box m="xs">
             <Calendar
               events={cons.map((con) => ({
                 label: (
@@ -37,8 +59,10 @@ export default function Index() {
                 ),
                 title: con.name,
                 link: `/cons/${con.slug}`,
-                start: reinterpretAsLocalDate(con.start),
-                end: reinterpretAsLocalDate(con.end),
+                start: useLocalTime
+                  ? con.start
+                  : reinterpretAsLocalDate(con.start),
+                end: useLocalTime ? con.end : reinterpretAsLocalDate(con.end),
               }))}
             />
           </Box>
