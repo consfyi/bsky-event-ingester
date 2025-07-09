@@ -274,7 +274,7 @@ export default function Calendar({ events }: { events: Event[] }) {
                     year: "numeric",
                   }
                 )
-              : ""}
+              : "\u00a0"}
           </Title>
           <Switch
             onClick={() => {
