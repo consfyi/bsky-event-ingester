@@ -1003,7 +1003,11 @@ function Filters({
               rightSection={<IconChevronDown size={14} />}
             >
               <Text span size="sm" fw={500}>
-                {currentSortByDisplay.name}
+                {viewOptions.sort == "calendar" ? (
+                  <Trans>Calendar</Trans>
+                ) : (
+                  currentSortByDisplay.name
+                )}
               </Text>
             </Button>
           </Menu.Target>
