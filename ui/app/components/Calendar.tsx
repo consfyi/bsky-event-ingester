@@ -350,17 +350,23 @@ export default function Calendar({ events }: { events: Event[] }) {
                                   component={Link}
                                 >
                                   <Text
-                                    h="1lh"
                                     mb={2}
                                     px="xs"
                                     pos="relative"
                                     size="xs"
                                     c={colors != null ? colors.color : ""}
                                     bg={colors != null ? colors.background : ""}
+                                    bd={
+                                      colors != null
+                                        ? `1px solid ${colors.color}`
+                                        : ""
+                                    }
                                     w={`calc(${length} * (100% + 1px) - 1px)`}
                                     left={0}
                                     truncate
                                     style={{
+                                      borderLeftWidth: seg.hasStart ? "1px" : 0,
+                                      borderRightWidth: seg.hasEnd ? "1px" : 0,
                                       borderTopLeftRadius: seg.hasStart
                                         ? "100px"
                                         : 0,
@@ -381,12 +387,14 @@ export default function Calendar({ events }: { events: Event[] }) {
                                 </Anchor>
                               ) : (
                                 <Text
-                                  h="1lh"
                                   mb={2}
                                   px="xs"
                                   pos="relative"
                                   size="xs"
-                                />
+                                  bd="1px solid transparent"
+                                >
+                                  &nbsp;
+                                </Text>
                               )}
                             </Fragment>
                           );
