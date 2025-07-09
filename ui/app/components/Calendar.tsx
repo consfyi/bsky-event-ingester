@@ -261,7 +261,7 @@ export default function Calendar({ events }: { events: Event[] }) {
           pt={{ base: 4, lg: 8 }}
           pb={4}
         >
-          <Title order={2} size="h4" fw={500}>
+          <Title order={2} size="h5" fw={500}>
             {highlightedMonthIndex != null
               ? i18n.date(
                   new Date(
