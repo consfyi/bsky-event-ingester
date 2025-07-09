@@ -361,7 +361,7 @@ export default function Calendar({ events }: { events: Event[] }) {
                                       getYear(d) * 12 + getMonth(d) ==
                                       highlightedMonthIndex
                                         ? ""
-                                        : "var(--mantine-color-dimmed)",
+                                        : "var(--mantine-color-disabled-color)",
                                   })}
                             >
                               {getDate(d) == 1
