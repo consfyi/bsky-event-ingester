@@ -428,10 +428,11 @@ export default function Calendar({ events }: { events: Event[] }) {
                                         left={0}
                                         truncate
                                         style={{
-                                          border:
-                                            colors != null
-                                              ? `1px solid ${colors.color}`
-                                              : "",
+                                          borderColor:
+                                            colors != null ? colors.color : "",
+                                          borderStyle: "solid",
+                                          borderTopWidth: "1px",
+                                          borderBottomWidth: "1px",
                                           borderLeftWidth: seg.hasStart
                                             ? "1px"
                                             : 0,
