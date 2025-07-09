@@ -295,9 +295,11 @@ export default function Calendar({ events }: { events: Event[] }) {
                           : ""
                       }
                     >
-                      {i18n.date(d, {
-                        weekday: "short",
-                      })}
+                      <Text size="md">
+                        {i18n.date(d, {
+                          weekday: "short",
+                        })}
+                      </Text>
                     </Table.Th>
                   );
                 })
@@ -411,7 +413,7 @@ export default function Calendar({ events }: { events: Event[] }) {
                                         mb={2}
                                         px="xs"
                                         pos="relative"
-                                        size="xs"
+                                        size="sm"
                                         c={colors != null ? colors.color : ""}
                                         bg={
                                           color != null
@@ -456,7 +458,7 @@ export default function Calendar({ events }: { events: Event[] }) {
                                       mb={2}
                                       px="xs"
                                       pos="relative"
-                                      size="xs"
+                                      size="sm"
                                       bd="1px solid transparent"
                                     >
                                       &nbsp;
