@@ -1428,7 +1428,7 @@ export default function ConsList({ cons }: { cons: ConWithPost[] }) {
               events={filteredCons.map((con) => ({
                 label: (
                   <>
-                    <Flag country={con.country} size={8} me={4} />
+                    <Flag country={con.country} size={10} me={4} />
                     {con.name}
                   </>
                 ),
