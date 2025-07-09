@@ -16,7 +16,16 @@ import {
   startOfDay,
   startOfWeek,
 } from "date-fns";
-import { comparing, map, max, min, Range, sorted, toArray } from "iter-fns";
+import {
+  compareMany,
+  comparing,
+  map,
+  max,
+  min,
+  Range,
+  sorted,
+  toArray,
+} from "iter-fns";
 import { Fragment, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router";
 import { useNow } from "~/hooks";
@@ -80,7 +89,7 @@ function packLanes(
 
   for (const event of sorted(
     events,
-    comparing((event) => event.start)
+    comparing((event) => startOfDay(new Date(event.start)))
   )) {
     for (const seg of segment(event, weekStartsOn)) {
       const weekStart = startOfWeek(seg.start, { weekStartsOn });

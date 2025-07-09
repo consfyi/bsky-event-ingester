@@ -2,7 +2,13 @@ import type { ActorIdentifier, Did, ResourceUri } from "@atcute/lexicons";
 import { useDLE, useSuspense } from "@data-client/react";
 import type { TZDate } from "@date-fns/tz";
 import { TZDateMini } from "@date-fns/tz";
-import { addDays, isAfter, parse as parseDate } from "date-fns";
+import {
+  addDays,
+  isAfter,
+  isSameDay,
+  parse as parseDate,
+  set as setDate,
+} from "date-fns";
 import { comparing, sorted } from "iter-fns";
 import { useState, useSyncExternalStore } from "react";
 import { LABELER_DID } from "~/config";
@@ -134,15 +140,26 @@ export function useCons() {
             fullDef.fbl_eventInfo.geocoded?.timezone ?? "UTC"
           );
 
-          const endDate = addDays(
-            parseDate<TZDate, TZDate>(end, "yyyy-MM-dd", refDate),
+          let endDate = addDays(
+            setDate<TZDate, TZDate>(
+              parseDate<TZDate, TZDate>(end, "yyyy-MM-dd", refDate),
+              {
+                hours: 12,
+                minutes: 0,
+                seconds: 0,
+                milliseconds: 0,
+              }
+            ),
             1
           );
           if (isAfter(now, endDate)) {
             return [];
           }
 
-          const startDate = parseDate(start, "yyyy-MM-dd", refDate);
+          const startDate = setDate(
+            parseDate<TZDate, TZDate>(start, "yyyy-MM-dd", refDate),
+            { hours: 12, minutes: 0, seconds: 0, milliseconds: 0 }
+          );
 
           return [
             {
