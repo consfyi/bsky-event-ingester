@@ -71,6 +71,7 @@ import {
 } from "~/hooks";
 import removeDiacritics from "~/removeDiacritics";
 import classes from "./ConsList.module.css";
+import Calendar from "./Calendar";
 
 const MAX_AVATARS_IN_STACK = 3;
 
@@ -535,7 +536,10 @@ type SortOptions = z.infer<typeof SortOptions>;
 
 const ViewOptions = z.object({
   filter: z._default(FilterOptions, FilterOptions.parse({})),
-  sort: z._default(SortOptions, SortOptions.parse({})),
+  sort: z._default(
+    z.union([SortOptions, z.literal("calendar")]),
+    SortOptions.parse({})
+  ),
 });
 type ViewOptions = z.infer<typeof ViewOptions>;
 
@@ -603,7 +607,10 @@ function Filters({
     },
   };
 
-  const currentSortByDisplay = sortByDisplays[viewOptions.sort.by];
+  const currentSortByDisplay =
+    sortByDisplays[
+      viewOptions.sort != "calendar" ? viewOptions.sort.by : "date"
+    ];
 
   const continentCount = useMemo(() => {
     const counts: Partial<Record<Continent, number>> = {};
@@ -979,7 +986,9 @@ function Filters({
               color="var(--mantine-color-dimmed)"
               style={{ zIndex: 4, flexShrink: 0 }}
               leftSection={
-                viewOptions.sort.desc ? (
+                viewOptions.sort == "calendar" ? (
+                  <IconCalendar size={14} />
+                ) : viewOptions.sort.desc ? (
                   <currentSortByDisplay.DescIcon
                     title={currentSortByDisplay.desc}
                     size={14}
@@ -1008,7 +1017,10 @@ function Filters({
                 return null;
               }
 
-              const selected = viewOptions.sort.by == sortBy;
+              const selected =
+                (viewOptions.sort == "calendar" && sortBy == "date") ||
+                (viewOptions.sort != "calendar" &&
+                  viewOptions.sort.by == sortBy);
 
               return (
                 <Menu.Item
@@ -1046,53 +1058,109 @@ function Filters({
               <Trans>Order</Trans>
             </Menu.Label>
             <Menu.Item
-              aria-selected={!viewOptions.sort.desc}
+              aria-selected={
+                viewOptions.sort != "calendar" && !viewOptions.sort.desc
+              }
               onClick={() => {
                 setViewOptions((vo) => ({
                   ...vo,
-                  sort: { ...vo.sort, desc: false },
+                  sort:
+                    vo.sort == "calendar"
+                      ? { by: "date", desc: false }
+                      : {
+                          ...vo.sort,
+                          desc: false,
+                        },
                 }));
               }}
               leftSection={
                 <Group gap={6}>
-                  {!viewOptions.sort.desc ? (
+                  {viewOptions.sort != "calendar" && !viewOptions.sort.desc ? (
                     <IconCheck size={14} />
                   ) : (
                     <EmptyIcon size={14} />
                   )}
                   {(() => {
-                    const Icon = sortByDisplays[viewOptions.sort.by].AscIcon;
+                    const Icon =
+                      sortByDisplays[
+                        viewOptions.sort != "calendar"
+                          ? viewOptions.sort.by
+                          : "date"
+                      ].AscIcon;
                     return <Icon size={14} />;
                   })()}
                 </Group>
               }
             >
-              {sortByDisplays[viewOptions.sort.by].asc}
+              {
+                sortByDisplays[
+                  viewOptions.sort != "calendar" ? viewOptions.sort.by : "date"
+                ].asc
+              }
             </Menu.Item>
             <Menu.Item
-              aria-selected={viewOptions.sort.desc}
+              aria-selected={
+                viewOptions.sort != "calendar" && viewOptions.sort.desc
+              }
               onClick={() => {
                 setViewOptions((vo) => ({
                   ...vo,
-                  sort: { ...vo.sort, desc: true },
+                  sort:
+                    vo.sort == "calendar"
+                      ? { by: "date", desc: true }
+                      : {
+                          ...vo.sort,
+                          desc: true,
+                        },
                 }));
               }}
               leftSection={
                 <Group gap={6}>
-                  {viewOptions.sort.desc ? (
+                  {viewOptions.sort != "calendar" && viewOptions.sort.desc ? (
                     <IconCheck size={14} />
                   ) : (
                     <EmptyIcon size={14} />
                   )}
                   {(() => {
-                    const Icon = sortByDisplays[viewOptions.sort.by].DescIcon;
+                    const Icon =
+                      sortByDisplays[
+                        viewOptions.sort != "calendar"
+                          ? viewOptions.sort.by
+                          : "date"
+                      ].DescIcon;
                     return <Icon size={14} />;
                   })()}
                 </Group>
               }
             >
-              {sortByDisplays[viewOptions.sort.by].desc}
+              {
+                sortByDisplays[
+                  viewOptions.sort != "calendar" ? viewOptions.sort.by : "date"
+                ].desc
+              }
             </Menu.Item>
+            {viewOptions.sort == "calendar" || viewOptions.sort.by == "date" ? (
+              <Menu.Item
+                onClick={() => {
+                  setViewOptions((vo) => ({
+                    ...vo,
+                    sort: "calendar",
+                  }));
+                }}
+                leftSection={
+                  <Group gap={6}>
+                    {viewOptions.sort == "calendar" ? (
+                      <IconCheck size={14} />
+                    ) : (
+                      <EmptyIcon size={14} />
+                    )}
+                    <IconCalendar size={14} />
+                  </Group>
+                }
+              >
+                <Trans>Calendar</Trans>
+              </Menu.Item>
+            ) : null}
           </Menu.Dropdown>
         </Menu>
       </Group>
@@ -1265,10 +1333,13 @@ export default function ConsList({ cons }: { cons: ConWithPost[] }) {
     }
     setViewOptions((vo) => ({
       ...vo,
-      sort: {
-        ...vo.sort,
-        by: vo.sort.by == "followed" ? "attendees" : vo.sort.by,
-      },
+      sort:
+        vo.sort != "calendar"
+          ? {
+              ...vo.sort,
+              by: vo.sort.by == "followed" ? "attendees" : vo.sort.by,
+            }
+          : "calendar",
     }));
   }, [isLoggedIn, setViewOptions]);
 
@@ -1348,7 +1419,22 @@ export default function ConsList({ cons }: { cons: ConWithPost[] }) {
         }
       >
         {filteredCons.length > 0 ? (
-          viewOptions.sort.by == "attendees" ? (
+          viewOptions.sort == "calendar" ? (
+            <Calendar
+              events={filteredCons.map((con) => ({
+                label: (
+                  <>
+                    <Flag country={con.country} size={8} me={4} />
+                    {con.name}
+                  </>
+                ),
+                title: con.name,
+                link: `/cons/${con.slug}`,
+                start: con.start,
+                end: con.end,
+              }))}
+            />
+          ) : viewOptions.sort.by == "attendees" ? (
             <ConsByAttendees
               cons={filteredCons}
               sortDesc={viewOptions.sort.desc}
