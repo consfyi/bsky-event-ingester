@@ -223,7 +223,7 @@ export default function Calendar({ events }: { events: Event[] }) {
 
   const numWeeks = useMemo(
     () =>
-      Math.ceil(
+      Math.floor(
         differenceInCalendarDays(
           max(map(events, (con) => addDays(con.end, 6)))!,
           calendarStartDate
@@ -286,7 +286,7 @@ export default function Calendar({ events }: { events: Event[] }) {
           />
         </Group>
       </Box>
-      <Box mx={{ base: 0, lg: "xs" }} mb="xs">
+      <Box mx={{ base: 0, lg: "xs" }} mb={{ base: -1, lg: "xs" }}>
         <Table layout="fixed" withColumnBorders withRowBorders withTableBorder>
           <Table.Thead>
             <Table.Tr>
