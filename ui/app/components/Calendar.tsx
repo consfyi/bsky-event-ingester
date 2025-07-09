@@ -264,19 +264,19 @@ export default function Calendar({ events }: { events: Event[] }) {
           pb={4}
           bg="var(--mantine-color-body)"
         >
-          {highlightedMonthIndex != null
-            ? i18n.date(
-                new Date(
+          {i18n.date(
+            highlightedMonthIndex != null
+              ? new Date(
                   Math.floor(highlightedMonthIndex / 12),
                   highlightedMonthIndex % 12,
                   1
-                ),
-                {
-                  month: "long",
-                  year: "numeric",
-                }
-              )
-            : "\u00a0"}
+                )
+              : calendarStartDate,
+            {
+              month: "long",
+              year: "numeric",
+            }
+          )}
         </Box>
       </Title>
       <Box mx={{ base: 0, lg: "xs" }} mb={{ base: -1, lg: "xs" }}>
