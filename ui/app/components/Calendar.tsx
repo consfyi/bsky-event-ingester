@@ -237,7 +237,9 @@ export default function Calendar({ events }: { events: Event[] }) {
     [events]
   );
 
-  const highlightedMonthIndex = min(visibleMonths);
+  const highlightedMonthIndex =
+    min(visibleMonths) ??
+    getYear(calendarStartDate) * 12 + getMonth(calendarStartDate);
 
   return (
     <>
@@ -265,13 +267,11 @@ export default function Calendar({ events }: { events: Event[] }) {
           bg="var(--mantine-color-body)"
         >
           {i18n.date(
-            highlightedMonthIndex != null
-              ? new Date(
-                  Math.floor(highlightedMonthIndex / 12),
-                  highlightedMonthIndex % 12,
-                  1
-                )
-              : calendarStartDate,
+            new Date(
+              Math.floor(highlightedMonthIndex / 12),
+              highlightedMonthIndex % 12,
+              1
+            ),
             {
               month: "long",
               year: "numeric",
