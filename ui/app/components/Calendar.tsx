@@ -1,5 +1,14 @@
-import { useLingui } from "@lingui/react/macro";
-import { Anchor, Table, Text, useMantineTheme } from "@mantine/core";
+import { Trans, useLingui } from "@lingui/react/macro";
+import {
+  Anchor,
+  Box,
+  Group,
+  Switch,
+  Table,
+  Text,
+  Title,
+  useMantineTheme,
+} from "@mantine/core";
 import {
   addDays,
   addWeeks,
@@ -16,18 +25,10 @@ import {
   startOfDay,
   startOfWeek,
 } from "date-fns";
-import {
-  compareMany,
-  comparing,
-  map,
-  max,
-  min,
-  Range,
-  sorted,
-  toArray,
-} from "iter-fns";
+import { comparing, map, max, min, Range, sorted, toArray } from "iter-fns";
 import { Fragment, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router";
+import { reinterpretAsLocalDate } from "~/date";
 import { useNow } from "~/hooks";
 
 export interface Event {
@@ -142,6 +143,15 @@ export default function Calendar({ events }: { events: Event[] }) {
 
   const theme = useMantineTheme();
 
+  const [useLocalTime, setUseLocalTime] = useState(false);
+  if (!useLocalTime) {
+    events = events.map((e) => ({
+      ...e,
+      start: reinterpretAsLocalDate(e.start),
+      end: reinterpretAsLocalDate(e.end),
+    }));
+  }
+
   const weekInfo = useMemo(() => {
     const locale = new Intl.Locale(i18n.locale);
     const weekInfo = (
@@ -230,192 +240,247 @@ export default function Calendar({ events }: { events: Event[] }) {
   const highlightedMonthIndex = min(visibleMonths);
 
   return (
-    <Table layout="fixed" withColumnBorders withRowBorders withTableBorder>
-      <Table.Thead>
-        <Table.Tr>
-          {toArray(
-            map(Range.to(7), (i) => {
-              const d = addDays(calendarStartDate, i);
-              return (
-                <Table.Th
-                  key={i}
-                  bg={
-                    weekInfo.weekend.includes(getDay(d) as Day)
-                      ? "var(--mantine-color-gray-light)"
-                      : ""
+    <>
+      <Box
+        pos="sticky"
+        top={50}
+        mx={{ base: 0, lg: "xs" }}
+        px={{ base: "xs", lg: 0 }}
+        mb={-1}
+        bg="var(--mantine-color-body)"
+        style={{
+          zIndex: 3,
+          borderBottom:
+            "calc(0.0625rem * var(--mantine-scale)) solid var(--mantine-color-default-border)",
+        }}
+      >
+        <Group
+          wrap="nowrap"
+          justify="space-between"
+          gap="0"
+          pt={{ base: 4, lg: 8 }}
+          pb={4}
+        >
+          <Title order={2} size="h4" fw={500}>
+            {highlightedMonthIndex != null
+              ? i18n.date(
+                  new Date(
+                    Math.floor(highlightedMonthIndex / 12),
+                    highlightedMonthIndex % 12,
+                    1
+                  ),
+                  {
+                    month: "long",
+                    year: "numeric",
                   }
-                >
-                  {i18n.date(d, {
-                    weekday: "short",
-                  })}
-                </Table.Th>
-              );
-            })
-          )}
-        </Table.Tr>
-      </Table.Thead>
-      <Table.Tbody>
-        {toArray(
-          map(Range.to(numWeeks), (week) => {
-            const weekStart = addDays(calendarStartDate, week * 7);
-            const lanes = packed[week];
+                )
+              : ""}
+          </Title>
+          <Switch
+            onClick={() => {
+              setUseLocalTime(!useLocalTime);
+            }}
+            checked={useLocalTime}
+            labelPosition="left"
+            label={<Trans>Use local time</Trans>}
+          />
+        </Group>
+      </Box>
+      <Box mx={{ base: 0, lg: "xs" }} mb="xs">
+        <Table layout="fixed" withColumnBorders withRowBorders withTableBorder>
+          <Table.Thead>
+            <Table.Tr>
+              {toArray(
+                map(Range.to(7), (i) => {
+                  const d = addDays(calendarStartDate, i);
+                  return (
+                    <Table.Th
+                      key={i}
+                      bg={
+                        weekInfo.weekend.includes(getDay(d) as Day)
+                          ? "var(--mantine-color-gray-light)"
+                          : ""
+                      }
+                    >
+                      {i18n.date(d, {
+                        weekday: "short",
+                      })}
+                    </Table.Th>
+                  );
+                })
+              )}
+            </Table.Tr>
+          </Table.Thead>
+          <Table.Tbody>
+            {toArray(
+              map(Range.to(numWeeks), (week) => {
+                const weekStart = addDays(calendarStartDate, week * 7);
+                const lanes = packed[week];
 
-            return (
-              <Table.Tr
-                key={week}
-                data-month={getYear(weekStart) * 12 + getMonth(weekStart)}
-                ref={(el) => {
-                  if (
-                    el == null ||
-                    Math.ceil((getDate(weekStart) + getDay(weekStart)) / 7) != 1
-                  ) {
-                    return;
-                  }
+                return (
+                  <Table.Tr
+                    key={week}
+                    data-month={getYear(weekStart) * 12 + getMonth(weekStart)}
+                    ref={(el) => {
+                      if (
+                        el == null ||
+                        Math.ceil(
+                          (getDate(weekStart) + getDay(weekStart)) / 7
+                        ) != 1
+                      ) {
+                        return;
+                      }
 
-                  checkpointRefs.current[
-                    getYear(weekStart) * 12 + getMonth(weekStart)
-                  ] = el;
-                }}
-              >
-                {toArray(
-                  map(Range.to(7), (offset) => {
-                    const d = addDays(weekStart, offset);
-                    const segments = lanes[offset];
+                      checkpointRefs.current[
+                        getYear(weekStart) * 12 + getMonth(weekStart)
+                      ] = el;
+                    }}
+                  >
+                    {toArray(
+                      map(Range.to(7), (offset) => {
+                        const d = addDays(weekStart, offset);
+                        const segments = lanes[offset];
 
-                    return (
-                      <Table.Td
-                        p={0}
-                        h={100}
-                        key={offset}
-                        align="left"
-                        valign="top"
-                        pos="relative"
-                        bg={
-                          weekInfo.weekend.includes(getDay(d) as Day)
-                            ? "var(--mantine-color-gray-light)"
-                            : ""
-                        }
-                      >
-                        <Text
-                          m="xs"
-                          mb={2}
-                          size="sm"
-                          truncate
-                          {...(isSameDay(d, now)
-                            ? { color: "red", fw: 500 }
-                            : {
-                                color:
-                                  getYear(d) * 12 + getMonth(d) ==
-                                  highlightedMonthIndex
-                                    ? ""
-                                    : "var(--mantine-color-dimmed)",
-                              })}
-                        >
-                          {getDate(d) == 1
-                            ? i18n.date(d, {
-                                month: "short",
-                              })
-                            : getDate(d)}
-                        </Text>
-                        {segments.map((seg, i) => {
-                          const length =
-                            seg != null
-                              ? differenceInCalendarDays(seg.end, seg.start)
-                              : 1;
+                        return (
+                          <Table.Td
+                            p={0}
+                            h={100}
+                            key={offset}
+                            align="left"
+                            valign="top"
+                            pos="relative"
+                            bg={
+                              weekInfo.weekend.includes(getDay(d) as Day)
+                                ? "var(--mantine-color-gray-light)"
+                                : ""
+                            }
+                          >
+                            <Text
+                              m="xs"
+                              mb={2}
+                              size="sm"
+                              truncate
+                              {...(isSameDay(d, now)
+                                ? { color: "red", fw: 500 }
+                                : {
+                                    color:
+                                      getYear(d) * 12 + getMonth(d) ==
+                                      highlightedMonthIndex
+                                        ? ""
+                                        : "var(--mantine-color-dimmed)",
+                                  })}
+                            >
+                              {getDate(d) == 1
+                                ? i18n.date(d, {
+                                    month: "short",
+                                  })
+                                : getDate(d)}
+                            </Text>
+                            {segments.map((seg, i) => {
+                              const length =
+                                seg != null
+                                  ? differenceInCalendarDays(seg.end, seg.start)
+                                  : 1;
 
-                          const color =
-                            seg != null
-                              ? [
-                                  "red",
-                                  "orange",
-                                  "yellow",
-                                  "green",
-                                  "blue",
-                                  "indigo",
-                                  "violet",
-                                ][getDay(seg.event.start)]
-                              : null;
+                              const color =
+                                seg != null
+                                  ? [
+                                      "red",
+                                      "orange",
+                                      "yellow",
+                                      "green",
+                                      "blue",
+                                      "indigo",
+                                      "violet",
+                                    ][getDay(seg.event.start)]
+                                  : null;
 
-                          const colors =
-                            color != null
-                              ? theme.variantColorResolver({
-                                  theme,
-                                  color,
-                                  variant: "light",
-                                })
-                              : null;
+                              const colors =
+                                color != null
+                                  ? theme.variantColorResolver({
+                                      theme,
+                                      color,
+                                      variant: "light",
+                                    })
+                                  : null;
 
-                          return (
-                            <Fragment key={i}>
-                              {seg != null ? (
-                                <Anchor
-                                  title={seg.event.title}
-                                  underline="never"
-                                  to={seg.event.link}
-                                  component={Link}
-                                >
-                                  <Text
-                                    mb={2}
-                                    px="xs"
-                                    pos="relative"
-                                    size="xs"
-                                    c={colors != null ? colors.color : ""}
-                                    bg={
-                                      color != null
-                                        ? `color-mix(in srgb, var(--mantine-color-${color}-filled), var(--mantine-color-body) 90%)`
-                                        : ""
-                                    }
-                                    w={`calc(${length} * (100% + 1px) - 1px)`}
-                                    left={0}
-                                    truncate
-                                    style={{
-                                      border:
-                                        colors != null
-                                          ? `1px solid ${colors.color}`
-                                          : "",
-                                      borderLeftWidth: seg.hasStart ? "1px" : 0,
-                                      borderRightWidth: seg.hasEnd ? "1px" : 0,
-                                      borderTopLeftRadius: seg.hasStart
-                                        ? "100px"
-                                        : 0,
-                                      borderBottomLeftRadius: seg.hasStart
-                                        ? "100px"
-                                        : 0,
-                                      borderTopRightRadius: seg.hasEnd
-                                        ? "100px"
-                                        : 0,
-                                      borderBottomRightRadius: seg.hasEnd
-                                        ? "100px"
-                                        : 0,
-                                      zIndex: 1,
-                                    }}
-                                  >
-                                    {seg.event.label}
-                                  </Text>
-                                </Anchor>
-                              ) : (
-                                <Text
-                                  mb={2}
-                                  px="xs"
-                                  pos="relative"
-                                  size="xs"
-                                  bd="1px solid transparent"
-                                >
-                                  &nbsp;
-                                </Text>
-                              )}
-                            </Fragment>
-                          );
-                        })}
-                      </Table.Td>
-                    );
-                  })
-                )}
-              </Table.Tr>
-            );
-          })
-        )}
-      </Table.Tbody>
-    </Table>
+                              return (
+                                <Fragment key={i}>
+                                  {seg != null ? (
+                                    <Anchor
+                                      title={seg.event.title}
+                                      underline="never"
+                                      to={seg.event.link}
+                                      component={Link}
+                                    >
+                                      <Text
+                                        mb={2}
+                                        px="xs"
+                                        pos="relative"
+                                        size="xs"
+                                        c={colors != null ? colors.color : ""}
+                                        bg={
+                                          color != null
+                                            ? `color-mix(in srgb, var(--mantine-color-${color}-filled), var(--mantine-color-body) 90%)`
+                                            : ""
+                                        }
+                                        w={`calc(${length} * (100% + 1px) - 1px)`}
+                                        left={0}
+                                        truncate
+                                        style={{
+                                          border:
+                                            colors != null
+                                              ? `1px solid ${colors.color}`
+                                              : "",
+                                          borderLeftWidth: seg.hasStart
+                                            ? "1px"
+                                            : 0,
+                                          borderRightWidth: seg.hasEnd
+                                            ? "1px"
+                                            : 0,
+                                          borderTopLeftRadius: seg.hasStart
+                                            ? "100px"
+                                            : 0,
+                                          borderBottomLeftRadius: seg.hasStart
+                                            ? "100px"
+                                            : 0,
+                                          borderTopRightRadius: seg.hasEnd
+                                            ? "100px"
+                                            : 0,
+                                          borderBottomRightRadius: seg.hasEnd
+                                            ? "100px"
+                                            : 0,
+                                          zIndex: 1,
+                                        }}
+                                      >
+                                        {seg.event.label}
+                                      </Text>
+                                    </Anchor>
+                                  ) : (
+                                    <Text
+                                      mb={2}
+                                      px="xs"
+                                      pos="relative"
+                                      size="xs"
+                                      bd="1px solid transparent"
+                                    >
+                                      &nbsp;
+                                    </Text>
+                                  )}
+                                </Fragment>
+                              );
+                            })}
+                          </Table.Td>
+                        );
+                      })
+                    )}
+                  </Table.Tr>
+                );
+              })
+            )}
+          </Table.Tbody>
+        </Table>
+      </Box>
+    </>
   );
 }
