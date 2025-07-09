@@ -352,9 +352,10 @@ export default function Calendar({ events }: { events: Event[] }) {
                               m="xs"
                               mb={2}
                               size="sm"
+                              fw={500}
                               truncate
                               {...(isSameDay(d, now)
-                                ? { color: "red", fw: 500 }
+                                ? { color: "red" }
                                 : {
                                     color:
                                       getYear(d) * 12 + getMonth(d) ==
