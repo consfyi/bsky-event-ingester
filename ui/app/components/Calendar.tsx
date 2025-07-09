@@ -323,19 +323,24 @@ export default function Calendar({ events }: { events: Event[] }) {
                               ? differenceInCalendarDays(seg.end, seg.start)
                               : 1;
 
-                          const colors =
+                          const color =
                             seg != null
+                              ? [
+                                  "red",
+                                  "orange",
+                                  "yellow",
+                                  "green",
+                                  "blue",
+                                  "indigo",
+                                  "violet",
+                                ][getDay(seg.event.start)]
+                              : null;
+
+                          const colors =
+                            color != null
                               ? theme.variantColorResolver({
                                   theme,
-                                  color: [
-                                    "red",
-                                    "orange",
-                                    "yellow",
-                                    "green",
-                                    "blue",
-                                    "indigo",
-                                    "violet",
-                                  ][getDay(seg.event.start)],
+                                  color,
                                   variant: "light",
                                 })
                               : null;
@@ -355,16 +360,19 @@ export default function Calendar({ events }: { events: Event[] }) {
                                     pos="relative"
                                     size="xs"
                                     c={colors != null ? colors.color : ""}
-                                    bg={colors != null ? colors.background : ""}
-                                    bd={
-                                      colors != null
-                                        ? `1px solid ${colors.color}`
+                                    bg={
+                                      color != null
+                                        ? `color-mix(in srgb, var(--mantine-color-${color}-filled), var(--mantine-color-body) 90%)`
                                         : ""
                                     }
                                     w={`calc(${length} * (100% + 1px) - 1px)`}
                                     left={0}
                                     truncate
                                     style={{
+                                      border:
+                                        colors != null
+                                          ? `1px solid ${colors.color}`
+                                          : "",
                                       borderLeftWidth: seg.hasStart ? "1px" : 0,
                                       borderRightWidth: seg.hasEnd ? "1px" : 0,
                                       borderTopLeftRadius: seg.hasStart
