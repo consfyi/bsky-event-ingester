@@ -241,51 +241,44 @@ export default function Calendar({ events }: { events: Event[] }) {
 
   return (
     <>
-      <Box
-        pos="sticky"
-        top={50}
+      <Title
+        mb={-1}
         mx={{ base: 0, lg: "xs" }}
         px={{ base: "xs", lg: 0 }}
-        mb={-1}
-        bg="var(--mantine-color-body)"
+        mt={{ base: -4, lg: -8 }}
+        order={2}
+        size="h5"
+        fw={500}
+        pos="sticky"
+        top={50}
         style={{
           zIndex: 3,
           borderBottom:
             "calc(0.0625rem * var(--mantine-scale)) solid var(--mantine-color-default-border)",
         }}
       >
-        <Group
-          wrap="nowrap"
-          justify="space-between"
-          gap="0"
+        <Box
+          mx="calc(var(--mantine-spacing-xs) * -1)"
+          px="xs"
           pt={{ base: 4, lg: 8 }}
           pb={4}
+          bg="var(--mantine-color-body)"
         >
-          <Title order={2} size="h5" fw={500}>
-            {highlightedMonthIndex != null
-              ? i18n.date(
-                  new Date(
-                    Math.floor(highlightedMonthIndex / 12),
-                    highlightedMonthIndex % 12,
-                    1
-                  ),
-                  {
-                    month: "long",
-                    year: "numeric",
-                  }
-                )
-              : "\u00a0"}
-          </Title>
-          <Switch
-            onClick={() => {
-              setUseLocalTime(!useLocalTime);
-            }}
-            checked={useLocalTime}
-            labelPosition="left"
-            label={<Trans>Use local time</Trans>}
-          />
-        </Group>
-      </Box>
+          {highlightedMonthIndex != null
+            ? i18n.date(
+                new Date(
+                  Math.floor(highlightedMonthIndex / 12),
+                  highlightedMonthIndex % 12,
+                  1
+                ),
+                {
+                  month: "long",
+                  year: "numeric",
+                }
+              )
+            : "\u00a0"}
+        </Box>
+      </Title>
       <Box mx={{ base: 0, lg: "xs" }} mb={{ base: -1, lg: "xs" }}>
         <Table layout="fixed" withColumnBorders withRowBorders withTableBorder>
           <Table.Thead>
