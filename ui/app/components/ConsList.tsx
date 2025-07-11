@@ -15,6 +15,7 @@ import {
     Loader,
     Menu,
     RangeSlider,
+    SegmentedControl,
     Stack,
     Text,
     TextInput,
@@ -753,7 +754,7 @@ function Filters({
                         setFilterDrawerOpen(!filterDrawerOpen);
                     }}
                 >
-                    <Text span size="sm" fw={500}>
+                    <Text span size="xs" fw={500}>
                         <Trans>Filters</Trans>{" "}
                         {numFilters > 0 ? (
                             <Badge ms={6}>{numFilters}</Badge>
@@ -800,7 +801,7 @@ function Filters({
                                       variant: "outline",
                                   })}
                         >
-                            <Text span size="sm" fw={500}>
+                            <Text span size="xs" fw={500}>
                                 <Trans>Attending only</Trans>
                             </Text>
                         </Button>
@@ -826,7 +827,7 @@ function Filters({
                                           variant: "outline",
                                       })}
                             >
-                                <Text span size="sm" fw={500}>
+                                <Text span size="xs" fw={500}>
                                     {continentsFiltered ? (
                                         viewOptions.filter.continents.length ==
                                         1 ? (
@@ -949,7 +950,7 @@ function Filters({
                                           variant: "outline",
                                       })}
                             >
-                                <Text span size="sm" fw={500}>
+                                <Text span size="xs" fw={500}>
                                     {durationFiltered ? (
                                         viewOptions.filter.minDays ==
                                         viewOptions.filter.maxDays ? (
@@ -1073,28 +1074,28 @@ function Filters({
                                       variant: "outline",
                                   })}
                         >
-                            <Text span size="sm" fw={500}>
+                            <Text span size="xs" fw={500}>
                                 <Trans>With followed only</Trans>
                             </Text>
                         </Button>
                     ) : null}
                 </Group>
-                <Menu
-                    position="bottom-end"
-                    withArrow
-                    opened={sortMenuOpen}
-                    onChange={setSortMenuOpen}
-                >
-                    <Menu.Target>
-                        <Button
-                            variant="subtle"
-                            size="xs"
-                            c="dimmed"
-                            color="var(--mantine-color-dimmed)"
-                            style={{ zIndex: 4, flexShrink: 0 }}
-                            leftSection={
-                                viewOptions.layout != "calendar" ? (
-                                    (() => {
+                <Group gap="xs">
+                    {viewOptions.layout != "calendar" ? (
+                        <Menu
+                            position="bottom-end"
+                            withArrow
+                            opened={sortMenuOpen}
+                            onChange={setSortMenuOpen}
+                        >
+                            <Menu.Target>
+                                <Button
+                                    variant="subtle"
+                                    size="xs"
+                                    c="dimmed"
+                                    color="var(--mantine-color-dimmed)"
+                                    style={{ zIndex: 4, flexShrink: 0 }}
+                                    leftSection={(() => {
                                         const currentSortByDisplay =
                                             sortByDisplays[
                                                 viewOptions.layout.sort
@@ -1112,73 +1113,20 @@ function Filters({
                                                 size={14}
                                             />
                                         );
-                                    })()
-                                ) : (
-                                    <IconCalendar size={14} />
-                                )
-                            }
-                            rightSection={<IconChevronDown size={14} />}
-                        >
-                            <Text span size="sm" fw={500}>
-                                {viewOptions.layout == "calendar" ? (
-                                    <Trans>Calendar</Trans>
-                                ) : (
-                                    sortByDisplays[viewOptions.layout.sort].name
-                                )}
-                            </Text>
-                        </Button>
-                    </Menu.Target>
+                                    })()}
+                                    rightSection={<IconChevronDown size={14} />}
+                                >
+                                    <Text span size="xs" fw={500}>
+                                        {
+                                            sortByDisplays[
+                                                viewOptions.layout.sort
+                                            ].name
+                                        }
+                                    </Text>
+                                </Button>
+                            </Menu.Target>
 
-                    <Menu.Dropdown w={200}>
-                        <Menu.Label>
-                            <Trans>Layout</Trans>
-                        </Menu.Label>
-                        <Menu.Item
-                            aria-selected={viewOptions.layout != "calendar"}
-                            onClick={() => {
-                                setViewOptions((vo) => ({
-                                    ...vo,
-                                    layout: ListLayoutOptions.parse({}),
-                                }));
-                            }}
-                            leftSection={
-                                <Group gap={6}>
-                                    {viewOptions.layout != "calendar" ? (
-                                        <IconCheck size={14} />
-                                    ) : (
-                                        <EmptyIcon size={14} />
-                                    )}
-                                    <IconList size={14} />
-                                </Group>
-                            }
-                        >
-                            <Trans>List</Trans>
-                        </Menu.Item>
-
-                        <Menu.Item
-                            aria-selected={viewOptions.layout == "calendar"}
-                            onClick={() => {
-                                setViewOptions((vo) => ({
-                                    ...vo,
-                                    layout: "calendar",
-                                }));
-                            }}
-                            leftSection={
-                                <Group gap={6}>
-                                    {viewOptions.layout == "calendar" ? (
-                                        <IconCheck size={14} />
-                                    ) : (
-                                        <EmptyIcon size={14} />
-                                    )}
-                                    <IconCalendar size={14} />
-                                </Group>
-                            }
-                        >
-                            <Trans>Calendar</Trans>
-                        </Menu.Item>
-
-                        {viewOptions.layout != "calendar" ? (
-                            <>
+                            <Menu.Dropdown w={200}>
                                 <Menu.Label>
                                     <Trans>Sort by</Trans>
                                 </Menu.Label>
@@ -1315,10 +1263,61 @@ function Filters({
                                             .desc
                                     }
                                 </Menu.Item>
-                            </>
-                        ) : null}
-                    </Menu.Dropdown>
-                </Menu>
+                            </Menu.Dropdown>
+                        </Menu>
+                    ) : null}
+                    <SegmentedControl
+                        onChange={(value) => {
+                            setViewOptions((vo) => ({
+                                ...vo,
+                                layout:
+                                    value != "calendar"
+                                        ? ListLayoutOptions.parse({})
+                                        : "calendar",
+                            }));
+                        }}
+                        value={
+                            viewOptions.layout != "calendar"
+                                ? "list"
+                                : "calendar"
+                        }
+                        data={[
+                            {
+                                value: "list",
+                                label: (
+                                    <Center style={{ gap: 6 }}>
+                                        <IconList size={14} />
+                                        <Text
+                                            span
+                                            size="xs"
+                                            fw={500}
+                                            visibleFrom="lg"
+                                        >
+                                            <Trans>List</Trans>
+                                        </Text>
+                                    </Center>
+                                ),
+                            },
+                            {
+                                value: "calendar",
+                                label: (
+                                    <Center style={{ gap: 6 }}>
+                                        <IconCalendar size={14} />
+                                        <Text
+                                            span
+                                            size="xs"
+                                            fw={500}
+                                            visibleFrom="lg"
+                                        >
+                                            <Trans>Calendar</Trans>
+                                        </Text>
+                                    </Center>
+                                ),
+                            },
+                        ]}
+                        size="xs"
+                    />
+                </Group>
             </Group>
 
             <Drawer
