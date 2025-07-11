@@ -199,7 +199,7 @@ msgstr "レイアウト"
 
 #: app/components/ConsList.tsx:1155
 msgid "List"
-msgstr ""
+msgstr "リスト"
 
 #: app/components/ConsList.tsx:1183
 msgid "Sort by"
