@@ -26,7 +26,14 @@ import {
   startOfWeek,
 } from "date-fns";
 import { comparing, map, max, min, Range, sorted, toArray } from "iter-fns";
-import { Fragment, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  Fragment,
+  ReactNode,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { Link } from "react-router";
 import { reinterpretAsLocalDate } from "~/date";
 import { useNow } from "~/hooks";
@@ -138,10 +145,66 @@ function packLanes(
   return weeks;
 }
 
+function EventSegment({ segment }: { segment: Segment }) {
+  const theme = useMantineTheme();
+
+  const length = differenceInCalendarDays(segment.end, segment.start);
+
+  const color = [
+    "red",
+    "orange",
+    "yellow",
+    "green",
+    "blue",
+    "indigo",
+    "violet",
+  ][getDay(segment.event.start)];
+
+  const colors = theme.variantColorResolver({
+    theme,
+    color,
+    variant: "light",
+  });
+
+  return (
+    <Anchor
+      title={segment.event.title}
+      underline="never"
+      to={segment.event.link}
+      component={Link}
+    >
+      <Text
+        mb={2}
+        px="xs"
+        pos="relative"
+        size="sm"
+        c={colors.color}
+        bg={`color-mix(in srgb, var(--mantine-color-${color}-filled), var(--mantine-color-body) 90%)`}
+        w={`calc(${length} * (100% + 1px) - 1px)`}
+        left={0}
+        truncate
+        style={{
+          borderColor: colors.color,
+          borderStyle: "solid",
+          borderTopWidth: "1px",
+          borderBottomWidth: "1px",
+          borderLeftWidth: segment.hasStart ? "1px" : 0,
+          borderRightWidth: segment.hasEnd ? "1px" : 0,
+          borderTopLeftRadius: segment.hasStart ? "100px" : 0,
+          borderBottomLeftRadius: segment.hasStart ? "100px" : 0,
+          borderTopRightRadius: segment.hasEnd ? "100px" : 0,
+          borderBottomRightRadius: segment.hasEnd ? "100px" : 0,
+          zIndex: 1,
+        }}
+      >
+        {segment.event.label}
+      </Text>
+    </Anchor>
+  );
+}
+
 export default function Calendar({ events }: { events: Event[] }) {
   const { t, i18n } = useLingui();
-
-  const theme = useMantineTheme();
 
   const [useLocalTime, setUseLocalTime] = useState(false);
   if (!useLocalTime) {
@@ -155,7 +218,9 @@ export default function Calendar({ events }: { events: Event[] }) {
   const weekInfo = useMemo(() => {
     const locale = new Intl.Locale(i18n.locale);
     const weekInfo = (
-      locale as { getWeekInfo?(): { firstDay: number; weekend: number[] } }
+      locale as {
+        getWeekInfo?(): { firstDay: number; weekend: number[] };
+      }
     ).getWeekInfo?.() ?? { firstDay: 7, weekend: [6, 7] };
 
     return {
@@ -210,6 +275,7 @@ export default function Calendar({ events }: { events: Event[] }) {
   }, [events]);
 
   const now = useNow();
+  const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
 
   const startDate = useMemo(() => {
     const d = min(map(events, (con) => new Date(con.start)))!;
@@ -357,7 +423,9 @@ export default function Calendar({ events }: { events: Event[] }) {
                               fw={500}
                               truncate
                               {...(isSameDay(d, now)
-                                ? { color: "red" }
+                                ? {
+                                    color: "red",
+                                  }
                                 : {
                                     color:
                                       getYear(d) * 12 + getMonth(d) ==
@@ -372,101 +440,21 @@ export default function Calendar({ events }: { events: Event[] }) {
                                   })
                                 : getDate(d)}
                             </Text>
-                            {segments.map((seg, i) => {
-                              const length =
-                                seg != null
-                                  ? differenceInCalendarDays(seg.end, seg.start)
-                                  : 1;
-
-                              const color =
-                                seg != null
-                                  ? [
-                                      "red",
-                                      "orange",
-                                      "yellow",
-                                      "green",
-                                      "blue",
-                                      "indigo",
-                                      "violet",
-                                    ][getDay(seg.event.start)]
-                                  : null;
-
-                              const colors =
-                                color != null
-                                  ? theme.variantColorResolver({
-                                      theme,
-                                      color,
-                                      variant: "light",
-                                    })
-                                  : null;
-
-                              return (
-                                <Fragment key={i}>
-                                  {seg != null ? (
-                                    <Anchor
-                                      title={seg.event.title}
-                                      underline="never"
-                                      to={seg.event.link}
-                                      component={Link}
-                                    >
-                                      <Text
-                                        mb={2}
-                                        px="xs"
-                                        pos="relative"
-                                        size="sm"
-                                        c={colors != null ? colors.color : ""}
-                                        bg={
-                                          color != null
-                                            ? `color-mix(in srgb, var(--mantine-color-${color}-filled), var(--mantine-color-body) 90%)`
-                                            : ""
-                                        }
-                                        w={`calc(${length} * (100% + 1px) - 1px)`}
-                                        left={0}
-                                        truncate
-                                        style={{
-                                          borderColor:
-                                            colors != null ? colors.color : "",
-                                          borderStyle: "solid",
-                                          borderTopWidth: "1px",
-                                          borderBottomWidth: "1px",
-                                          borderLeftWidth: seg.hasStart
-                                            ? "1px"
-                                            : 0,
-                                          borderRightWidth: seg.hasEnd
-                                            ? "1px"
-                                            : 0,
-                                          borderTopLeftRadius: seg.hasStart
-                                            ? "100px"
-                                            : 0,
-                                          borderBottomLeftRadius: seg.hasStart
-                                            ? "100px"
-                                            : 0,
-                                          borderTopRightRadius: seg.hasEnd
-                                            ? "100px"
-                                            : 0,
-                                          borderBottomRightRadius: seg.hasEnd
-                                            ? "100px"
-                                            : 0,
-                                          zIndex: 1,
-                                        }}
-                                      >
-                                        {seg.event.label}
-                                      </Text>
-                                    </Anchor>
-                                  ) : (
-                                    <Text
-                                      mb={2}
-                                      px="xs"
-                                      pos="relative"
-                                      size="sm"
-                                      bd="1px solid transparent"
-                                    >
-                                      &nbsp;
-                                    </Text>
-                                  )}
-                                </Fragment>
-                              );
-                            })}
+                            {segments.map((seg, i) =>
+                              seg != null ? (
+                                <EventSegment segment={seg} key={i} />
+                              ) : (
+                                <Text
+                                  mb={2}
+                                  px="xs"
+                                  pos="relative"
+                                  size="sm"
+                                  bd="1px solid transparent"
+                                >
+                                  &nbsp;
+                                </Text>
+                              )
+                            )}
                           </Table.Td>
                         );
                       })
