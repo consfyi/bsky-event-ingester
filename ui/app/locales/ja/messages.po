@@ -13,26 +13,26 @@ msgstr ""
 "Language-Team: \n"
 "Plural-Forms: \n"
 
-#: app/components/ConsList.tsx:186
-#: app/components/ConsList.tsx:591
+#: app/components/ConsList.tsx:204
+#: app/components/ConsList.tsx:647
 msgctxt "number of attendees"
 msgid "Attendees"
 msgstr "参加者数"
 
 #. placeholder {0}: [likeCount][0]
-#: app/components/ConsList.tsx:192
+#: app/components/ConsList.tsx:210
 #: app/routes/cons.$slug.tsx:337
 msgctxt "attendee count"
 msgid "{0}"
 msgstr "{0}人"
 
 #. placeholder {0}: follows.length - MAX_AVATARS_IN_STACK
-#: app/components/ConsList.tsx:206
+#: app/components/ConsList.tsx:230
 msgid "{0, plural, one {# other you follow} other {# others you follow}}"
 msgstr "フォロー中の他の{0}人"
 
-#: app/components/ConsList.tsx:240
-#: app/components/ConsList.tsx:577
+#: app/components/ConsList.tsx:273
+#: app/components/ConsList.tsx:633
 #: app/routes/cons.$slug.tsx:137
 msgid "Date"
 msgstr "開催日"
@@ -40,166 +40,180 @@ msgstr "開催日"
 #. placeholder {0}: dateTimeFormat.formatRange( reinterpretAsLocalDate(con.start), reinterpretAsLocalDate(subDays(con.end, 1)) )
 #. placeholder {0}: dateTimeFormat.formatRange( reinterpretAsLocalDate(con.start), reinterpretAsLocalDate(subDays(con.end, 1)) )
 #. placeholder {1}: differenceInDays(con.end, con.start)
-#: app/components/ConsList.tsx:241
+#: app/components/ConsList.tsx:274
 #: app/routes/cons.$slug.tsx:141
 msgctxt "[start date]-[end date] ([duration] days)"
 msgid "{0} ({1, plural, one {# day} other {# days}})"
 msgstr "{0} ({1}日)"
 
-#: app/components/ConsList.tsx:257
+#: app/components/ConsList.tsx:290
 msgid "End date"
 msgstr "終了日"
 
-#. placeholder {0}: i18n.date(reinterpretAsLocalDate(subDays(con.end, 1)), { weekday: "short", day: "numeric", month: "short", year: getYear(reinterpretAsLocalDate(con.start)) != getYear(reinterpretAsLocalDate(subDays(con.end, 1))) ? "numeric" : undefined, })
+#. placeholder {0}: i18n.date( reinterpretAsLocalDate(subDays(con.end, 1)), { weekday: "short", day: "numeric", month: "short", year: getYear( reinterpretAsLocalDate( con.start ) ) != getYear( reinterpretAsLocalDate( subDays(con.end, 1) ) ) ? "numeric" : undefined, } )
 #. placeholder {1}: differenceInDays(con.end, con.start)
-#: app/components/ConsList.tsx:258
+#: app/components/ConsList.tsx:291
 msgctxt "ends [date] ([duration] days)"
 msgid "ends {0} ({1, plural, one {# day} other {# days}})"
 msgstr "{0}終了 ({1}日)"
 
-#: app/components/ConsList.tsx:282
+#: app/components/ConsList.tsx:326
 #: app/routes/cons.$slug.tsx:159
 msgid "Location"
 msgstr "開催地"
 
-#: app/components/ConsList.tsx:578
+#: app/components/ConsList.tsx:634
 msgid "Soonest to latest"
 msgstr "早い順"
 
-#: app/components/ConsList.tsx:580
+#: app/components/ConsList.tsx:636
 msgid "Latest to soonest"
 msgstr "遅い順"
 
-#: app/components/ConsList.tsx:584
+#: app/components/ConsList.tsx:640
 msgid "Name"
 msgstr "名称"
 
-#: app/components/ConsList.tsx:585
+#: app/components/ConsList.tsx:641
 msgid "A to Z"
 msgstr "A-Z順"
 
-#: app/components/ConsList.tsx:587
+#: app/components/ConsList.tsx:643
 msgid "Z to A"
 msgstr "Z-A順"
 
-#: app/components/ConsList.tsx:592
-#: app/components/ConsList.tsx:599
+#: app/components/ConsList.tsx:648
+#: app/components/ConsList.tsx:655
 msgid "Fewest to most"
 msgstr "少ない順"
 
-#: app/components/ConsList.tsx:594
-#: app/components/ConsList.tsx:601
+#: app/components/ConsList.tsx:650
+#: app/components/ConsList.tsx:657
 msgid "Most to fewest"
 msgstr "多い順"
 
-#: app/components/ConsList.tsx:598
+#: app/components/ConsList.tsx:654
 msgid "Followed attendees"
 msgstr "フォロー中の参加者数"
 
-#: app/components/ConsList.tsx:627
+#: app/components/ConsList.tsx:686
 msgid "North America"
 msgstr "北アメリカ"
 
-#: app/components/ConsList.tsx:628
+#: app/components/ConsList.tsx:687
 msgid "Europe"
 msgstr "ヨーロッパ"
 
-#: app/components/ConsList.tsx:629
+#: app/components/ConsList.tsx:688
 msgid "Asia"
 msgstr "アジア"
 
-#: app/components/ConsList.tsx:630
+#: app/components/ConsList.tsx:689
 msgid "South America"
 msgstr "南アメリカ"
 
-#: app/components/ConsList.tsx:631
+#: app/components/ConsList.tsx:690
 msgid "Oceania"
 msgstr "オセアニア"
 
-#: app/components/ConsList.tsx:632
+#: app/components/ConsList.tsx:691
 msgid "Africa"
 msgstr "アフリカ"
 
-#: app/components/ConsList.tsx:633
+#: app/components/ConsList.tsx:692
 msgid "Unknown"
 msgstr "不明"
 
-#: app/components/ConsList.tsx:671
+#: app/components/ConsList.tsx:733
 msgid "Search"
 msgstr "検索"
 
-#: app/components/ConsList.tsx:695
-#: app/components/ConsList.tsx:1107
+#: app/components/ConsList.tsx:757
+#: app/components/ConsList.tsx:1331
 msgid "Filters"
 msgstr "絞り込み"
 
-#: app/components/ConsList.tsx:739
-#: app/components/ConsList.tsx:1116
+#: app/components/ConsList.tsx:804
+#: app/components/ConsList.tsx:1340
 msgid "Attending only"
 msgstr "参加予定のみ"
 
-#. placeholder {0}: viewOptions.filter.continents.length
-#: app/components/ConsList.tsx:765
+#. placeholder {0}: viewOptions.filter .continents.length
+#: app/components/ConsList.tsx:837
 msgid "{0, plural, one {# region} other {# regions}}"
 msgstr "{0}地域"
 
-#: app/components/ConsList.tsx:772
-#: app/components/ConsList.tsx:1147
+#: app/components/ConsList.tsx:847
+#: app/components/ConsList.tsx:1374
 msgid "Regions"
 msgstr "地域"
 
 #. placeholder {0}: viewOptions.filter.continents.length
-#: app/components/ConsList.tsx:803
-#: app/components/ConsList.tsx:1168
+#: app/components/ConsList.tsx:879
+#: app/components/ConsList.tsx:1396
 msgid "{0, plural, one {# selected} other {# selected}}"
 msgstr "{0}地域選択中"
 
-#. placeholder {0}: DEFAULT_VIEW_OPTIONS.filter.maxDays
+#. placeholder {0}: DEFAULT_VIEW_OPTIONS .filter.maxDays
 #. placeholder {0}: viewOptions.filter.minDays
-#: app/components/ConsList.tsx:869
-#: app/components/ConsList.tsx:883
-#: app/components/ConsList.tsx:921
-#: app/components/ConsList.tsx:1224
+#. placeholder {0}: DEFAULT_VIEW_OPTIONS.filter .maxDays
+#: app/components/ConsList.tsx:959
+#: app/components/ConsList.tsx:980
+#: app/components/ConsList.tsx:1030
+#: app/components/ConsList.tsx:1467
 msgid "{0, plural, one {# day or more} other {# days or more}}"
 msgstr "{0}日以上"
 
-#. placeholder {0}: viewOptions.filter.minDays
+#. placeholder {0}: viewOptions.filter .minDays
 #. placeholder {0}: [value][0]
-#: app/components/ConsList.tsx:875
-#: app/components/ConsList.tsx:919
-#: app/components/ConsList.tsx:1222
+#: app/components/ConsList.tsx:968
+#: app/components/ConsList.tsx:1024
+#: app/components/ConsList.tsx:1461
 msgid "{0, plural, one {# day} other {# days}}"
 msgstr "{0}日"
 
 #. placeholder {0}: viewOptions.filter.minDays
 #. placeholder {1}: viewOptions.filter.maxDays
-#: app/components/ConsList.tsx:889
+#: app/components/ConsList.tsx:988
 msgid "{0} to {1} days"
 msgstr "{0}〜{1}日"
 
-#: app/components/ConsList.tsx:895
-#: app/components/ConsList.tsx:1205
+#: app/components/ConsList.tsx:995
+#: app/components/ConsList.tsx:1441
 msgid "Number of days"
 msgstr "日数"
 
-#: app/components/ConsList.tsx:963
-#: app/components/ConsList.tsx:1131
+#: app/components/ConsList.tsx:1077
+#: app/components/ConsList.tsx:1355
 msgid "With followed only"
 msgstr "フォロー中のユーザーのみ"
 
-#: app/components/ConsList.tsx:1004
+#: app/components/ConsList.tsx:1124
+#: app/components/ConsList.tsx:1177
+msgid "Calendar"
+msgstr "カレンダー"
+
+#: app/components/ConsList.tsx:1134
+msgid "Layout"
+msgstr "レイアウト"
+
+#: app/components/ConsList.tsx:1155
+msgid "List"
+msgstr ""
+
+#: app/components/ConsList.tsx:1183
 msgid "Sort by"
 msgstr "並び順"
 
-#: app/components/ConsList.tsx:1046
+#: app/components/ConsList.tsx:1244
 msgid "Order"
 msgstr "順序"
 
-#: app/components/ConsList.tsx:1376
+#: app/components/ConsList.tsx:1649
 msgid "No cons to display."
 msgstr "表示するコンベンションがありません。"
 
-#: app/components/ConsList.tsx:1389
+#: app/components/ConsList.tsx:1665
 msgid "Clear all filters"
 msgstr "全ての絞り込みを解除"
 
@@ -290,14 +304,6 @@ msgstr "現在ラベラーに登録されていません。これにより、Blu
 #: app/root.tsx:565
 msgid "Fix this for me"
 msgstr "修正する"
-
-#: app/routes/calendar.tsx:23
-msgid "Calendar"
-msgstr "カレンダー"
-
-#: app/routes/calendar.tsx:48
-msgid "Use local time"
-msgstr "現地時間で表示"
 
 #: app/routes/cons.$slug.tsx:110
 #: app/routes/cons.$slug.tsx:117
