@@ -181,7 +181,8 @@ function EventSegment({ segment }: { segment: Segment }) {
         left={0}
         truncate
         style={{
-          borderColor: colors.color,
+          borderColor:
+            segment.event.variant == "light" ? colors.color : "transparent",
           borderStyle: "solid",
           borderTopWidth: "1px",
           borderBottomWidth: "1px",
@@ -442,6 +443,7 @@ export default function Calendar({ events }: { events: Event[] }) {
                                 <EventSegment segment={seg} key={i} />
                               ) : (
                                 <Text
+                                  key={i}
                                   mb={2}
                                   px="xs"
                                   pos="relative"
