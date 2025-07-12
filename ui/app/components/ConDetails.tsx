@@ -136,7 +136,7 @@ function Header({ con }: { con: ConWithPost }) {
             </Indicator>
           </Box>
           <Text size="sm" mb={5}>
-            <Trans context="[start date]-[end date] ([duration] days)">
+            <Trans context="[start date]-[end date] ([duration] days long)">
               {dateTimeFormat.formatRange(
                 reinterpretAsLocalDate(con.start),
                 reinterpretAsLocalDate(subDays(con.end, 1))
@@ -144,8 +144,8 @@ function Header({ con }: { con: ConWithPost }) {
               (
               <Plural
                 value={differenceInDays(con.end, con.start)}
-                one="# day"
-                other="# days"
+                one="# day long"
+                other="# days long"
               />
               )
             </Trans>

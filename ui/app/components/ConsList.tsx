@@ -245,7 +245,7 @@ export function ConRow({
           {!showEndDateOnly ? (
             <Text span>
               <IconCalendar title={t`Date`} size={12} />{" "}
-              <Trans context="[start date]-[end date] ([duration] days)">
+              <Trans context="[start date]-[end date] ([duration] days long)">
                 {dateTimeFormat.formatRange(
                   reinterpretAsLocalDate(con.start),
                   reinterpretAsLocalDate(subDays(con.end, 1))
@@ -253,8 +253,8 @@ export function ConRow({
                 (
                 <Plural
                   value={differenceInDays(con.end, con.start)}
-                  one="# day"
-                  other="# days"
+                  one="# day long"
+                  other="# days long"
                 />
                 )
               </Trans>
@@ -262,8 +262,8 @@ export function ConRow({
           ) : (
             <Text span>
               <IconCalendarWeek title={t`End date`} size={12} />{" "}
-              <Trans context="ends [date] ([duration] days)">
-                ends{" "}
+              <Trans context="until [date] ([duration] days long)">
+                until{" "}
                 {i18n.date(reinterpretAsLocalDate(subDays(con.end, 1)), {
                   weekday: "short",
                   day: "numeric",
@@ -277,8 +277,8 @@ export function ConRow({
                 (
                 <Plural
                   value={differenceInDays(con.end, con.start)}
-                  one="# day"
-                  other="# days"
+                  one="# day long"
+                  other="# days long"
                 />
                 )
               </Trans>

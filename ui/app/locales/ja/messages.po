@@ -29,9 +29,9 @@ msgstr "開催日"
 #. placeholder {1}: differenceInDays(con.end, con.start)
 #: app/components/ConDetails.tsx:139
 #: app/components/ConsList.tsx:248
-msgctxt "[start date]-[end date] ([duration] days)"
-msgid "{0} ({1, plural, one {# day} other {# days}})"
-msgstr "{0} ({1}日)"
+msgctxt "[start date]-[end date] ([duration] days long)"
+msgid "{0} ({1, plural, one {# day long} other {# days long}})"
+msgstr "{0}（{1}日間）"
 
 #: app/components/ConDetails.tsx:157
 #: app/components/ConsList.tsx:289
@@ -92,9 +92,9 @@ msgstr "終了日"
 #. placeholder {0}: i18n.date(reinterpretAsLocalDate(subDays(con.end, 1)), { weekday: "short", day: "numeric", month: "short", year: getYear(reinterpretAsLocalDate(con.start)) != getYear(reinterpretAsLocalDate(subDays(con.end, 1))) ? "numeric" : undefined, })
 #. placeholder {1}: differenceInDays(con.end, con.start)
 #: app/components/ConsList.tsx:265
-msgctxt "ends [date] ([duration] days)"
-msgid "ends {0} ({1, plural, one {# day} other {# days}})"
-msgstr "{0}終了 ({1}日)"
+msgctxt "until [date] ([duration] days long)"
+msgid "until {0} ({1, plural, one {# day long} other {# days long}})"
+msgstr "{0}まで（{1}日間）"
 
 #: app/components/ConsList.tsx:604
 msgid "Soonest to latest"
@@ -163,12 +163,12 @@ msgid "Search"
 msgstr "検索"
 
 #: app/components/ConsList.tsx:718
-#: app/components/ConsList.tsx:1259
+#: app/components/ConsList.tsx:1257
 msgid "Filters"
 msgstr "絞り込み"
 
 #: app/components/ConsList.tsx:760
-#: app/components/ConsList.tsx:1268
+#: app/components/ConsList.tsx:1266
 msgid "Attending only"
 msgstr "参加予定のみ"
 
@@ -178,90 +178,90 @@ msgid "{0, plural, one {# region} other {# regions}}"
 msgstr "{0}地域"
 
 #: app/components/ConsList.tsx:791
-#: app/components/ConsList.tsx:1299
+#: app/components/ConsList.tsx:1297
 msgid "Regions"
 msgstr "地域"
 
 #. placeholder {0}: viewOptions.filter.continents.length
 #: app/components/ConsList.tsx:821
-#: app/components/ConsList.tsx:1320
+#: app/components/ConsList.tsx:1318
 msgid "{0, plural, one {# selected} other {# selected}}"
 msgstr "{0}地域選択中"
 
 #. placeholder {0}: DEFAULT_VIEW_OPTIONS.filter.maxDays
 #. placeholder {0}: viewOptions.filter.minDays
-#: app/components/ConsList.tsx:887
-#: app/components/ConsList.tsx:901
-#: app/components/ConsList.tsx:943
-#: app/components/ConsList.tsx:1376
+#: app/components/ConsList.tsx:886
+#: app/components/ConsList.tsx:900
+#: app/components/ConsList.tsx:941
+#: app/components/ConsList.tsx:1374
 msgid "{0, plural, one {# day or more} other {# days or more}}"
 msgstr "{0}日以上"
 
 #. placeholder {0}: viewOptions.filter.minDays
 #. placeholder {0}: [value][0]
-#: app/components/ConsList.tsx:893
-#: app/components/ConsList.tsx:941
-#: app/components/ConsList.tsx:1374
+#: app/components/ConsList.tsx:892
+#: app/components/ConsList.tsx:939
+#: app/components/ConsList.tsx:1372
 msgid "{0, plural, one {# day} other {# days}}"
 msgstr "{0}日"
 
 #. placeholder {0}: viewOptions.filter.minDays
 #. placeholder {1}: viewOptions.filter.maxDays
-#: app/components/ConsList.tsx:907
+#: app/components/ConsList.tsx:906
 msgid "{0} to {1} days"
 msgstr "{0}〜{1}日"
 
-#: app/components/ConsList.tsx:913
-#: app/components/ConsList.tsx:1357
+#: app/components/ConsList.tsx:912
+#: app/components/ConsList.tsx:1355
 msgid "Number of days"
 msgstr "日数"
 
-#: app/components/ConsList.tsx:984
-#: app/components/ConsList.tsx:1283
+#: app/components/ConsList.tsx:982
+#: app/components/ConsList.tsx:1281
 msgid "With followed only"
 msgstr "フォロー中のユーザーのみ"
 
-#: app/components/ConsList.tsx:997
+#: app/components/ConsList.tsx:995
 msgid "Settings"
 msgstr "設定"
 
-#: app/components/ConsList.tsx:1036
+#: app/components/ConsList.tsx:1034
 msgid "Sort by"
 msgstr "並び順"
 
-#: app/components/ConsList.tsx:1082
+#: app/components/ConsList.tsx:1080
 msgid "Order"
 msgstr "順序"
 
-#: app/components/ConsList.tsx:1144
+#: app/components/ConsList.tsx:1142
 msgid "Week starts on"
 msgstr "週の開始日"
 
-#: app/components/ConsList.tsx:1166
+#: app/components/ConsList.tsx:1164
 msgid "Use time zone"
 msgstr "タイムゾーンで表示"
 
-#: app/components/ConsList.tsx:1186
+#: app/components/ConsList.tsx:1184
 msgid "Theirs"
 msgstr "相手の"
 
-#: app/components/ConsList.tsx:1206
+#: app/components/ConsList.tsx:1204
 msgid "Yours"
 msgstr "自分の"
 
-#: app/components/ConsList.tsx:1230
+#: app/components/ConsList.tsx:1228
 msgid "List"
 msgstr "リスト"
 
-#: app/components/ConsList.tsx:1241
+#: app/components/ConsList.tsx:1239
 msgid "Calendar"
 msgstr "カレンダー"
 
-#: app/components/ConsList.tsx:1598
+#: app/components/ConsList.tsx:1596
 msgid "No cons to display."
 msgstr "表示するコンベンションがありません。"
 
-#: app/components/ConsList.tsx:1611
+#: app/components/ConsList.tsx:1609
 msgid "Clear all filters"
 msgstr "全ての絞り込みを解除"
 
