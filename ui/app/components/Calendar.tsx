@@ -1,10 +1,8 @@
-import { Trans, useLingui } from "@lingui/react/macro";
+import { useLingui } from "@lingui/react/macro";
 import {
   Anchor,
   Box,
-  Group,
   MantineColor,
-  Switch,
   Table,
   Text,
   Title,
@@ -27,14 +25,7 @@ import {
   startOfWeek,
 } from "date-fns";
 import { comparing, map, max, min, Range, sorted, toArray } from "iter-fns";
-import {
-  Fragment,
-  ReactNode,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router";
 import { reinterpretAsLocalDate } from "~/date";
 import { useNow } from "~/hooks";
