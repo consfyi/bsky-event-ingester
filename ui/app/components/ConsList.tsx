@@ -59,8 +59,8 @@ import {
 } from "date-fns";
 import deepEqual from "deep-equal";
 import { compareDesc, compareMany, comparing, groupBy, sorted } from "iter-fns";
-import { Fragment, Suspense, useEffect, useMemo, useState } from "react";
-import { Link, useSearchParams } from "react-router";
+import { Fragment, Suspense, useMemo, useState } from "react";
+import { Link } from "react-router";
 import regexpEscape from "regexp.escape";
 import { z } from "zod/v4-mini";
 import Avatar from "~/components/Avatar";
@@ -525,7 +525,7 @@ const DEFAULT_SORT_DESC_OPTIONS: Record<SortBy, boolean> = {
   followed: true,
 };
 
-const FilterOptions = z.object({
+export const FilterOptions = z.object({
   query: z._default(z.string(), ""),
   attending: z._default(z.boolean(), false),
   followed: z._default(z.boolean(), false),
@@ -536,31 +536,34 @@ const FilterOptions = z.object({
   minDays: z._default(z.number(), 1),
   maxDays: z._default(z.number(), 7),
 });
-type FilterOptions = z.infer<typeof FilterOptions>;
+export type FilterOptions = z.infer<typeof FilterOptions>;
 
-const ListLayoutOptions = z.object({
+export const ListLayoutOptions = z.object({
   type: z._default(z.literal("list"), "list"),
   sort: z._default(SortBy, "date"),
   desc: z._default(z.boolean(), false),
 });
-type ListLayoutOptions = z.infer<typeof ListLayoutOptions>;
+export type ListLayoutOptions = z.infer<typeof ListLayoutOptions>;
 
-const CalendarLayoutOptions = z.object({
+export const CalendarLayoutOptions = z.object({
   type: z._default(z.literal("calendar"), "calendar"),
   inYourTimeZone: z._default(z.boolean(), false),
 });
-type CalendarLayoutOptions = z.infer<typeof CalendarLayoutOptions>;
+export type CalendarLayoutOptions = z.infer<typeof CalendarLayoutOptions>;
 
-const LayoutOptions = z.union([ListLayoutOptions, CalendarLayoutOptions]);
-type LayoutOptions = z.infer<typeof LayoutOptions>;
+export const LayoutOptions = z.union([
+  ListLayoutOptions,
+  CalendarLayoutOptions,
+]);
+export type LayoutOptions = z.infer<typeof LayoutOptions>;
 
-const ViewOptions = z.object({
+export const ViewOptions = z.object({
   filter: z._default(FilterOptions, FilterOptions.parse({})),
   layout: z._default(LayoutOptions, ListLayoutOptions.parse({})),
 });
-type ViewOptions = z.infer<typeof ViewOptions>;
+export type ViewOptions = z.infer<typeof ViewOptions>;
 
-const DEFAULT_VIEW_OPTIONS: ViewOptions = ViewOptions.parse({});
+export const DEFAULT_VIEW_OPTIONS: ViewOptions = ViewOptions.parse({});
 
 function Filters({
   cons,
@@ -1389,14 +1392,44 @@ function Filters({
   );
 }
 
+function ListLayout({
+  cons,
+  sort,
+  desc,
+  hideEmptyGroups,
+}: {
+  cons: ConWithPost[];
+  sort: SortBy;
+  desc: boolean;
+  hideEmptyGroups: boolean;
+}) {
+  return sort == "attendees" ? (
+    <ConsByAttendees cons={cons} sortDesc={desc} />
+  ) : sort == "followed" ? (
+    <ConsByFollowed cons={cons} sortDesc={desc} />
+  ) : sort == "name" ? (
+    <ConsByName cons={cons} sortDesc={desc} />
+  ) : sort == "date" ? (
+    <ConsByDate cons={cons} sortDesc={desc} hideEmptyGroups={hideEmptyGroups} />
+  ) : null;
+}
+
 const FirstDayOfWeek = z.literal([0, 1, 6]);
 type FirstDayOfWeek = z.infer<typeof FirstDayOfWeek>;
 
-export default function ConsList({ cons }: { cons: ConWithPost[] }) {
+export default function ConsList({
+  cons,
+  viewOptions,
+  setViewOptions,
+}: {
+  cons: ConWithPost[];
+  viewOptions: ViewOptions;
+  setViewOptions: (
+    val: ViewOptions | ((prevState: ViewOptions) => ViewOptions)
+  ) => void;
+}) {
   const { i18n } = useLingui();
   const { data: followedConAttendees } = useFollowedConAttendeesDLE();
-
-  const isLoggedIn = useIsLoggedIn();
 
   const defaultFirstDayOfWeek = useMemo(() => {
     // Use the locale of the browser rather than the set locale.
@@ -1410,7 +1443,6 @@ export default function ConsList({ cons }: { cons: ConWithPost[] }) {
     return (weekInfo.firstDay % 7) as Day;
   }, [navigator.language]);
 
-  const [searchParams, setSearchParams] = useSearchParams();
   const [firstDayOfWeek, setFirstDayOfWeek] = useLocalStorage({
     key: "fbl:firstDayOfWeek",
     defaultValue: defaultFirstDayOfWeek,
@@ -1427,54 +1459,6 @@ export default function ConsList({ cons }: { cons: ConWithPost[] }) {
       }
     },
   });
-
-  const [viewOptions, setViewOptions] = useState<ViewOptions>(() => {
-    if (!searchParams.has("q")) {
-      return DEFAULT_VIEW_OPTIONS;
-    }
-
-    try {
-      return ViewOptions.parse(JSON.parse(searchParams.get("q")!));
-    } catch (e) {
-      return DEFAULT_VIEW_OPTIONS;
-    }
-  });
-
-  useEffect(() => {
-    if (isLoggedIn) {
-      return;
-    }
-    setViewOptions((vo) => ({
-      ...vo,
-      sort:
-        vo.layout.type != "calendar"
-          ? {
-              ...vo.layout,
-              sort: vo.layout.sort == "followed" ? "attendees" : vo.layout.sort,
-            }
-          : vo.layout,
-    }));
-  }, [isLoggedIn, setViewOptions]);
-
-  useEffect(() => {
-    setSearchParams(
-      (prev) => {
-        if (deepEqual(viewOptions, DEFAULT_VIEW_OPTIONS)) {
-          prev.delete("q");
-        } else {
-          prev.set("q", JSON.stringify(viewOptions));
-        }
-        return prev;
-      },
-      {
-        replace: true,
-        preventScrollReset: true,
-      }
-    );
-  }, [viewOptions]);
-
-  const actuallyShowOnlyAttending = isLoggedIn && viewOptions.filter.attending;
-  const actuallyShowOnlyFollowed = isLoggedIn && viewOptions.filter.followed;
 
   const queryRe = new RegExp(
     `^${Array.prototype.map
@@ -1502,7 +1486,7 @@ export default function ConsList({ cons }: { cons: ConWithPost[] }) {
         queryRe
       ) != null &&
       // Attending filter
-      (!actuallyShowOnlyAttending || con.post.viewer?.like != null) &&
+      (!viewOptions.filter.attending || con.post.viewer?.like != null) &&
       // Continents filter
       viewOptions.filter.continents.includes(
         getContinentForCountry(con.country)
@@ -1510,7 +1494,7 @@ export default function ConsList({ cons }: { cons: ConWithPost[] }) {
       // Duration filter
       days >= viewOptions.filter.minDays &&
       days <= maxDays &&
-      (!actuallyShowOnlyFollowed ||
+      (!viewOptions.filter.followed ||
         followedConAttendees == null ||
         (followedConAttendees[con.identifier] ?? []).length > 0)
     );
@@ -1565,30 +1549,16 @@ export default function ConsList({ cons }: { cons: ConWithPost[] }) {
                 end: con.end,
               }))}
             />
-          ) : viewOptions.layout.sort == "attendees" ? (
-            <ConsByAttendees
+          ) : (
+            <ListLayout
               cons={filteredCons}
-              sortDesc={viewOptions.layout.desc}
-            />
-          ) : viewOptions.layout.sort == "followed" ? (
-            <ConsByFollowed
-              cons={filteredCons}
-              sortDesc={viewOptions.layout.desc}
-            />
-          ) : viewOptions.layout.sort == "name" ? (
-            <ConsByName
-              cons={filteredCons}
-              sortDesc={viewOptions.layout.desc}
-            />
-          ) : viewOptions.layout.sort == "date" ? (
-            <ConsByDate
-              cons={filteredCons}
-              sortDesc={viewOptions.layout.desc}
+              sort={viewOptions.layout.sort}
+              desc={viewOptions.layout.desc}
               hideEmptyGroups={
-                actuallyShowOnlyAttending || viewOptions.filter.query != ""
+                viewOptions.filter.attending || viewOptions.filter.query != ""
               }
             />
-          ) : null
+          )
         ) : (
           <Box px="sm">
             <Stack ta="center" gap="xs" py="xl">
