@@ -547,6 +547,7 @@ type ListLayoutOptions = z.infer<typeof ListLayoutOptions>;
 
 const CalendarLayoutOptions = z.object({
   type: z._default(z.literal("calendar"), "calendar"),
+  inYourTimeZone: z._default(z.boolean(), false),
 });
 type CalendarLayoutOptions = z.infer<typeof CalendarLayoutOptions>;
 
@@ -1040,7 +1041,7 @@ function Filters({
                     }
 
                     const selected =
-                      viewOptions.layout.type != "calendar" &&
+                      viewOptions.layout.type == "list" &&
                       viewOptions.layout.sort == sortBy;
 
                     return (
@@ -1085,13 +1086,10 @@ function Filters({
                     onClick={() => {
                       setViewOptions((vo) => ({
                         ...vo,
-                        layout:
-                          vo.layout.type != "calendar"
-                            ? {
-                                ...vo.layout,
-                                desc: false,
-                              }
-                            : vo.layout,
+                        layout: {
+                          ...vo.layout,
+                          desc: false,
+                        },
                       }));
                     }}
                     leftSection={
@@ -1116,13 +1114,10 @@ function Filters({
                     onClick={() => {
                       setViewOptions((vo) => ({
                         ...vo,
-                        layout:
-                          vo.layout.type != "calendar"
-                            ? {
-                                ...vo.layout,
-                                desc: true,
-                              }
-                            : vo.layout,
+                        layout: {
+                          ...vo.layout,
+                          desc: true,
+                        },
                       }));
                     }}
                     leftSection={
@@ -1167,6 +1162,49 @@ function Filters({
                       })}
                     </Menu.Item>
                   ))}
+                  <Menu.Label>
+                    <Trans>Use time zone</Trans>
+                  </Menu.Label>
+                  <Menu.Item
+                    leftSection={
+                      !viewOptions.layout.inYourTimeZone ? (
+                        <IconCheck size={14} />
+                      ) : (
+                        <EmptyIcon size={14} />
+                      )
+                    }
+                    onClick={() => {
+                      setViewOptions((vo) => ({
+                        ...vo,
+                        layout: {
+                          ...vo.layout,
+                          inYourTimeZone: false,
+                        },
+                      }));
+                    }}
+                  >
+                    <Trans>Theirs</Trans>
+                  </Menu.Item>
+                  <Menu.Item
+                    leftSection={
+                      viewOptions.layout.inYourTimeZone ? (
+                        <IconCheck size={14} />
+                      ) : (
+                        <EmptyIcon size={14} />
+                      )
+                    }
+                    onClick={() => {
+                      setViewOptions((vo) => ({
+                        ...vo,
+                        layout: {
+                          ...vo.layout,
+                          inYourTimeZone: true,
+                        },
+                      }));
+                    }}
+                  >
+                    <Trans>Yours</Trans>
+                  </Menu.Item>
                 </>
               )}
             </Menu.Dropdown>
@@ -1501,6 +1539,7 @@ export default function ConsList({ cons }: { cons: ConWithPost[] }) {
           viewOptions.layout.type == "calendar" ? (
             <Calendar
               firstDay={firstDayOfWeek}
+              inYourTimeZone={viewOptions.layout.inYourTimeZone}
               events={filteredCons.map((con) => ({
                 id: con.slug,
                 label: (

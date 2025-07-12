@@ -195,14 +195,15 @@ function EventSegment({ segment }: { segment: Segment }) {
 export default function Calendar({
   events,
   firstDay,
+  inYourTimeZone,
 }: {
   events: Event[];
   firstDay: Day;
+  inYourTimeZone: boolean;
 }) {
   const { t, i18n } = useLingui();
 
-  const [useLocalTime, setUseLocalTime] = useState(false);
-  if (!useLocalTime) {
+  if (!inYourTimeZone) {
     events = events.map((e) => ({
       ...e,
       start: reinterpretAsLocalDate(e.start),
