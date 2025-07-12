@@ -1430,18 +1430,22 @@ export default function ConsList({ cons }: { cons: ConWithPost[] }) {
                 label: (
                   <>
                     <Flag country={con.country} size={10} me={6} />
-                    <Text
-                      span
-                      fw={
-                        con.post.viewer != null && con.post.viewer.like != null
-                          ? 500
-                          : undefined
-                      }
-                    >
-                      {con.name}
-                    </Text>
+                    <Text span>{con.name}</Text>
                   </>
                 ),
+                color: [
+                  "red",
+                  "orange",
+                  "yellow",
+                  "green",
+                  "blue",
+                  "indigo",
+                  "violet",
+                ][getDay(con.start)],
+                variant:
+                  con.post.viewer != null && con.post.viewer.like != null
+                    ? "filled"
+                    : "light",
                 title: con.name,
                 link: `/cons/${con.slug}`,
                 start: con.start,

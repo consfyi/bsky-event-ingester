@@ -3,6 +3,7 @@ import {
   Anchor,
   Box,
   Group,
+  MantineColor,
   Switch,
   Table,
   Text,
@@ -44,6 +45,8 @@ export interface Event {
   label: React.ReactNode;
   start: Date;
   end: Date;
+  variant: string;
+  color: MantineColor;
 }
 
 interface Segment {
@@ -150,20 +153,10 @@ function EventSegment({ segment }: { segment: Segment }) {
 
   const length = differenceInCalendarDays(segment.end, segment.start);
 
-  const color = [
-    "red",
-    "orange",
-    "yellow",
-    "green",
-    "blue",
-    "indigo",
-    "violet",
-  ][getDay(segment.event.start)];
-
   const colors = theme.variantColorResolver({
     theme,
-    color,
-    variant: "light",
+    color: segment.event.color,
+    variant: segment.event.variant,
   });
 
   return (
@@ -179,7 +172,11 @@ function EventSegment({ segment }: { segment: Segment }) {
         pos="relative"
         size="sm"
         c={colors.color}
-        bg={`color-mix(in srgb, var(--mantine-color-${color}-filled), var(--mantine-color-body) 90%)`}
+        bg={
+          segment.event.variant == "light"
+            ? `color-mix(in srgb, var(--mantine-color-${segment.event.color}-filled), var(--mantine-color-body) 90%)`
+            : colors.background
+        }
         w={`calc(${length} * (100% + 1px) - 1px)`}
         left={0}
         truncate
