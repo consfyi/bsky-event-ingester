@@ -1430,7 +1430,16 @@ export default function ConsList({ cons }: { cons: ConWithPost[] }) {
                 label: (
                   <>
                     <Flag country={con.country} size={10} me={6} />
-                    {con.name}
+                    <Text
+                      span
+                      fw={
+                        con.post.viewer != null && con.post.viewer.like != null
+                          ? 500
+                          : undefined
+                      }
+                    >
+                      {con.name}
+                    </Text>
                   </>
                 ),
                 title: con.name,
