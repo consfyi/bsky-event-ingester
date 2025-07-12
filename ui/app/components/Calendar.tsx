@@ -381,6 +381,20 @@ export default function Calendar({
             </Table.Tr>
           </Table.Thead>
           <Table.Tbody>
+            <Table.Tr
+              data-month={
+                getYear(calendarStartDate) * 12 + getMonth(calendarStartDate)
+              }
+              ref={(el) => {
+                if (el == null) {
+                  return;
+                }
+
+                checkpointRefs.current[
+                  getYear(calendarStartDate) * 12 + getMonth(calendarStartDate)
+                ] = el;
+              }}
+            ></Table.Tr>
             {toArray(
               map(Range.to(numWeeks), (week) => {
                 const weekStart = addDays(calendarStartDate, week * 7);
@@ -391,18 +405,19 @@ export default function Calendar({
                     key={week}
                     data-month={getYear(weekStart) * 12 + getMonth(weekStart)}
                     ref={(el) => {
-                      if (
-                        el == null ||
-                        Math.ceil(
-                          (getDate(weekStart) + getDay(weekStart)) / 7
-                        ) != 1
-                      ) {
+                      if (el == null) {
                         return;
                       }
 
-                      checkpointRefs.current[
-                        getYear(weekStart) * 12 + getMonth(weekStart)
-                      ] = el;
+                      if (
+                        Math.ceil(
+                          (getDate(weekStart) + getDay(weekStart)) / 7
+                        ) == 1
+                      ) {
+                        checkpointRefs.current[
+                          getYear(weekStart) * 12 + getMonth(weekStart)
+                        ] = el;
+                      }
                     }}
                   >
                     {toArray(
