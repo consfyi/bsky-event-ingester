@@ -630,11 +630,6 @@ function Filters({
     },
   };
 
-  const currentSortByDisplay =
-    viewOptions.layout.type != "calendar"
-      ? sortByDisplays[viewOptions.layout.sort]
-      : null;
-
   const continentCount = useMemo(() => {
     const counts: Partial<Record<Continent, number>> = {};
     for (const con of cons) {
