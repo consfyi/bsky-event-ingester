@@ -173,6 +173,7 @@ function EventSegment({ segment }: { segment: Segment }) {
         left={0}
         truncate
         style={{
+          textAlign: "start",
           borderColor:
             segment.event.variant == "light" ? colors.color : colors.background,
           borderStyle: "solid",
