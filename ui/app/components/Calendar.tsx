@@ -1,6 +1,7 @@
 import { useLingui } from "@lingui/react/macro";
 import {
   Anchor,
+  Badge,
   Box,
   MantineColor,
   Table,
@@ -268,7 +269,17 @@ export default function Calendar({
   }, [events]);
 
   const now = useNow();
-  const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
+
+  const dayFormat = useMemo(
+    () => new Intl.DateTimeFormat(i18n.locale, { day: "numeric" }),
+    [t]
+  );
+
+  const dayMonthFormat = useMemo(
+    () =>
+      new Intl.DateTimeFormat(i18n.locale, { month: "short", day: "numeric" }),
+    [t]
+  );
 
   const startDate = useMemo(() => {
     const d = min(map(events, (con) => new Date(con.start)))!;
@@ -417,25 +428,32 @@ export default function Calendar({
                               m="xs"
                               mb={2}
                               size="sm"
-                              fw={500}
                               truncate
-                              {...(isSameDay(d, now)
-                                ? {
-                                    color: "red",
-                                  }
-                                : {
-                                    color:
-                                      getYear(d) * 12 + getMonth(d) ==
-                                      highlightedMonthIndex
-                                        ? ""
-                                        : "var(--mantine-color-disabled-color)",
-                                  })}
+                              c={
+                                getYear(d) * 12 + getMonth(d) ==
+                                highlightedMonthIndex
+                                  ? ""
+                                  : "var(--mantine-color-disabled-color)"
+                              }
                             >
-                              {getDate(d) == 1
-                                ? i18n.date(d, {
-                                    month: "short",
-                                  })
-                                : getDate(d)}
+                              {(getDate(d) == 1 ? dayMonthFormat : dayFormat)
+                                .formatToParts(d)
+                                .map(({ type, value }, i) =>
+                                  type == "day" ? (
+                                    <Text
+                                      span
+                                      key={i}
+                                      fw={500}
+                                      c={isSameDay(d, now) ? "red" : undefined}
+                                    >
+                                      {value}
+                                    </Text>
+                                  ) : (
+                                    <Text span key={i}>
+                                      {value}
+                                    </Text>
+                                  )
+                                )}
                             </Text>
                             {segments.map((seg, i) =>
                               seg != null ? (
