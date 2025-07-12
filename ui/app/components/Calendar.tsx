@@ -328,7 +328,11 @@ export default function Calendar({ events }: { events: Event[] }) {
           px="xs"
           pt={{ base: 4, lg: 8 }}
           pb={4}
-          bg="var(--mantine-color-body)"
+          style={{
+            background:
+              "color-mix(in srgb, var(--mantine-color-body), transparent 15%)",
+            backdropFilter: "blur(5px)",
+          }}
         >
           {i18n.date(
             new Date(

@@ -124,11 +124,13 @@ function Header() {
   return (
     <Box
       style={{
-        background: "var(--mantine-color-body)",
+        background:
+          "color-mix(in srgb, var(--mantine-color-body), transparent 15%)",
         borderBottom: "1px solid var(--mantine-color-default-border)",
         position: "sticky",
         top: "0px",
         zIndex: "var(--mantine-z-index-app)",
+        backdropFilter: "blur(5px)",
       }}
     >
       <Container size="lg" p="sm">
