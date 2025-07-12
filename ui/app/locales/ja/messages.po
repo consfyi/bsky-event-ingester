@@ -239,7 +239,7 @@ msgstr "週の開始日"
 
 #: app/components/ConsList.tsx:1166
 msgid "Use time zone"
-msgstr "使用するタイムゾーン"
+msgstr "タイムゾーンで表示"
 
 #: app/components/ConsList.tsx:1186
 msgid "Theirs"
