@@ -58,19 +58,21 @@ function Attending({ profile }: { profile: Profile }) {
         </Text>
       </Title>
 
-      <SimpleGrid cols={{ base: 1, lg: 3 }} mb="sm">
-        {knownCons.map((con) => (
-          <ConRow
-            key={con.identifier}
-            con={con}
-            showMonthInIcon
-            showEndDateOnly
-            showLocation={false}
-            showFollowed={false}
-            showLikeButton={false}
-          />
-        ))}
-      </SimpleGrid>
+      {knownCons.length > 0 ? (
+        <SimpleGrid cols={{ base: 1, lg: 3 }} mb="sm">
+          {knownCons.map((con) => (
+            <ConRow
+              key={con.identifier}
+              con={con}
+              showMonthInIcon
+              showEndDateOnly
+              showLocation={false}
+              showFollowed={false}
+              showLikeButton={false}
+            />
+          ))}
+        </SimpleGrid>
+      ) : null}
       {unknownCons.length > 0 ? (
         <>
           <Divider
