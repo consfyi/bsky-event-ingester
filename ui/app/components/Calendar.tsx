@@ -178,12 +178,12 @@ function EventSegment({ segment }: { segment: Segment }) {
           borderStyle: "solid",
           borderTopWidth: "1px",
           borderBottomWidth: "1px",
-          borderLeftWidth: segment.hasStart ? "1px" : 0,
-          borderRightWidth: segment.hasEnd ? "1px" : 0,
-          borderTopLeftRadius: segment.hasStart ? "100px" : 0,
-          borderBottomLeftRadius: segment.hasStart ? "100px" : 0,
-          borderTopRightRadius: segment.hasEnd ? "100px" : 0,
-          borderBottomRightRadius: segment.hasEnd ? "100px" : 0,
+          borderInlineStartWidth: segment.hasStart ? "1px" : 0,
+          borderInlineEndWidth: segment.hasEnd ? "1px" : 0,
+          borderStartStartRadius: segment.hasStart ? "100px" : 0,
+          borderEndStartRadius: segment.hasStart ? "100px" : 0,
+          borderStartEndRadius: segment.hasEnd ? "100px" : 0,
+          borderEndEndRadius: segment.hasEnd ? "100px" : 0,
           zIndex: 1,
         }}
       >
@@ -443,6 +443,7 @@ export default function Calendar({
                               m="xs"
                               mb={2}
                               size="sm"
+                              ta="start"
                               truncate
                               c={
                                 getYear(d) * 12 + getMonth(d) ==
