@@ -879,40 +879,38 @@ function Filters({
                       variant: "outline",
                     })}
               >
-                <Text span size="xs" fw={500}>
-                  {durationFiltered ? (
-                    viewOptions.filter.minDays == viewOptions.filter.maxDays ? (
-                      viewOptions.filter.minDays >=
-                      DEFAULT_VIEW_OPTIONS.filter.maxDays ? (
-                        <Plural
-                          value={DEFAULT_VIEW_OPTIONS.filter.maxDays}
-                          one="# day or more"
-                          other="# days or more"
-                        />
-                      ) : (
-                        <Plural
-                          value={viewOptions.filter.minDays}
-                          one="# day"
-                          other="# days"
-                        />
-                      )
-                    ) : viewOptions.filter.maxDays >=
-                      DEFAULT_VIEW_OPTIONS.filter.maxDays ? (
+                {durationFiltered ? (
+                  viewOptions.filter.minDays == viewOptions.filter.maxDays ? (
+                    viewOptions.filter.minDays >=
+                    DEFAULT_VIEW_OPTIONS.filter.maxDays ? (
                       <Plural
-                        value={viewOptions.filter.minDays}
+                        value={DEFAULT_VIEW_OPTIONS.filter.maxDays}
                         one="# day or more"
                         other="# days or more"
                       />
                     ) : (
-                      <Trans>
-                        {viewOptions.filter.minDays} to{" "}
-                        {viewOptions.filter.maxDays} days
-                      </Trans>
+                      <Plural
+                        value={viewOptions.filter.minDays}
+                        one="# day"
+                        other="# days"
+                      />
                     )
+                  ) : viewOptions.filter.maxDays >=
+                    DEFAULT_VIEW_OPTIONS.filter.maxDays ? (
+                    <Plural
+                      value={viewOptions.filter.minDays}
+                      one="# day or more"
+                      other="# days or more"
+                    />
                   ) : (
-                    <Trans>Number of days</Trans>
-                  )}
-                </Text>
+                    <Trans>
+                      {viewOptions.filter.minDays} to{" "}
+                      {viewOptions.filter.maxDays} days
+                    </Trans>
+                  )
+                ) : (
+                  <Trans>Number of days</Trans>
+                )}
               </Button>
             </Menu.Target>
             <Menu.Dropdown visibleFrom="lg">
@@ -1226,7 +1224,7 @@ function Filters({
                 label: (
                   <Center style={{ gap: 6 }}>
                     <IconList size={14} />
-                    <Text span size="xs" fw={500} visibleFrom="lg">
+                    <Text span size="xs" visibleFrom="lg">
                       <Trans>List</Trans>
                     </Text>
                   </Center>
@@ -1237,7 +1235,7 @@ function Filters({
                 label: (
                   <Center style={{ gap: 6 }}>
                     <IconCalendar size={14} />
-                    <Text span size="xs" fw={500} visibleFrom="lg">
+                    <Text span size="xs" visibleFrom="lg">
                       <Trans>Calendar</Trans>
                     </Text>
                   </Center>
