@@ -64,11 +64,11 @@ import {
   useRouteError,
 } from "react-router";
 import Avatar from "~/components/Avatar";
+import locales from "~/locales";
 import clientMetadata from "../public/client-metadata.json";
 import { DEFAULT_PDS_HOST, startLogin } from "./bluesky";
 import { GlobalMemoProvider } from "./components/GlobalMemoContext";
 import LinguiProvider, {
-  AVAILABLE_LOCALES,
   INITIAL_LOCALE,
   useLinguiContext,
 } from "./components/LinguiProvider";
@@ -389,7 +389,7 @@ function Footer() {
             }
             setLocale(value);
           }}
-          data={Object.keys(AVAILABLE_LOCALES).map((locale) => ({
+          data={Object.keys(locales).map((locale) => ({
             value: locale,
             label: new Intl.DisplayNames(locale, { type: "language" }).of(
               locale

@@ -4,14 +4,9 @@ import { I18nProvider, I18nProviderProps } from "@lingui/react";
 import { Direction, useDirection } from "@mantine/core";
 import IntlLocale from "intl-locale-textinfo-polyfill";
 import { createContext, useContext, useEffect, useState } from "react";
+import locales from "~/locales";
 
 const LOCALE_KEY = "fbl:locale";
-
-export const AVAILABLE_LOCALES: Record<string, string> = {
-  "en-US": "en",
-  "en-GB": "en",
-  ja: "ja",
-};
 
 function getNegotiatedBrowserLocale(): Locale {
   const requestedLocales: string[] = [];
@@ -30,16 +25,14 @@ function getNegotiatedBrowserLocale(): Locale {
 
   const negotiatedLocale = match(
     requestedLocales,
-    Object.keys(AVAILABLE_LOCALES),
+    Object.keys(locales),
     "en-US"
   );
   return negotiatedLocale;
 }
 
 async function loadAndActivate(locale: string) {
-  const { messages } = await import(
-    `../locales/${AVAILABLE_LOCALES[locale]}/messages.po`
-  );
+  const { messages } = await locales[locale]();
   i18n.loadAndActivate({ locale, messages });
   window.localStorage.setItem(LOCALE_KEY, locale);
 }
