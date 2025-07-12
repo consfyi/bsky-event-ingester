@@ -389,7 +389,7 @@ function Footer() {
             }
             setLocale(value);
           }}
-          data={AVAILABLE_LOCALES.map((locale) => ({
+          data={Object.keys(AVAILABLE_LOCALES).map((locale) => ({
             value: locale,
             label: new Intl.DisplayNames(locale, { type: "language" }).of(
               locale

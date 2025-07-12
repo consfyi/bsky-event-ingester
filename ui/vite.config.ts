@@ -7,9 +7,6 @@ import macrosPlugin from "vite-plugin-babel-macros";
 import tsconfigPaths from "vite-tsconfig-paths";
 
 export default defineConfig({
-  define: {
-    __LOCALES__: readdirSync("app/locales").sort(),
-  },
   plugins: [
     reactRouter(),
     macrosPlugin(),

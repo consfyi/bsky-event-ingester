@@ -7,7 +7,11 @@ import { createContext, useContext, useEffect, useState } from "react";
 
 const LOCALE_KEY = "fbl:locale";
 
-export const AVAILABLE_LOCALES = __LOCALES__;
+export const AVAILABLE_LOCALES: Record<string, string> = {
+  "en-US": "en",
+  "en-GB": "en",
+  ja: "ja",
+};
 
 function getNegotiatedBrowserLocale(): Locale {
   const requestedLocales: string[] = [];
@@ -24,12 +28,18 @@ function getNegotiatedBrowserLocale(): Locale {
 
   requestedLocales.push(...navigator.languages);
 
-  const negotiatedLocale = match(requestedLocales, AVAILABLE_LOCALES, "en");
+  const negotiatedLocale = match(
+    requestedLocales,
+    Object.keys(AVAILABLE_LOCALES),
+    "en-US"
+  );
   return negotiatedLocale;
 }
 
 async function loadAndActivate(locale: string) {
-  const { messages } = await import(`../locales/${locale}/messages.po`);
+  const { messages } = await import(
+    `../locales/${AVAILABLE_LOCALES[locale]}/messages.po`
+  );
   i18n.loadAndActivate({ locale, messages });
   window.localStorage.setItem(LOCALE_KEY, locale);
 }
