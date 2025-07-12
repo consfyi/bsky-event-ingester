@@ -1148,9 +1148,9 @@ function Filters({
                   <Menu.Label>
                     <Trans>Week starts on</Trans>
                   </Menu.Label>
-                  {([0, 1, 6] as Day[]).map((day) => (
+                  {FirstDayOfWeek.def.values.map((day) => (
                     <Menu.Item
-                      key={day}
+                      key={day as Day}
                       leftSection={
                         firstDayOfWeek == day ? (
                           <IconCheck size={14} />
@@ -1159,10 +1159,10 @@ function Filters({
                         )
                       }
                       onClick={() => {
-                        setFirstDayOfWeek(day);
+                        setFirstDayOfWeek(day as Day);
                       }}
                     >
-                      {i18n.date(addDays(refStartDate, day), {
+                      {i18n.date(addDays(refStartDate, day as Day), {
                         weekday: "long",
                       })}
                     </Menu.Item>
@@ -1353,7 +1353,7 @@ function Filters({
   );
 }
 
-const FirstDayOfWeek = z.union([z.literal(0), z.literal(1), z.literal(6)]);
+const FirstDayOfWeek = z.literal([0, 1, 6]);
 type FirstDayOfWeek = z.infer<typeof FirstDayOfWeek>;
 
 export default function ConsList({ cons }: { cons: ConWithPost[] }) {
