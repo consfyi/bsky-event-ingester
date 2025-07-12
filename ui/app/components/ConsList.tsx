@@ -23,6 +23,7 @@ import {
   Title,
   Tooltip,
 } from "@mantine/core";
+import { useLocalStorage } from "@mantine/hooks";
 import {
   Icon,
   IconAdjustmentsHorizontal,
@@ -35,6 +36,7 @@ import {
   IconMapPin,
   IconMinus,
   IconSearch,
+  IconSettings,
   IconSortAscendingLetters,
   IconSortAscendingNumbers,
   IconSortDescendingLetters,
@@ -45,11 +47,13 @@ import {
 import {
   addDays,
   addMonths,
+  Day,
   differenceInDays,
   getDay,
   getMonth,
   getYear,
   isAfter,
+  parse as parseDate,
   setDate,
   subDays,
 } from "date-fns";
@@ -72,8 +76,8 @@ import {
   useNow,
 } from "~/hooks";
 import removeDiacritics from "~/removeDiacritics";
-import classes from "./ConsList.module.css";
 import Calendar from "./Calendar";
+import classes from "./ConsList.module.css";
 
 const MAX_AVATARS_IN_STACK = 3;
 
@@ -543,17 +547,6 @@ type ListLayoutOptions = z.infer<typeof ListLayoutOptions>;
 
 const CalendarLayoutOptions = z.object({
   type: z._default(z.literal("calendar"), "calendar"),
-  firstDay: z.optional(
-    z.union([
-      z.literal(0),
-      z.literal(1),
-      z.literal(2),
-      z.literal(3),
-      z.literal(4),
-      z.literal(5),
-      z.literal(6),
-    ])
-  ),
 });
 type CalendarLayoutOptions = z.infer<typeof CalendarLayoutOptions>;
 
@@ -572,15 +565,20 @@ function Filters({
   cons,
   viewOptions,
   setViewOptions,
+  firstDayOfWeek,
+  setFirstDayOfWeek,
 }: {
   cons: ConWithPost[];
   viewOptions: ViewOptions;
   setViewOptions: (
     val: ViewOptions | ((prevState: ViewOptions) => ViewOptions)
   ) => void;
+  firstDayOfWeek: Day;
+  setFirstDayOfWeek: (day: Day) => void;
 }) {
-  const { t } = useLingui();
+  const { i18n, t } = useLingui();
   const { data: followedConAttendees } = useFollowedConAttendeesDLE();
+  const refStartDate = parseDate("2006-01-01", "yyyy-MM-dd", new Date());
 
   const isLoggedIn = useIsLoggedIn();
 
@@ -987,155 +985,192 @@ function Filters({
           ) : null}
         </Group>
         <Group gap="xs">
-          {viewOptions.layout.type != "calendar" ? (
-            <Menu
-              position="bottom-end"
-              withArrow
-              opened={sortMenuOpen}
-              onChange={setSortMenuOpen}
-            >
-              <Menu.Target>
-                <Button
-                  variant="subtle"
-                  size="xs"
-                  c="dimmed"
-                  color="var(--mantine-color-dimmed)"
-                  style={{ zIndex: 4, flexShrink: 0 }}
-                  leftSection={(() => {
-                    const currentSortByDisplay =
-                      sortByDisplays[viewOptions.layout.sort];
-                    return viewOptions.layout.desc ? (
-                      <currentSortByDisplay.DescIcon
-                        title={currentSortByDisplay.desc}
-                        size={14}
-                      />
-                    ) : (
-                      <currentSortByDisplay.AscIcon
-                        title={currentSortByDisplay.asc}
-                        size={14}
-                      />
-                    );
-                  })()}
-                  rightSection={<IconChevronDown size={14} />}
-                >
-                  {sortByDisplays[viewOptions.layout.sort].name}
-                </Button>
-              </Menu.Target>
-
-              <Menu.Dropdown w={200}>
-                <Menu.Label>
-                  <Trans>Sort by</Trans>
-                </Menu.Label>
-                {Object.values(SortBy.def.entries).map((sortBy) => {
-                  if (!isLoggedIn && sortBy == "followed") {
-                    return null;
-                  }
-
-                  const selected =
-                    viewOptions.layout.type != "calendar" &&
-                    viewOptions.layout.sort == sortBy;
-
-                  return (
-                    <Menu.Item
-                      disabled={
-                        sortBy == "followed" && followedConAttendees == null
-                      }
-                      aria-selected={selected}
-                      onClick={() => {
-                        setViewOptions((vo) => ({
-                          ...vo,
-                          layout: {
-                            type: "list",
-                            sort: sortBy,
-                            desc: DEFAULT_SORT_DESC_OPTIONS[sortBy],
-                          },
-                        }));
-                      }}
-                      key={sortBy}
-                      leftSection={
-                        sortBy != "followed" || followedConAttendees != null ? (
-                          selected ? (
-                            <IconCheck size={14} />
-                          ) : (
-                            <EmptyIcon size={14} />
-                          )
+          <Menu
+            position="bottom-end"
+            withArrow
+            opened={sortMenuOpen}
+            onChange={setSortMenuOpen}
+          >
+            <Menu.Target>
+              <Button
+                aria-label={t`Settings`}
+                variant="subtle"
+                size="xs"
+                c="dimmed"
+                color="var(--mantine-color-dimmed)"
+                style={{ zIndex: 4, flexShrink: 0 }}
+                leftSection={
+                  viewOptions.layout.type != "calendar"
+                    ? (() => {
+                        const currentSortByDisplay =
+                          sortByDisplays[viewOptions.layout.sort];
+                        return viewOptions.layout.desc ? (
+                          <currentSortByDisplay.DescIcon
+                            title={currentSortByDisplay.desc}
+                            size={14}
+                          />
                         ) : (
-                          <Loader color="dimmed" size={14} />
+                          <currentSortByDisplay.AscIcon
+                            title={currentSortByDisplay.asc}
+                            size={14}
+                          />
+                        );
+                      })()
+                    : null
+                }
+                rightSection={<IconChevronDown size={14} />}
+              >
+                {viewOptions.layout.type != "calendar" ? (
+                  sortByDisplays[viewOptions.layout.sort].name
+                ) : (
+                  <IconSettings size={14} />
+                )}
+              </Button>
+            </Menu.Target>
+
+            <Menu.Dropdown>
+              {viewOptions.layout.type != "calendar" ? (
+                <>
+                  <Menu.Label>
+                    <Trans>Sort by</Trans>
+                  </Menu.Label>
+                  {Object.values(SortBy.def.entries).map((sortBy) => {
+                    if (!isLoggedIn && sortBy == "followed") {
+                      return null;
+                    }
+
+                    const selected =
+                      viewOptions.layout.type != "calendar" &&
+                      viewOptions.layout.sort == sortBy;
+
+                    return (
+                      <Menu.Item
+                        disabled={
+                          sortBy == "followed" && followedConAttendees == null
+                        }
+                        aria-selected={selected}
+                        onClick={() => {
+                          setViewOptions((vo) => ({
+                            ...vo,
+                            layout: {
+                              type: "list",
+                              sort: sortBy,
+                              desc: DEFAULT_SORT_DESC_OPTIONS[sortBy],
+                            },
+                          }));
+                        }}
+                        key={sortBy}
+                        leftSection={
+                          sortBy != "followed" ||
+                          followedConAttendees != null ? (
+                            selected ? (
+                              <IconCheck size={14} />
+                            ) : (
+                              <EmptyIcon size={14} />
+                            )
+                          ) : (
+                            <Loader color="dimmed" size={14} />
+                          )
+                        }
+                      >
+                        {sortByDisplays[sortBy].name}
+                      </Menu.Item>
+                    );
+                  })}
+                  <Menu.Label>
+                    <Trans>Order</Trans>
+                  </Menu.Label>
+                  <Menu.Item
+                    aria-selected={!viewOptions.layout.desc}
+                    onClick={() => {
+                      setViewOptions((vo) => ({
+                        ...vo,
+                        layout:
+                          vo.layout.type != "calendar"
+                            ? {
+                                ...vo.layout,
+                                desc: false,
+                              }
+                            : vo.layout,
+                      }));
+                    }}
+                    leftSection={
+                      <Group gap={6}>
+                        {!viewOptions.layout.desc ? (
+                          <IconCheck size={14} />
+                        ) : (
+                          <EmptyIcon size={14} />
+                        )}
+                        {(() => {
+                          const Icon =
+                            sortByDisplays[viewOptions.layout.sort].AscIcon;
+                          return <Icon size={14} />;
+                        })()}
+                      </Group>
+                    }
+                  >
+                    {sortByDisplays[viewOptions.layout.sort].asc}
+                  </Menu.Item>
+                  <Menu.Item
+                    aria-selected={viewOptions.layout.desc}
+                    onClick={() => {
+                      setViewOptions((vo) => ({
+                        ...vo,
+                        layout:
+                          vo.layout.type != "calendar"
+                            ? {
+                                ...vo.layout,
+                                desc: true,
+                              }
+                            : vo.layout,
+                      }));
+                    }}
+                    leftSection={
+                      <Group gap={6}>
+                        {viewOptions.layout.desc ? (
+                          <IconCheck size={14} />
+                        ) : (
+                          <EmptyIcon size={14} />
+                        )}
+                        {(() => {
+                          const Icon =
+                            sortByDisplays[viewOptions.layout.sort].DescIcon;
+                          return <Icon size={14} />;
+                        })()}
+                      </Group>
+                    }
+                  >
+                    {sortByDisplays[viewOptions.layout.sort].desc}
+                  </Menu.Item>
+                </>
+              ) : (
+                <>
+                  <Menu.Label>
+                    <Trans>Week starts on</Trans>
+                  </Menu.Label>
+                  {([0, 1, 6] as Day[]).map((day) => (
+                    <Menu.Item
+                      key={day}
+                      leftSection={
+                        firstDayOfWeek == day ? (
+                          <IconCheck size={14} />
+                        ) : (
+                          <EmptyIcon size={14} />
                         )
                       }
+                      onClick={() => {
+                        setFirstDayOfWeek(day);
+                      }}
                     >
-                      {sortByDisplays[sortBy].name}
+                      {i18n.date(addDays(refStartDate, day), {
+                        weekday: "long",
+                      })}
                     </Menu.Item>
-                  );
-                })}
-                <Menu.Label>
-                  <Trans>Order</Trans>
-                </Menu.Label>
-                <Menu.Item
-                  aria-selected={!viewOptions.layout.desc}
-                  onClick={() => {
-                    setViewOptions((vo) => ({
-                      ...vo,
-                      layout:
-                        vo.layout.type != "calendar"
-                          ? {
-                              ...vo.layout,
-                              desc: false,
-                            }
-                          : vo.layout,
-                    }));
-                  }}
-                  leftSection={
-                    <Group gap={6}>
-                      {!viewOptions.layout.desc ? (
-                        <IconCheck size={14} />
-                      ) : (
-                        <EmptyIcon size={14} />
-                      )}
-                      {(() => {
-                        const Icon =
-                          sortByDisplays[viewOptions.layout.sort].AscIcon;
-                        return <Icon size={14} />;
-                      })()}
-                    </Group>
-                  }
-                >
-                  {sortByDisplays[viewOptions.layout.sort].asc}
-                </Menu.Item>
-                <Menu.Item
-                  aria-selected={viewOptions.layout.desc}
-                  onClick={() => {
-                    setViewOptions((vo) => ({
-                      ...vo,
-                      layout:
-                        vo.layout.type != "calendar"
-                          ? {
-                              ...vo.layout,
-                              desc: true,
-                            }
-                          : vo.layout,
-                    }));
-                  }}
-                  leftSection={
-                    <Group gap={6}>
-                      {viewOptions.layout.desc ? (
-                        <IconCheck size={14} />
-                      ) : (
-                        <EmptyIcon size={14} />
-                      )}
-                      {(() => {
-                        const Icon =
-                          sortByDisplays[viewOptions.layout.sort].DescIcon;
-                        return <Icon size={14} />;
-                      })()}
-                    </Group>
-                  }
-                >
-                  {sortByDisplays[viewOptions.layout.sort].desc}
-                </Menu.Item>
-              </Menu.Dropdown>
-            </Menu>
-          ) : null}
+                  ))}
+                </>
+              )}
+            </Menu.Dropdown>
+          </Menu>
           <SegmentedControl
             onChange={(value) => {
               setViewOptions((vo) => ({
@@ -1318,13 +1353,44 @@ function Filters({
   );
 }
 
+const FirstDayOfWeek = z.union([z.literal(0), z.literal(1), z.literal(6)]);
+type FirstDayOfWeek = z.infer<typeof FirstDayOfWeek>;
+
 export default function ConsList({ cons }: { cons: ConWithPost[] }) {
   const { i18n } = useLingui();
   const { data: followedConAttendees } = useFollowedConAttendeesDLE();
 
   const isLoggedIn = useIsLoggedIn();
 
+  const defaultFirstDayOfWeek = useMemo(() => {
+    // Use the locale of the browser rather than the set locale.
+    const locale = new Intl.Locale(navigator.language);
+    const weekInfo = (
+      locale as {
+        getWeekInfo?(): { firstDay: number };
+      }
+    ).getWeekInfo?.() ?? { firstDay: 7 };
+
+    return (weekInfo.firstDay % 7) as Day;
+  }, [navigator.language]);
+
   const [searchParams, setSearchParams] = useSearchParams();
+  const [firstDayOfWeek, setFirstDayOfWeek] = useLocalStorage({
+    key: "fbl:firstDayOfWeek",
+    defaultValue: defaultFirstDayOfWeek,
+    getInitialValueInEffect: false,
+    deserialize(value) {
+      if (value == undefined) {
+        return defaultFirstDayOfWeek;
+      }
+
+      try {
+        return FirstDayOfWeek.parse(JSON.parse(value));
+      } catch (e) {
+        return defaultFirstDayOfWeek;
+      }
+    },
+  });
 
   const [viewOptions, setViewOptions] = useState<ViewOptions>(() => {
     if (!searchParams.has("q")) {
@@ -1420,6 +1486,8 @@ export default function ConsList({ cons }: { cons: ConWithPost[] }) {
         cons={cons}
         viewOptions={viewOptions}
         setViewOptions={setViewOptions}
+        firstDayOfWeek={firstDayOfWeek}
+        setFirstDayOfWeek={setFirstDayOfWeek}
       />
 
       <Suspense
@@ -1432,7 +1500,7 @@ export default function ConsList({ cons }: { cons: ConWithPost[] }) {
         {filteredCons.length > 0 ? (
           viewOptions.layout.type == "calendar" ? (
             <Calendar
-              firstDay={viewOptions.layout.firstDay}
+              firstDay={firstDayOfWeek}
               events={filteredCons.map((con) => ({
                 id: con.slug,
                 label: (

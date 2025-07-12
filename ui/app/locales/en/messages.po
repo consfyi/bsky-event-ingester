@@ -17,8 +17,8 @@ msgid "View Bluesky Post"
 msgstr "View Bluesky Post"
 
 #: app/components/ConDetails.tsx:135
-#: app/components/ConsList.tsx:243
-#: app/components/ConsList.tsx:587
+#: app/components/ConsList.tsx:247
+#: app/components/ConsList.tsx:602
 msgid "Date"
 msgstr "Date"
 
@@ -26,13 +26,13 @@ msgstr "Date"
 #. placeholder {0}: dateTimeFormat.formatRange( reinterpretAsLocalDate(con.start), reinterpretAsLocalDate(subDays(con.end, 1)) )
 #. placeholder {1}: differenceInDays(con.end, con.start)
 #: app/components/ConDetails.tsx:139
-#: app/components/ConsList.tsx:244
+#: app/components/ConsList.tsx:248
 msgctxt "[start date]-[end date] ([duration] days)"
 msgid "{0} ({1, plural, one {# day} other {# days}})"
 msgstr "{0} ({1, plural, one {# day} other {# days}})"
 
 #: app/components/ConDetails.tsx:157
-#: app/components/ConsList.tsx:285
+#: app/components/ConsList.tsx:289
 msgid "Location"
 msgstr "Location"
 
@@ -63,7 +63,7 @@ msgstr "{0} including you"
 
 #. placeholder {0}: [likeCount][0]
 #: app/components/ConDetails.tsx:306
-#: app/components/ConsList.tsx:195
+#: app/components/ConsList.tsx:199
 msgctxt "attendee count"
 msgid "{0}"
 msgstr "{0}"
@@ -72,174 +72,182 @@ msgstr "{0}"
 msgid "Loading people you follow"
 msgstr "Loading people you follow"
 
-#: app/components/ConsList.tsx:189
-#: app/components/ConsList.tsx:601
+#: app/components/ConsList.tsx:193
+#: app/components/ConsList.tsx:616
 msgctxt "number of attendees"
 msgid "Attendees"
 msgstr "Attendees"
 
 #. placeholder {0}: follows.length - MAX_AVATARS_IN_STACK
-#: app/components/ConsList.tsx:209
+#: app/components/ConsList.tsx:213
 msgid "{0, plural, one {# other you follow} other {# others you follow}}"
 msgstr "{0, plural, one {# other you follow} other {# others you follow}}"
 
-#: app/components/ConsList.tsx:260
+#: app/components/ConsList.tsx:264
 msgid "End date"
 msgstr "End date"
 
 #. placeholder {0}: i18n.date(reinterpretAsLocalDate(subDays(con.end, 1)), { weekday: "short", day: "numeric", month: "short", year: getYear(reinterpretAsLocalDate(con.start)) != getYear(reinterpretAsLocalDate(subDays(con.end, 1))) ? "numeric" : undefined, })
 #. placeholder {1}: differenceInDays(con.end, con.start)
-#: app/components/ConsList.tsx:261
+#: app/components/ConsList.tsx:265
 msgctxt "ends [date] ([duration] days)"
 msgid "ends {0} ({1, plural, one {# day} other {# days}})"
 msgstr "ends {0} ({1, plural, one {# day} other {# days}})"
 
-#: app/components/ConsList.tsx:588
+#: app/components/ConsList.tsx:603
 msgid "Soonest to latest"
 msgstr "Soonest to latest"
 
-#: app/components/ConsList.tsx:590
+#: app/components/ConsList.tsx:605
 msgid "Latest to soonest"
 msgstr "Latest to soonest"
 
-#: app/components/ConsList.tsx:594
+#: app/components/ConsList.tsx:609
 msgid "Name"
 msgstr "Name"
 
-#: app/components/ConsList.tsx:595
+#: app/components/ConsList.tsx:610
 msgid "A to Z"
 msgstr "A to Z"
 
-#: app/components/ConsList.tsx:597
+#: app/components/ConsList.tsx:612
 msgid "Z to A"
 msgstr "Z to A"
 
-#: app/components/ConsList.tsx:602
-#: app/components/ConsList.tsx:609
+#: app/components/ConsList.tsx:617
+#: app/components/ConsList.tsx:624
 msgid "Fewest to most"
 msgstr "Fewest to most"
 
-#: app/components/ConsList.tsx:604
-#: app/components/ConsList.tsx:611
+#: app/components/ConsList.tsx:619
+#: app/components/ConsList.tsx:626
 msgid "Most to fewest"
 msgstr "Most to fewest"
 
-#: app/components/ConsList.tsx:608
+#: app/components/ConsList.tsx:623
 msgid "Followed attendees"
 msgstr "Followed attendees"
 
-#: app/components/ConsList.tsx:640
+#: app/components/ConsList.tsx:650
 msgid "North America"
 msgstr "North America"
 
-#: app/components/ConsList.tsx:641
+#: app/components/ConsList.tsx:651
 msgid "Europe"
 msgstr "Europe"
 
-#: app/components/ConsList.tsx:642
+#: app/components/ConsList.tsx:652
 msgid "Asia"
 msgstr "Asia"
 
-#: app/components/ConsList.tsx:643
+#: app/components/ConsList.tsx:653
 msgid "South America"
 msgstr "South America"
 
-#: app/components/ConsList.tsx:644
+#: app/components/ConsList.tsx:654
 msgid "Oceania"
 msgstr "Oceania"
 
-#: app/components/ConsList.tsx:645
+#: app/components/ConsList.tsx:655
 msgid "Africa"
 msgstr "Africa"
 
-#: app/components/ConsList.tsx:646
+#: app/components/ConsList.tsx:656
 msgid "Unknown"
 msgstr "Unknown"
 
-#: app/components/ConsList.tsx:684
+#: app/components/ConsList.tsx:694
 msgid "Search"
 msgstr "Search"
 
-#: app/components/ConsList.tsx:708
-#: app/components/ConsList.tsx:1183
+#: app/components/ConsList.tsx:717
+#: app/components/ConsList.tsx:1221
 msgid "Filters"
 msgstr "Filters"
 
-#: app/components/ConsList.tsx:752
-#: app/components/ConsList.tsx:1192
+#: app/components/ConsList.tsx:759
+#: app/components/ConsList.tsx:1230
 msgid "Attending only"
 msgstr "Attending only"
 
 #. placeholder {0}: viewOptions.filter.continents.length
-#: app/components/ConsList.tsx:778
+#: app/components/ConsList.tsx:783
 msgid "{0, plural, one {# region} other {# regions}}"
 msgstr "{0, plural, one {# region} other {# regions}}"
 
-#: app/components/ConsList.tsx:785
-#: app/components/ConsList.tsx:1223
+#: app/components/ConsList.tsx:790
+#: app/components/ConsList.tsx:1261
 msgid "Regions"
 msgstr "Regions"
 
 #. placeholder {0}: viewOptions.filter.continents.length
-#: app/components/ConsList.tsx:816
-#: app/components/ConsList.tsx:1244
+#: app/components/ConsList.tsx:820
+#: app/components/ConsList.tsx:1282
 msgid "{0, plural, one {# selected} other {# selected}}"
 msgstr "{0, plural, one {# selected} other {# selected}}"
 
 #. placeholder {0}: DEFAULT_VIEW_OPTIONS.filter.maxDays
 #. placeholder {0}: viewOptions.filter.minDays
-#: app/components/ConsList.tsx:882
-#: app/components/ConsList.tsx:896
-#: app/components/ConsList.tsx:938
-#: app/components/ConsList.tsx:1300
+#: app/components/ConsList.tsx:886
+#: app/components/ConsList.tsx:900
+#: app/components/ConsList.tsx:942
+#: app/components/ConsList.tsx:1338
 msgid "{0, plural, one {# day or more} other {# days or more}}"
 msgstr "{0, plural, one {# day or more} other {# days or more}}"
 
 #. placeholder {0}: viewOptions.filter.minDays
 #. placeholder {0}: [value][0]
-#: app/components/ConsList.tsx:888
-#: app/components/ConsList.tsx:936
-#: app/components/ConsList.tsx:1298
+#: app/components/ConsList.tsx:892
+#: app/components/ConsList.tsx:940
+#: app/components/ConsList.tsx:1336
 msgid "{0, plural, one {# day} other {# days}}"
 msgstr "{0, plural, one {# day} other {# days}}"
 
 #. placeholder {0}: viewOptions.filter.minDays
 #. placeholder {1}: viewOptions.filter.maxDays
-#: app/components/ConsList.tsx:902
+#: app/components/ConsList.tsx:906
 msgid "{0} to {1} days"
 msgstr "{0} to {1} days"
 
-#: app/components/ConsList.tsx:908
-#: app/components/ConsList.tsx:1281
+#: app/components/ConsList.tsx:912
+#: app/components/ConsList.tsx:1319
 msgid "Number of days"
 msgstr "Number of days"
 
-#: app/components/ConsList.tsx:980
-#: app/components/ConsList.tsx:1207
+#: app/components/ConsList.tsx:983
+#: app/components/ConsList.tsx:1245
 msgid "With followed only"
 msgstr "With followed only"
 
-#: app/components/ConsList.tsx:1025
+#: app/components/ConsList.tsx:996
+msgid "Settings"
+msgstr "Settings"
+
+#: app/components/ConsList.tsx:1035
 msgid "Sort by"
 msgstr "Sort by"
 
-#: app/components/ConsList.tsx:1069
+#: app/components/ConsList.tsx:1081
 msgid "Order"
 msgstr "Order"
 
-#: app/components/ConsList.tsx:1154
+#: app/components/ConsList.tsx:1149
+msgid "Week starts on"
+msgstr "Week starts on"
+
+#: app/components/ConsList.tsx:1192
 msgid "List"
 msgstr "List"
 
-#: app/components/ConsList.tsx:1165
+#: app/components/ConsList.tsx:1203
 msgid "Calendar"
 msgstr "Calendar"
 
-#: app/components/ConsList.tsx:1487
+#: app/components/ConsList.tsx:1559
 msgid "No cons to display."
 msgstr "No cons to display."
 
-#: app/components/ConsList.tsx:1500
+#: app/components/ConsList.tsx:1572
 msgid "Clear all filters"
 msgstr "Clear all filters"
 
