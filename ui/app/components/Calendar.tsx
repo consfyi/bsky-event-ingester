@@ -438,22 +438,22 @@ export default function Calendar({
                             >
                               {(getDate(d) == 1 ? dayMonthFormat : dayFormat)
                                 .formatToParts(d)
-                                .map(({ type, value }, i) =>
-                                  type == "day" ? (
-                                    <Text
-                                      span
-                                      key={i}
-                                      fw={500}
-                                      c={isSameDay(d, now) ? "red" : undefined}
-                                    >
-                                      {value}
-                                    </Text>
-                                  ) : (
-                                    <Text span key={i}>
-                                      {value}
-                                    </Text>
-                                  )
-                                )}
+                                .map(({ type, value }, i) => (
+                                  <Text
+                                    span
+                                    key={i}
+                                    {...(type == "day"
+                                      ? {
+                                          fw: 500,
+                                          c: isSameDay(d, now)
+                                            ? "red"
+                                            : undefined,
+                                        }
+                                      : {})}
+                                  >
+                                    {value}
+                                  </Text>
+                                ))}
                             </Text>
                             {segments.map((seg, i) =>
                               seg != null ? (
