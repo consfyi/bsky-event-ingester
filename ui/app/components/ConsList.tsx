@@ -535,12 +535,29 @@ const FilterOptions = z.object({
 type FilterOptions = z.infer<typeof FilterOptions>;
 
 const ListLayoutOptions = z.object({
+  type: z._default(z.literal("list"), "list"),
   sort: z._default(SortBy, "date"),
   desc: z._default(z.boolean(), false),
 });
 type ListLayoutOptions = z.infer<typeof ListLayoutOptions>;
 
-const LayoutOptions = z.union([z.literal("calendar"), ListLayoutOptions]);
+const CalendarLayoutOptions = z.object({
+  type: z._default(z.literal("calendar"), "calendar"),
+  firstDay: z.optional(
+    z.union([
+      z.literal(0),
+      z.literal(1),
+      z.literal(2),
+      z.literal(3),
+      z.literal(4),
+      z.literal(5),
+      z.literal(6),
+    ])
+  ),
+});
+type CalendarLayoutOptions = z.infer<typeof CalendarLayoutOptions>;
+
+const LayoutOptions = z.union([ListLayoutOptions, CalendarLayoutOptions]);
 type LayoutOptions = z.infer<typeof LayoutOptions>;
 
 const ViewOptions = z.object({
@@ -614,7 +631,7 @@ function Filters({
   };
 
   const currentSortByDisplay =
-    viewOptions.layout != "calendar"
+    viewOptions.layout.type != "calendar"
       ? sortByDisplays[viewOptions.layout.sort]
       : null;
 
@@ -983,7 +1000,7 @@ function Filters({
           ) : null}
         </Group>
         <Group gap="xs">
-          {viewOptions.layout != "calendar" ? (
+          {viewOptions.layout.type != "calendar" ? (
             <Menu
               position="bottom-end"
               withArrow
@@ -1030,7 +1047,7 @@ function Filters({
                   }
 
                   const selected =
-                    viewOptions.layout != "calendar" &&
+                    viewOptions.layout.type != "calendar" &&
                     viewOptions.layout.sort == sortBy;
 
                   return (
@@ -1043,6 +1060,7 @@ function Filters({
                         setViewOptions((vo) => ({
                           ...vo,
                           layout: {
+                            type: "list",
                             sort: sortBy,
                             desc: DEFAULT_SORT_DESC_OPTIONS[sortBy],
                           },
@@ -1074,12 +1092,12 @@ function Filters({
                     setViewOptions((vo) => ({
                       ...vo,
                       layout:
-                        vo.layout != "calendar"
+                        vo.layout.type != "calendar"
                           ? {
                               ...vo.layout,
                               desc: false,
                             }
-                          : "calendar",
+                          : vo.layout,
                     }));
                   }}
                   leftSection={
@@ -1105,12 +1123,12 @@ function Filters({
                     setViewOptions((vo) => ({
                       ...vo,
                       layout:
-                        vo.layout != "calendar"
+                        vo.layout.type != "calendar"
                           ? {
                               ...vo.layout,
                               desc: true,
                             }
-                          : "calendar",
+                          : vo.layout,
                     }));
                   }}
                   leftSection={
@@ -1140,10 +1158,10 @@ function Filters({
                 layout:
                   value != "calendar"
                     ? ListLayoutOptions.parse({})
-                    : "calendar",
+                    : CalendarLayoutOptions.parse({}),
               }));
             }}
-            value={viewOptions.layout != "calendar" ? "list" : "calendar"}
+            value={viewOptions.layout.type != "calendar" ? "list" : "calendar"}
             data={[
               {
                 value: "list",
@@ -1342,12 +1360,12 @@ export default function ConsList({ cons }: { cons: ConWithPost[] }) {
     setViewOptions((vo) => ({
       ...vo,
       sort:
-        vo.layout != "calendar"
+        vo.layout.type != "calendar"
           ? {
               ...vo.layout,
               sort: vo.layout.sort == "followed" ? "attendees" : vo.layout.sort,
             }
-          : "calendar",
+          : vo.layout,
     }));
   }, [isLoggedIn, setViewOptions]);
 
@@ -1427,8 +1445,9 @@ export default function ConsList({ cons }: { cons: ConWithPost[] }) {
         }
       >
         {filteredCons.length > 0 ? (
-          viewOptions.layout == "calendar" ? (
+          viewOptions.layout.type == "calendar" ? (
             <Calendar
+              firstDay={viewOptions.layout.firstDay}
               events={filteredCons.map((con) => ({
                 id: con.slug,
                 label: (

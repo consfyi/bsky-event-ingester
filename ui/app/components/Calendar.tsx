@@ -192,7 +192,13 @@ function EventSegment({ segment }: { segment: Segment }) {
   );
 }
 
-export default function Calendar({ events }: { events: Event[] }) {
+export default function Calendar({
+  events,
+  firstDay,
+}: {
+  events: Event[];
+  firstDay: Day | undefined;
+}) {
   const { t, i18n } = useLingui();
 
   const [useLocalTime, setUseLocalTime] = useState(false);
@@ -217,6 +223,8 @@ export default function Calendar({ events }: { events: Event[] }) {
       weekend: weekInfo.weekend.map((d) => (d % 7) as Day),
     };
   }, [t]);
+
+  firstDay = firstDay == undefined ? weekInfo.firstDay : firstDay;
 
   const checkpointRefs = useRef<Record<number, HTMLDivElement>>({});
   checkpointRefs.current = {};
@@ -272,7 +280,7 @@ export default function Calendar({ events }: { events: Event[] }) {
   }, [events, now]);
 
   const firstDayWeekday = getDay(startDate);
-  const daysToPad = (firstDayWeekday - weekInfo.firstDay + 7) % 7;
+  const daysToPad = (firstDayWeekday - firstDay + 7) % 7;
 
   const calendarStartDate = addDays(startDate, -daysToPad);
 
@@ -288,7 +296,7 @@ export default function Calendar({ events }: { events: Event[] }) {
   );
 
   const packed = useMemo(
-    () => packLanes(events, calendarStartDate, numWeeks, weekInfo.firstDay),
+    () => packLanes(events, calendarStartDate, numWeeks, firstDay),
     [events]
   );
 
