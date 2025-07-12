@@ -566,7 +566,6 @@ export type ViewOptions = z.infer<typeof ViewOptions>;
 export const DEFAULT_VIEW_OPTIONS: ViewOptions = ViewOptions.parse({});
 
 function Filters({
-  cons,
   viewOptions,
   setViewOptions,
   firstDayOfWeek,
@@ -1392,6 +1391,45 @@ function Filters({
   );
 }
 
+function CalendarLayout({
+  cons,
+  inYourTimeZone,
+  firstDayOfWeek,
+  setFirstDayOfWeek,
+}: {
+  cons: ConWithPost[];
+  inYourTimeZone: boolean;
+  firstDayOfWeek: Day;
+  setFirstDayOfWeek: (day: Day) => void;
+}) {
+  return (
+    <Calendar
+      firstDay={firstDayOfWeek}
+      inYourTimeZone={inYourTimeZone}
+      events={cons.map((con) => ({
+        id: con.slug,
+        label: (
+          <>
+            <Flag country={con.country} size={10} me={6} />
+            <Text span>{con.name}</Text>
+          </>
+        ),
+        color: ["red", "orange", "yellow", "green", "blue", "indigo", "violet"][
+          getDay(con.start)
+        ],
+        variant:
+          con.post.viewer != null && con.post.viewer.like != null
+            ? "filled"
+            : "light",
+        title: con.name,
+        link: `/cons/${con.slug}`,
+        start: con.start,
+        end: con.end,
+      }))}
+    />
+  );
+}
+
 function ListLayout({
   cons,
   sort,
@@ -1431,6 +1469,22 @@ export default function ConsList({
   const { i18n } = useLingui();
   const { data: followedConAttendees } = useFollowedConAttendeesDLE();
 
+  const queryRe = new RegExp(
+    `^${Array.prototype.map
+      .call(
+        removeDiacritics(
+          viewOptions.filter.query.toLocaleLowerCase(i18n.locale)
+        ),
+        (c) => `${regexpEscape(c)}.*`
+      )
+      .join("")}`
+  );
+
+  const maxDays =
+    viewOptions.filter.maxDays >= DEFAULT_VIEW_OPTIONS.filter.maxDays
+      ? Infinity
+      : viewOptions.filter.maxDays;
+
   const defaultFirstDayOfWeek = useMemo(() => {
     // Use the locale of the browser rather than the set locale.
     const locale = new Intl.Locale(navigator.language);
@@ -1459,22 +1513,6 @@ export default function ConsList({
       }
     },
   });
-
-  const queryRe = new RegExp(
-    `^${Array.prototype.map
-      .call(
-        removeDiacritics(
-          viewOptions.filter.query.toLocaleLowerCase(i18n.locale)
-        ),
-        (c) => `${regexpEscape(c)}.*`
-      )
-      .join("")}`
-  );
-
-  const maxDays =
-    viewOptions.filter.maxDays >= DEFAULT_VIEW_OPTIONS.filter.maxDays
-      ? Infinity
-      : viewOptions.filter.maxDays;
 
   const filteredCons = cons.filter((con) => {
     const days = differenceInDays(con.end, con.start);
@@ -1519,35 +1557,11 @@ export default function ConsList({
       >
         {filteredCons.length > 0 ? (
           viewOptions.layout.type == "calendar" ? (
-            <Calendar
-              firstDay={firstDayOfWeek}
+            <CalendarLayout
+              cons={filteredCons}
               inYourTimeZone={viewOptions.layout.inYourTimeZone}
-              events={filteredCons.map((con) => ({
-                id: con.slug,
-                label: (
-                  <>
-                    <Flag country={con.country} size={10} me={6} />
-                    <Text span>{con.name}</Text>
-                  </>
-                ),
-                color: [
-                  "red",
-                  "orange",
-                  "yellow",
-                  "green",
-                  "blue",
-                  "indigo",
-                  "violet",
-                ][getDay(con.start)],
-                variant:
-                  con.post.viewer != null && con.post.viewer.like != null
-                    ? "filled"
-                    : "light",
-                title: con.name,
-                link: `/cons/${con.slug}`,
-                start: con.start,
-                end: con.end,
-              }))}
+              firstDayOfWeek={firstDayOfWeek}
+              setFirstDayOfWeek={setFirstDayOfWeek}
             />
           ) : (
             <ListLayout
