@@ -1395,12 +1395,10 @@ function CalendarLayout({
   cons,
   inYourTimeZone,
   firstDayOfWeek,
-  setFirstDayOfWeek,
 }: {
   cons: ConWithPost[];
   inYourTimeZone: boolean;
   firstDayOfWeek: Day;
-  setFirstDayOfWeek: (day: Day) => void;
 }) {
   return (
     <Calendar
@@ -1561,7 +1559,6 @@ export default function ConsList({
               cons={filteredCons}
               inYourTimeZone={viewOptions.layout.inYourTimeZone}
               firstDayOfWeek={firstDayOfWeek}
-              setFirstDayOfWeek={setFirstDayOfWeek}
             />
           ) : (
             <ListLayout
