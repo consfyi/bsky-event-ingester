@@ -716,10 +716,8 @@ function Filters({
             setFilterDrawerOpen(!filterDrawerOpen);
           }}
         >
-          <Text span size="xs" fw={500}>
-            <Trans>Filters</Trans>{" "}
-            {numFilters > 0 ? <Badge ms={6}>{numFilters}</Badge> : null}
-          </Text>
+          <Trans>Filters</Trans>{" "}
+          {numFilters > 0 ? <Badge ms={6}>{numFilters}</Badge> : null}
         </Button>
         <Group
           wrap="nowrap"
@@ -760,9 +758,7 @@ function Filters({
                     variant: "outline",
                   })}
             >
-              <Text span size="xs" fw={500}>
-                <Trans>Attending only</Trans>
-              </Text>
+              <Trans>Attending only</Trans>
             </Button>
           ) : null}
           <Menu position="bottom-start" withArrow closeOnItemClick={false}>
@@ -782,21 +778,19 @@ function Filters({
                       variant: "outline",
                     })}
               >
-                <Text span size="xs" fw={500}>
-                  {continentsFiltered ? (
-                    viewOptions.filter.continents.length == 1 ? (
-                      continentStrings[viewOptions.filter.continents[0]]
-                    ) : (
-                      <Plural
-                        value={viewOptions.filter.continents.length}
-                        one="# region"
-                        other="# regions"
-                      />
-                    )
+                {continentsFiltered ? (
+                  viewOptions.filter.continents.length == 1 ? (
+                    continentStrings[viewOptions.filter.continents[0]]
                   ) : (
-                    <Trans>Regions</Trans>
-                  )}
-                </Text>
+                    <Plural
+                      value={viewOptions.filter.continents.length}
+                      one="# region"
+                      other="# regions"
+                    />
+                  )
+                ) : (
+                  <Trans>Regions</Trans>
+                )}
               </Button>
             </Menu.Target>
             <Menu.Dropdown visibleFrom="lg">
@@ -988,9 +982,7 @@ function Filters({
                     variant: "outline",
                   })}
             >
-              <Text span size="xs" fw={500}>
-                <Trans>With followed only</Trans>
-              </Text>
+              <Trans>With followed only</Trans>
             </Button>
           ) : null}
         </Group>
@@ -1026,9 +1018,7 @@ function Filters({
                   })()}
                   rightSection={<IconChevronDown size={14} />}
                 >
-                  <Text span size="xs" fw={500}>
-                    {sortByDisplays[viewOptions.layout.sort].name}
-                  </Text>
+                  {sortByDisplays[viewOptions.layout.sort].name}
                 </Button>
               </Menu.Target>
 
