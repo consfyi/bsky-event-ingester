@@ -28,14 +28,12 @@ export default function LikeButton({
   }, [ctrl, post, isLiked]);
 
   return (
-    <Tooltip
-      label={isLiked ? <Trans>Attending</Trans> : <Trans>Not attending</Trans>}
-    >
+    <Tooltip label={isLiked ? <Trans>Going</Trans> : <Trans>Not going</Trans>}>
       <ActionIcon
         color={isLiked ? "var(--mantine-color-red-filled)" : "dimmed"}
         aria-pressed={isLiked}
         disabled={loading}
-        aria-label={t`Toggle attending`}
+        aria-label={t`Toggle going`}
         variant="transparent"
         size={size}
         bg="none"

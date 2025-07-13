@@ -200,8 +200,8 @@ export function ConRow({
           <Text span>
             <IconUsers
               title={t({
-                message: "Attendees",
-                context: "number of attendees",
+                message: "People going",
+                context: "number of people going",
               })}
               size={12}
             />{" "}
@@ -626,14 +626,14 @@ function Filters({
       DescIcon: IconSortDescendingLetters,
     },
     attendees: {
-      name: t({ message: "Attendees", context: "number of attendees" }),
+      name: t({ message: "People going", context: "number of people going" }),
       asc: t`Fewest to most`,
       AscIcon: IconSortAscendingNumbers,
       desc: t`Most to fewest`,
       DescIcon: IconSortDescendingNumbers,
     },
     followed: {
-      name: t`Followed attendees`,
+      name: t`People you follow going`,
       asc: t`Fewest to most`,
       AscIcon: IconSortAscendingNumbers,
       desc: t`Most to fewest`,
@@ -769,7 +769,7 @@ function Filters({
                     variant: "outline",
                   })}
             >
-              <Trans>Attending only</Trans>
+              <Trans>Going only</Trans>
             </Button>
           ) : null}
           <Menu position="bottom-start" withArrow closeOnItemClick={false}>
@@ -1275,7 +1275,7 @@ function Filters({
               checked={attendingFiltered}
               color="red"
               icon={(props) => <IconHeartFilled {...props} />}
-              label={<Trans>Attending only</Trans>}
+              label={<Trans>Going only</Trans>}
               onChange={(e) => {
                 setViewOptions({
                   ...viewOptions,

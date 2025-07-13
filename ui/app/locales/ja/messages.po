@@ -13,270 +13,266 @@ msgstr ""
 "Language-Team: \n"
 "Plural-Forms: \n"
 
-#: app/components/ConDetails.tsx:108
-#: app/components/ConDetails.tsx:115
+#. placeholder {0}: unknownLikes.length
+#. placeholder {0}: [unknownLikeCount][0]
+#: app/components/ConDetails.tsx:139
+#: app/components/ConDetails.tsx:340
+msgid "{0, plural, one {# person you don’t follow} other {# people you don’t follow}}"
+msgstr "フォローしていないユーザー{0}人"
+
+#: app/components/ConDetails.tsx:159
+msgid "Nobody known to be going yet."
+msgstr "まだ把握されている参加者はいません。"
+
+#: app/components/ConDetails.tsx:177
+#: app/components/ConDetails.tsx:184
 msgid "View Bluesky Post"
 msgstr "Bluesky の投稿を見る"
 
-#: app/components/ConDetails.tsx:135
-#: app/components/ConsList.tsx:247
-#: app/components/ConsList.tsx:603
+#: app/components/ConDetails.tsx:246
+#: app/components/ConsList.tsx:256
+#: app/components/ConsList.tsx:615
 msgid "Date"
 msgstr "開催日"
 
 #. placeholder {0}: dateTimeFormat.formatRange( reinterpretAsLocalDate(con.start), reinterpretAsLocalDate(subDays(con.end, 1)) )
-#. placeholder {0}: dateTimeFormat.formatRange( reinterpretAsLocalDate(con.start), reinterpretAsLocalDate(subDays(con.end, 1)) )
 #. placeholder {1}: differenceInDays(con.end, con.start)
-#: app/components/ConDetails.tsx:139
-#: app/components/ConsList.tsx:248
+#: app/components/ConDetails.tsx:250
+#: app/components/ConsList.tsx:257
 msgctxt "[start date]-[end date] ([duration] days long)"
 msgid "{0} ({1, plural, one {# day long} other {# days long}})"
 msgstr "{0}（{1}日間）"
 
-#: app/components/ConDetails.tsx:157
-#: app/components/ConsList.tsx:289
+#: app/components/ConDetails.tsx:268
+#: app/components/ConsList.tsx:298
 msgid "Location"
 msgstr "開催地"
 
-#: app/components/ConDetails.tsx:173
+#: app/components/ConDetails.tsx:284
 msgid "Link"
 msgstr "リンク"
 
-#. placeholder {0}: unknownLikes.length
-#. placeholder {0}: [unknownLikeCount][0]
-#: app/components/ConDetails.tsx:249
-#: app/components/ConDetails.tsx:337
-msgid "{0, plural, one {# person you don’t follow} other {# people you don’t follow}}"
-msgstr "フォローしていないユーザー{0}人"
-
-#: app/components/ConDetails.tsx:269
-msgid "No known attendees yet."
-msgstr "まだ把握されている参加者はいません。"
-
-#: app/components/ConDetails.tsx:299
-msgid "Attendees"
+#: app/components/ConDetails.tsx:302
+#: app/components/LikeButton.tsx:31
+#: app/components/UserDetails.tsx:47
+#: app/components/UserDetails.tsx:133
+msgid "Going"
 msgstr "参加者"
 
 #. placeholder {0}: [likeCount][0]
-#: app/components/ConDetails.tsx:302
+#: app/components/ConDetails.tsx:305
 msgctxt "attendee count, including you"
 msgid "{0} including you"
 msgstr "{0}人（あなたを含む）"
 
 #. placeholder {0}: [likeCount][0]
-#: app/components/ConDetails.tsx:306
-#: app/components/ConsList.tsx:199
+#: app/components/ConDetails.tsx:309
+#: app/components/ConsList.tsx:208
 msgctxt "attendee count"
 msgid "{0}"
 msgstr "{0}人"
 
-#: app/components/ConDetails.tsx:316
+#: app/components/ConDetails.tsx:319
 msgid "Loading people you follow"
 msgstr "フォロー中のユーザーを読み込み中"
 
-#: app/components/ConsList.tsx:193
-#: app/components/ConsList.tsx:617
-msgctxt "number of attendees"
-msgid "Attendees"
+#: app/components/ConsList.tsx:202
+#: app/components/ConsList.tsx:629
+msgctxt "number of people going"
+msgid "People going"
 msgstr "参加者数"
 
 #. placeholder {0}: follows.length - MAX_AVATARS_IN_STACK
-#: app/components/ConsList.tsx:213
+#: app/components/ConsList.tsx:222
 msgid "{0, plural, one {# other you follow} other {# others you follow}}"
 msgstr "フォロー中の他の{0}人"
 
-#: app/components/ConsList.tsx:264
+#: app/components/ConsList.tsx:273
 msgid "End date"
 msgstr "終了日"
 
 #. placeholder {0}: i18n.date(reinterpretAsLocalDate(subDays(con.end, 1)), { weekday: "short", day: "numeric", month: "short", year: getYear(reinterpretAsLocalDate(con.start)) != getYear(reinterpretAsLocalDate(subDays(con.end, 1))) ? "numeric" : undefined, })
 #. placeholder {1}: differenceInDays(con.end, con.start)
-#: app/components/ConsList.tsx:265
+#: app/components/ConsList.tsx:274
 msgctxt "until [date] ([duration] days long)"
 msgid "until {0} ({1, plural, one {# day long} other {# days long}})"
 msgstr "{0}まで（{1}日間）"
 
-#: app/components/ConsList.tsx:604
+#: app/components/ConsList.tsx:616
 msgid "Soonest to latest"
 msgstr "早い順"
 
-#: app/components/ConsList.tsx:606
+#: app/components/ConsList.tsx:618
 msgid "Latest to soonest"
 msgstr "遅い順"
 
-#: app/components/ConsList.tsx:610
+#: app/components/ConsList.tsx:622
 msgid "Name"
 msgstr "名称"
 
-#: app/components/ConsList.tsx:611
+#: app/components/ConsList.tsx:623
 msgid "A to Z"
 msgstr "A-Z順"
 
-#: app/components/ConsList.tsx:613
+#: app/components/ConsList.tsx:625
 msgid "Z to A"
 msgstr "Z-A順"
 
-#: app/components/ConsList.tsx:618
-#: app/components/ConsList.tsx:625
+#: app/components/ConsList.tsx:630
+#: app/components/ConsList.tsx:637
 msgid "Fewest to most"
 msgstr "少ない順"
 
-#: app/components/ConsList.tsx:620
-#: app/components/ConsList.tsx:627
+#: app/components/ConsList.tsx:632
+#: app/components/ConsList.tsx:639
 msgid "Most to fewest"
 msgstr "多い順"
 
-#: app/components/ConsList.tsx:624
-msgid "Followed attendees"
+#: app/components/ConsList.tsx:636
+msgid "People you follow going"
 msgstr "フォロー中の参加者数"
 
-#: app/components/ConsList.tsx:651
+#: app/components/ConsList.tsx:663
 msgid "North America"
 msgstr "北アメリカ"
 
-#: app/components/ConsList.tsx:652
+#: app/components/ConsList.tsx:664
 msgid "Europe"
 msgstr "ヨーロッパ"
 
-#: app/components/ConsList.tsx:653
+#: app/components/ConsList.tsx:665
 msgid "Asia"
 msgstr "アジア"
 
-#: app/components/ConsList.tsx:654
+#: app/components/ConsList.tsx:666
 msgid "South America"
 msgstr "南アメリカ"
 
-#: app/components/ConsList.tsx:655
+#: app/components/ConsList.tsx:667
 msgid "Oceania"
 msgstr "オセアニア"
 
-#: app/components/ConsList.tsx:656
+#: app/components/ConsList.tsx:668
 msgid "Africa"
 msgstr "アフリカ"
 
-#: app/components/ConsList.tsx:657
+#: app/components/ConsList.tsx:669
 msgid "Unknown"
 msgstr "不明"
 
-#: app/components/ConsList.tsx:695
+#: app/components/ConsList.tsx:707
 msgid "Search"
 msgstr "検索"
 
-#: app/components/ConsList.tsx:718
-#: app/components/ConsList.tsx:1257
+#: app/components/ConsList.tsx:730
+#: app/components/ConsList.tsx:1269
 msgid "Filters"
 msgstr "絞り込み"
 
-#: app/components/ConsList.tsx:760
-#: app/components/ConsList.tsx:1266
-msgid "Attending only"
+#: app/components/ConsList.tsx:772
+#: app/components/ConsList.tsx:1278
+msgid "Going only"
 msgstr "参加予定のみ"
 
 #. placeholder {0}: viewOptions.filter.continents.length
-#: app/components/ConsList.tsx:784
+#: app/components/ConsList.tsx:796
 msgid "{0, plural, one {# region} other {# regions}}"
 msgstr "{0}地域"
 
-#: app/components/ConsList.tsx:791
-#: app/components/ConsList.tsx:1297
+#: app/components/ConsList.tsx:803
+#: app/components/ConsList.tsx:1309
 msgid "Regions"
 msgstr "地域"
 
 #. placeholder {0}: viewOptions.filter.continents.length
-#: app/components/ConsList.tsx:821
-#: app/components/ConsList.tsx:1318
+#: app/components/ConsList.tsx:833
+#: app/components/ConsList.tsx:1330
 msgid "{0, plural, one {# selected} other {# selected}}"
 msgstr "{0}地域選択中"
 
 #. placeholder {0}: DEFAULT_VIEW_OPTIONS.filter.maxDays
 #. placeholder {0}: viewOptions.filter.minDays
-#: app/components/ConsList.tsx:886
-#: app/components/ConsList.tsx:900
-#: app/components/ConsList.tsx:941
-#: app/components/ConsList.tsx:1374
+#: app/components/ConsList.tsx:898
+#: app/components/ConsList.tsx:912
+#: app/components/ConsList.tsx:953
+#: app/components/ConsList.tsx:1386
 msgid "{0, plural, one {# day or more} other {# days or more}}"
 msgstr "{0}日以上"
 
 #. placeholder {0}: viewOptions.filter.minDays
 #. placeholder {0}: [value][0]
-#: app/components/ConsList.tsx:892
-#: app/components/ConsList.tsx:939
-#: app/components/ConsList.tsx:1372
+#: app/components/ConsList.tsx:904
+#: app/components/ConsList.tsx:951
+#: app/components/ConsList.tsx:1384
 msgid "{0, plural, one {# day} other {# days}}"
 msgstr "{0}日"
 
 #. placeholder {0}: viewOptions.filter.minDays
 #. placeholder {1}: viewOptions.filter.maxDays
-#: app/components/ConsList.tsx:906
+#: app/components/ConsList.tsx:918
 msgid "{0} to {1} days"
 msgstr "{0}〜{1}日"
 
-#: app/components/ConsList.tsx:912
-#: app/components/ConsList.tsx:1355
+#: app/components/ConsList.tsx:924
+#: app/components/ConsList.tsx:1367
 msgid "Number of days"
 msgstr "日数"
 
-#: app/components/ConsList.tsx:982
-#: app/components/ConsList.tsx:1281
+#: app/components/ConsList.tsx:994
+#: app/components/ConsList.tsx:1293
 msgid "With followed only"
 msgstr "フォロー中のユーザーのみ"
 
-#: app/components/ConsList.tsx:995
+#: app/components/ConsList.tsx:1007
 msgid "Settings"
 msgstr "設定"
 
-#: app/components/ConsList.tsx:1034
+#: app/components/ConsList.tsx:1046
 msgid "Sort by"
 msgstr "並び順"
 
-#: app/components/ConsList.tsx:1080
+#: app/components/ConsList.tsx:1092
 msgid "Order"
 msgstr "順序"
 
-#: app/components/ConsList.tsx:1142
+#: app/components/ConsList.tsx:1154
 msgid "Week starts on"
 msgstr "週の開始日"
 
-#: app/components/ConsList.tsx:1164
+#: app/components/ConsList.tsx:1176
 msgid "Use time zone"
 msgstr "タイムゾーンで表示"
 
-#: app/components/ConsList.tsx:1184
+#: app/components/ConsList.tsx:1196
 msgid "Theirs"
 msgstr "相手の"
 
-#: app/components/ConsList.tsx:1204
+#: app/components/ConsList.tsx:1216
 msgid "Yours"
 msgstr "自分の"
 
-#: app/components/ConsList.tsx:1228
+#: app/components/ConsList.tsx:1240
 msgid "List"
 msgstr "リスト"
 
-#: app/components/ConsList.tsx:1239
+#: app/components/ConsList.tsx:1251
 msgid "Calendar"
 msgstr "カレンダー"
 
-#: app/components/ConsList.tsx:1596
+#: app/components/ConsList.tsx:1598
 msgid "No cons to display."
 msgstr "表示するコンベンションがありません。"
 
-#: app/components/ConsList.tsx:1609
+#: app/components/ConsList.tsx:1611
 msgid "Clear all filters"
 msgstr "全ての絞り込みを解除"
 
-#: app/components/LikeButton.tsx:32
-#: app/components/UserDetails.tsx:47
-#: app/components/UserDetails.tsx:133
-msgid "Attending"
-msgstr "参加予定"
-
-#: app/components/LikeButton.tsx:32
-msgid "Not attending"
+#: app/components/LikeButton.tsx:31
+msgid "Not going"
 msgstr "参加しない"
 
-#: app/components/LikeButton.tsx:38
-msgid "Toggle attending"
+#: app/components/LikeButton.tsx:36
+msgid "Toggle going"
 msgstr "参加状況を切り替え"
 
 #: app/components/SimpleErrorBoundary.tsx:18
@@ -289,7 +285,7 @@ msgstr "データの読み込み中にエラーが発生しました。"
 
 #. placeholder {0}: unknownCons.length
 #: app/components/UserDetails.tsx:72
-msgid "{0, plural, one {# con you aren’t attending} other {# cons you aren’t attending}}"
+msgid "{0, plural, one {# con you aren’t going to} other {# cons you aren’t going to}}"
 msgstr "あなたが参加予定のないコンベンション{0}件"
 
 #: app/root.tsx:159

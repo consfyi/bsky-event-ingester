@@ -44,7 +44,7 @@ function Attending({ profile }: { profile: Profile }) {
   return (
     <Box mb="calc(var(--mantine-spacing-sm) * -1)">
       <Title order={2} size="h5" fw={500} mb="sm">
-        <Trans>Attending</Trans>{" "}
+        <Trans>Going</Trans>{" "}
         <Text size="sm" span>
           {filteredCons.length}
         </Text>
@@ -71,8 +71,8 @@ function Attending({ profile }: { profile: Profile }) {
             label={
               <Plural
                 value={unknownCons.length}
-                one="# con you aren’t attending"
-                other="# cons you aren’t attending"
+                one="# con you aren’t going to"
+                other="# cons you aren’t going to"
               />
             }
             labelPosition="left"
@@ -130,7 +130,7 @@ export default function UserDetails({ profile }: { profile: Profile }) {
         fallback={
           <Box>
             <Title order={2} size="h5" fw={500} mb="sm">
-              <Trans>Attending</Trans>
+              <Trans>Going</Trans>
             </Title>
             <Center p="lg">
               <Loader />

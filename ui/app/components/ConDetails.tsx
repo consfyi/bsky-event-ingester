@@ -156,7 +156,7 @@ function AttendeesList({
   ) : (
     <Box mb="sm">
       <Text c="dimmed" size="sm" h={38} pt={4}>
-        <Trans>No known attendees yet.</Trans>
+        <Trans>Nobody known to be going yet.</Trans>
       </Text>
     </Box>
   );
@@ -299,7 +299,7 @@ export function Body({ con }: { con: ConWithPost }) {
 
       <Box mb="calc(var(--mantine-spacing-sm) * -1)">
         <MantineTitle order={2} size="h5" fw={500} mb="sm">
-          <Trans>Attendees</Trans>{" "}
+          <Trans>Going</Trans>{" "}
           <Text size="sm" span>
             {isAttending ? (
               <Trans context="attendee count, including you">
