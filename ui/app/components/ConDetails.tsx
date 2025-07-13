@@ -10,7 +10,7 @@ import {
   Skeleton,
   Stack,
   Text,
-  Title,
+  Title as MantineTitle,
   Tooltip,
 } from "@mantine/core";
 import {
@@ -75,116 +75,6 @@ function Actor({ actor }: { actor: Profile }) {
         </Stack>
       </Group>
     </Anchor>
-  );
-}
-
-function Header({ con }: { con: ConWithPost }) {
-  const { i18n, t } = useLingui();
-
-  const dateTimeFormat = useMemo(
-    () =>
-      new Intl.DateTimeFormat(i18n.locale, {
-        weekday: "short",
-        day: "numeric",
-        month: "short",
-        year: "numeric",
-      }),
-    [t]
-  );
-
-  const now = useNow();
-  const active = isAfter(now, con.start) && !isAfter(now, con.end);
-
-  return (
-    <Box mb="sm">
-      <Group gap={7} wrap="nowrap" align="top">
-        {con.post.viewer != null ? (
-          <Box mt={2} mb={-2}>
-            <LikeButton size="sm" iconSize={24} post={con.post} />
-          </Box>
-        ) : null}
-        <Title size="h4" fw={500}>
-          <Flag country={con.country} size={14} me={6} /> {con.name}{" "}
-          <Tooltip label={<Trans>View Bluesky Post</Trans>} position="bottom">
-            <Anchor
-              href={`https://bsky.app/profile/${LABELER_DID}/post/${con.postRkey}`}
-              target="_blank"
-              rel="noreferrer"
-            >
-              <IconBrandBluesky
-                title={t`View Bluesky Post`}
-                size={16}
-                stroke={1.5}
-              />
-            </Anchor>
-          </Tooltip>
-        </Title>
-      </Group>
-      <Box mt={4}>
-        <Group wrap="nowrap" gap="xs" align="top">
-          <Box>
-            <Indicator
-              position="top-start"
-              color="green"
-              processing
-              size={12}
-              withBorder
-              disabled={!active}
-              zIndex={2}
-            >
-              <IconCalendar title={t`Date`} size={16} stroke={1.5} />
-            </Indicator>
-          </Box>
-          <Text size="sm" mb={5}>
-            <Trans context="[start date]-[end date] ([duration] days long)">
-              {dateTimeFormat.formatRange(
-                reinterpretAsLocalDate(con.start),
-                reinterpretAsLocalDate(subDays(con.end, 1))
-              )}{" "}
-              (
-              <Plural
-                value={differenceInDays(con.end, con.start)}
-                one="# day long"
-                other="# days long"
-              />
-              )
-            </Trans>
-          </Text>
-        </Group>
-
-        <Group wrap="nowrap" gap="xs" align="top">
-          <Box>
-            <IconMapPin title={t`Location`} size={16} stroke={1.5} />
-          </Box>
-          <Text size="sm" mb={5}>
-            <Anchor
-              href={`https://www.google.com/maps?q=${con.address}`}
-              target="_blank"
-              rel="noreferrer"
-              c="var(--mantine-color-text)"
-            >
-              {con.address}
-            </Anchor>{" "}
-          </Text>
-        </Group>
-
-        <Group wrap="nowrap" gap="xs" align="top">
-          <Box>
-            <IconLink title={t`Link`} size={16} stroke={1.5} />
-          </Box>
-          <Text size="sm" mb={5}>
-            <Anchor
-              href={con.url}
-              target="_blank"
-              rel="noreferrer"
-              style={{ wordBreak: "break-all" }}
-            >
-              {con.url.replace(/https?:\/\//, "")}
-            </Anchor>
-          </Text>
-        </Group>
-      </Box>
-    </Box>
   );
 }
 
@@ -272,9 +162,57 @@ function AttendeesList({
   );
 }
 
-export default function ConDetails({ con }: { con: ConWithPost }) {
+export function Title({ con }: { con: ConWithPost }) {
+  const { t } = useLingui();
+
+  return (
+    <Group gap={7} wrap="nowrap" align="top">
+      {con.post.viewer != null ? (
+        <Box mt={2} mb={-2}>
+          <LikeButton size="sm" iconSize={24} post={con.post} />
+        </Box>
+      ) : null}
+      <MantineTitle size="h4" fw={500}>
+        <Flag country={con.country} size={14} me={6} /> {con.name}{" "}
+        <Tooltip label={<Trans>View Bluesky Post</Trans>} position="bottom">
+          <Anchor
+            href={`https://bsky.app/profile/${LABELER_DID}/post/${con.postRkey}`}
+            target="_blank"
+            rel="noreferrer"
+          >
+            <IconBrandBluesky
+              title={t`View Bluesky Post`}
+              size={16}
+              stroke={1.5}
+            />
+          </Anchor>
+        </Tooltip>
+      </MantineTitle>
+    </Group>
+  );
+}
+
+export function Body({ con }: { con: ConWithPost }) {
+  const { i18n, t } = useLingui();
+
+  const dateTimeFormat = useMemo(
+    () =>
+      new Intl.DateTimeFormat(i18n.locale, {
+        weekday: "short",
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+      }),
+    [t]
+  );
+
+  const now = useNow();
+  const active = isAfter(now, con.start) && !isAfter(now, con.end);
+
   const { data: followedConAttendees, loading: followedConAttendeesLoading } =
     useFollowedConAttendeesDLE();
+
+  const self = useSelf();
 
   const isAttending = con.post.viewer?.like != null;
 
@@ -292,10 +230,75 @@ export default function ConDetails({ con }: { con: ConWithPost }) {
 
   return (
     <>
-      <Header con={con} />
+      <Box mb="sm">
+        <Box mt={4}>
+          <Group wrap="nowrap" gap="xs" align="top">
+            <Box>
+              <Indicator
+                position="top-start"
+                color="green"
+                processing
+                size={12}
+                withBorder
+                disabled={!active}
+                zIndex={2}
+              >
+                <IconCalendar title={t`Date`} size={16} stroke={1.5} />
+              </Indicator>
+            </Box>
+            <Text size="sm" mb={5}>
+              <Trans context="[start date]-[end date] ([duration] days long)">
+                {dateTimeFormat.formatRange(
+                  reinterpretAsLocalDate(con.start),
+                  reinterpretAsLocalDate(subDays(con.end, 1))
+                )}{" "}
+                (
+                <Plural
+                  value={differenceInDays(con.end, con.start)}
+                  one="# day long"
+                  other="# days long"
+                />
+                )
+              </Trans>
+            </Text>
+          </Group>
+
+          <Group wrap="nowrap" gap="xs" align="top">
+            <Box>
+              <IconMapPin title={t`Location`} size={16} stroke={1.5} />
+            </Box>
+            <Text size="sm" mb={5}>
+              <Anchor
+                href={`https://www.google.com/maps?q=${con.address}`}
+                target="_blank"
+                rel="noreferrer"
+                c="var(--mantine-color-text)"
+              >
+                {con.address}
+              </Anchor>{" "}
+            </Text>
+          </Group>
+
+          <Group wrap="nowrap" gap="xs" align="top">
+            <Box>
+              <IconLink title={t`Link`} size={16} stroke={1.5} />
+            </Box>
+            <Text size="sm" mb={5}>
+              <Anchor
+                href={con.url}
+                target="_blank"
+                rel="noreferrer"
+                style={{ wordBreak: "break-all" }}
+              >
+                {con.url.replace(/https?:\/\//, "")}
+              </Anchor>
+            </Text>
+          </Group>
+        </Box>
+      </Box>
 
       <Box mb="calc(var(--mantine-spacing-sm) * -1)">
-        <Title order={2} size="h5" fw={500} mb="sm">
+        <MantineTitle order={2} size="h5" fw={500} mb="sm">
           <Trans>Attendees</Trans>{" "}
           <Text size="sm" span>
             {isAttending ? (
@@ -306,7 +309,7 @@ export default function ConDetails({ con }: { con: ConWithPost }) {
               <Trans context="attendee count">{[likeCount][0]}</Trans>
             )}{" "}
           </Text>
-        </Title>
+        </MantineTitle>
         <Box>
           <SimpleErrorBoundary>
             {followedConAttendeesLoading ? (
@@ -360,6 +363,15 @@ export default function ConDetails({ con }: { con: ConWithPost }) {
           </SimpleErrorBoundary>
         </Box>
       </Box>
+    </>
+  );
+}
+
+export default function ConDetails({ con }: { con: ConWithPost }) {
+  return (
+    <>
+      <Title con={con} />
+      <Body con={con} />
     </>
   );
 }

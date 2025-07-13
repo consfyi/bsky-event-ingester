@@ -25,7 +25,13 @@ import {
   startOfWeek,
 } from "date-fns";
 import { comparing, map, max, min, Range, sorted, toArray } from "iter-fns";
-import { useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  MouseEventHandler,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { Link } from "react-router";
 import { reinterpretAsLocalDate } from "~/date";
 import { useNow } from "~/hooks";
@@ -38,6 +44,7 @@ export interface Event {
   end: Date;
   variant: string;
   color: MantineColor;
+  onClick?: MouseEventHandler<HTMLAnchorElement>;
 }
 
 interface Segment {
@@ -156,6 +163,7 @@ function EventSegment({ segment }: { segment: Segment }) {
       underline="never"
       to={segment.event.link}
       component={Link}
+      onClick={segment.event.onClick}
     >
       <Text
         mb={2}

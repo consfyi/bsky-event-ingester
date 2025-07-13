@@ -99,7 +99,7 @@ function Attending({ profile }: { profile: Profile }) {
 
 export default function UserDetails({ profile }: { profile: Profile }) {
   return (
-    <>
+    <Box p="sm">
       <Box mb="sm">
         <Flex
           wrap="nowrap"
@@ -140,6 +140,6 @@ export default function UserDetails({ profile }: { profile: Profile }) {
       >
         <Attending profile={profile} />
       </Suspense>
-    </>
+    </Box>
   );
 }

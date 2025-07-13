@@ -1414,30 +1414,38 @@ function CalendarLayout({
   firstDayOfWeek: Day;
 }) {
   return (
-    <Calendar
-      firstDay={firstDayOfWeek}
-      inYourTimeZone={inYourTimeZone}
-      events={cons.map((con) => ({
-        id: con.slug,
-        label: (
-          <>
-            <Flag country={con.country} size={8} me={4} />
-            <Text span>{con.name}</Text>
-          </>
-        ),
-        color: ["red", "orange", "yellow", "green", "blue", "indigo", "violet"][
-          getDay(con.start)
-        ],
-        variant:
-          con.post.viewer != null && con.post.viewer.like != null
-            ? "filled"
-            : "light",
-        title: con.name,
-        link: `/cons/${con.slug}`,
-        start: con.start,
-        end: con.end,
-      }))}
-    />
+    <>
+      <Calendar
+        firstDay={firstDayOfWeek}
+        inYourTimeZone={inYourTimeZone}
+        events={cons.map((con) => ({
+          id: con.slug,
+          label: (
+            <>
+              <Flag country={con.country} size={8} me={4} />
+              <Text span>{con.name}</Text>
+            </>
+          ),
+          color: [
+            "red",
+            "orange",
+            "yellow",
+            "green",
+            "blue",
+            "indigo",
+            "violet",
+          ][getDay(con.start)],
+          variant:
+            con.post.viewer != null && con.post.viewer.like != null
+              ? "filled"
+              : "light",
+          title: con.name,
+          link: `/cons/${con.slug}`,
+          start: con.start,
+          end: con.end,
+        }))}
+      />
+    </>
   );
 }
 
