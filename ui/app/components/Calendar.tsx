@@ -1,7 +1,6 @@
 import { useLingui } from "@lingui/react/macro";
 import {
   Anchor,
-  Badge,
   Box,
   MantineColor,
   Table,
@@ -162,7 +161,7 @@ function EventSegment({ segment }: { segment: Segment }) {
         mb={2}
         px="xs"
         pos="relative"
-        size="sm"
+        size="xs"
         c={colors.color}
         bg={
           segment.event.variant == "light"
@@ -481,7 +480,7 @@ export default function Calendar({
                                   mb={2}
                                   px="xs"
                                   pos="relative"
-                                  size="sm"
+                                  size="xs"
                                   bd="1px solid transparent"
                                 >
                                   &nbsp;
