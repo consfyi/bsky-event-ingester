@@ -58,7 +58,16 @@ import {
   subDays,
 } from "date-fns";
 import deepEqual from "deep-equal";
-import { compareDesc, compareMany, comparing, groupBy, sorted } from "iter-fns";
+import {
+  compareDesc,
+  compareMany,
+  comparing,
+  groupBy,
+  map,
+  Range,
+  sorted,
+  toArray,
+} from "iter-fns";
 import { Fragment, Suspense, useMemo, useState } from "react";
 import { Link } from "react-router";
 import regexpEscape from "regexp.escape";
@@ -566,6 +575,7 @@ export type ViewOptions = z.infer<typeof ViewOptions>;
 export const DEFAULT_VIEW_OPTIONS: ViewOptions = ViewOptions.parse({});
 
 function Filters({
+  cons,
   viewOptions,
   setViewOptions,
   firstDayOfWeek,
@@ -1380,10 +1390,13 @@ function Filters({
               />
             )
           }
-          marks={[...Array(DEFAULT_VIEW_OPTIONS.filter.maxDays).keys()].map(
-            (v) => ({
-              value: v + 1,
-            })
+          marks={toArray(
+            map(
+              Range.from(DEFAULT_VIEW_OPTIONS.filter.minDays).toInclusive(
+                DEFAULT_VIEW_OPTIONS.filter.maxDays
+              ),
+              (value) => ({ value })
+            )
           )}
         />
       </Drawer>
