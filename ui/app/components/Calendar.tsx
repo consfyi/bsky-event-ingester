@@ -160,6 +160,7 @@ function EventSegment({ segment }: { segment: Segment }) {
       <Text
         mb={2}
         px="xs"
+        py={2}
         pos="relative"
         size="xs"
         c={colors.color}
@@ -478,6 +479,7 @@ export default function Calendar({
                                 <Text
                                   key={i}
                                   mb={2}
+                                  py={2}
                                   px="xs"
                                   pos="relative"
                                   size="xs"
