@@ -77,23 +77,7 @@ import { useGetPreferences, usePutPreferences } from "./endpoints";
 import { useClient, useHydrated, useIsLoggedIn, useSelf } from "./hooks";
 import "./styles.css";
 
-const theme = createTheme({
-  primaryColor: "brand",
-  colors: {
-    brand: [
-      "#e9f0ff",
-      "#d2ddff",
-      "#a4b8f8",
-      "#7391f1",
-      "#3e67ea",
-      "#2f5be8",
-      "#1e50e8",
-      "#0f41cf",
-      "#033aba",
-      "#0031a5",
-    ],
-  },
-});
+const theme = createTheme({});
 
 export const links: LinksFunction = () => {
   return [
