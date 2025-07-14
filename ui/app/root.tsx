@@ -50,7 +50,7 @@ import {
   IconSun,
 } from "@tabler/icons-react";
 import IntlLocale from "intl-locale-textinfo-polyfill";
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import {
   Link,
   Links,
@@ -325,6 +325,16 @@ function Footer() {
   const { i18n } = useLingui();
   const { setLocale, pending: localePending } = useLinguiContext();
 
+  const languageSelectorItems = useMemo(() => {
+    return Object.keys(locales).map((locale) => ({
+      value: locale,
+      label:
+        new Intl.DisplayNames(locale, {
+          type: "language",
+        }).of(locale) ?? locale,
+    }));
+  }, []);
+
   return (
     <Box
       style={{
@@ -389,12 +399,7 @@ function Footer() {
             }
             setLocale(value);
           }}
-          data={Object.keys(locales).map((locale) => ({
-            value: locale,
-            label: new Intl.DisplayNames(locale, { type: "language" }).of(
-              locale
-            )!,
-          }))}
+          data={languageSelectorItems}
         />
       </Container>
     </Box>
