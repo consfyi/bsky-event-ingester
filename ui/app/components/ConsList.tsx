@@ -1538,7 +1538,6 @@ export default function ConsList({
 
     return (
       // Query
-      // Followed filter
       removeDiacritics(con.name.toLocaleLowerCase(i18n.locale)).match(
         queryRe
       ) != null &&
@@ -1551,6 +1550,7 @@ export default function ConsList({
       // Duration filter
       days >= viewOptions.filter.minDays &&
       days <= maxDays &&
+      // Followed filter
       (!viewOptions.filter.followed ||
         followedConAttendees == null ||
         (followedConAttendees[con.identifier] ?? []).length > 0)
