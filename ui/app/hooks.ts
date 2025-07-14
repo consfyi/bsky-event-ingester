@@ -10,7 +10,7 @@ import {
   set as setDate,
 } from "date-fns";
 import { comparing, sorted } from "iter-fns";
-import { useState, useSyncExternalStore } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { LABELER_DID } from "~/config";
 import { Client, createClient } from "./bluesky";
 import { useGlobalMemo } from "./components/GlobalMemoContext";
@@ -295,7 +295,15 @@ export function useIsLoggedIn() {
   return client.did != null;
 }
 
-export function useNow() {
-  const [now] = useState(() => new Date());
+export function useNow(interval: number = Infinity) {
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const handle = setInterval(() => {
+      setNow(new Date());
+    }, interval);
+    return () => {
+      clearInterval(handle);
+    };
+  }, [interval, setNow]);
   return now;
 }
