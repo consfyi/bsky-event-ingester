@@ -46,7 +46,7 @@ function Attending({ profile }: { profile: Profile }) {
       <Title order={2} size="h5" fw={500} mb="sm">
         <Trans>Going</Trans>{" "}
         <Text size="sm" span>
-          {filteredCons.length}
+          <Trans context="convention count">{filteredCons.length}</Trans>
         </Text>
       </Title>
 

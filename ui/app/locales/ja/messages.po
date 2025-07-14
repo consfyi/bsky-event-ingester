@@ -282,6 +282,12 @@ msgstr "エラー"
 msgid "An error occurred while attempting to load this data."
 msgstr "データの読み込み中にエラーが発生しました。"
 
+#. placeholder {0}: filteredCons.length
+#: app/components/UserDetails.tsx:49
+msgctxt "convention count"
+msgid "{0}"
+msgstr "{0}件"
+
 #. placeholder {0}: unknownCons.length
 #: app/components/UserDetails.tsx:72
 msgid "{0, plural, one {# con you aren’t going to} other {# cons you aren’t going to}}"
