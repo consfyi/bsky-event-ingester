@@ -325,7 +325,7 @@ export default function Calendar({
       <Title
         mb={-1}
         mx={{ base: 0, lg: "xs" }}
-        px={{ base: "xs", lg: 0 }}
+        px={0}
         mt={{ base: -4, lg: -8 }}
         order={2}
         size="h5"
@@ -336,17 +336,17 @@ export default function Calendar({
           zIndex: 3,
           borderBottom:
             "calc(0.0625rem * var(--mantine-scale)) solid var(--mantine-color-default-border)",
+          backdropFilter: "blur(5px)",
         }}
       >
-        <Box
-          mx="calc(var(--mantine-spacing-xs) * -1)"
-          px="xs"
+        <Text
+          fw={500}
+          px={{ base: "xs", lg: 0 }}
           pt={{ base: 4, lg: 8 }}
           pb={4}
           style={{
             background:
               "color-mix(in srgb, var(--mantine-color-body), transparent 15%)",
-            backdropFilter: "blur(5px)",
           }}
         >
           {i18n.date(
@@ -360,10 +360,18 @@ export default function Calendar({
               year: "numeric",
             }
           )}
-        </Box>
-      </Title>
-      <Box mx={{ base: 0, lg: "xs" }} mb={{ base: -1, lg: "xs" }}>
-        <Table layout="fixed" withColumnBorders withRowBorders withTableBorder>
+        </Text>
+        <Table
+          layout="fixed"
+          withColumnBorders
+          withRowBorders={false}
+          withTableBorder
+          style={{
+            background:
+              "color-mix(in srgb, var(--mantine-color-body), transparent 15%)",
+            borderBottom: "none",
+          }}
+        >
           <Table.Thead>
             <Table.Tr>
               {toArray(
@@ -378,7 +386,7 @@ export default function Calendar({
                           : ""
                       }
                     >
-                      <Text size="md">
+                      <Text size="sm" fw={500}>
                         {i18n.date(d, {
                           weekday: "short",
                         })}
@@ -389,6 +397,10 @@ export default function Calendar({
               )}
             </Table.Tr>
           </Table.Thead>
+        </Table>
+      </Title>
+      <Box mx={{ base: 0, lg: "xs" }} mb={{ base: -1, lg: "xs" }}>
+        <Table layout="fixed" withColumnBorders withRowBorders withTableBorder>
           <Table.Tbody>
             <Table.Tr
               data-month={

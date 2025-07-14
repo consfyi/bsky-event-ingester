@@ -379,7 +379,7 @@ function ConsByDate({
         <Title
           mb="sm"
           mx={{ base: 0, lg: "xs" }}
-          px={{ base: "xs", lg: 0 }}
+          px={0}
           mt={{ base: -4, lg: -8 }}
           order={2}
           size="h5"
@@ -390,24 +390,24 @@ function ConsByDate({
             zIndex: 3,
             borderBottom:
               "calc(0.0625rem * var(--mantine-scale)) solid var(--mantine-color-default-border)",
+            backdropFilter: "blur(5px)",
           }}
         >
-          <Box
-            mx="calc(var(--mantine-spacing-xs) * -1)"
-            px="xs"
+          <Text
+            fw={500}
+            px={{ base: "xs", lg: 0 }}
             pt={{ base: 4, lg: 8 }}
             pb={4}
             style={{
               background:
                 "color-mix(in srgb, var(--mantine-color-body), transparent 15%)",
-              backdropFilter: "blur(5px)",
             }}
           >
             {i18n.date(date, {
               month: "long",
               year: "numeric",
             })}
-          </Box>
+          </Text>
         </Title>
         <Box px="xs">
           {(consByMonth[groupKey] ?? []).map((con) => {
