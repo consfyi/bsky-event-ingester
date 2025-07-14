@@ -61,10 +61,7 @@ export default function LinguiProvider(props: Omit<I18nProviderProps, "i18n">) {
     (async () => {
       setPending(true);
       await loadAndActivate(locale);
-      setDirection(
-        (new IntlLocale(locale).textInfo.direction as Direction | undefined) ??
-          "ltr"
-      );
+      setDirection(new IntlLocale(locale).textInfo.direction as Direction);
       document.documentElement.lang = locale;
       setPending(false);
     })();
