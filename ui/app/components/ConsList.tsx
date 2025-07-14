@@ -124,7 +124,7 @@ export function ConRow({
         month: "short",
         year: "numeric",
       }),
-    [Tooltip]
+    [t]
   );
 
   const listFormat = useMemo(
