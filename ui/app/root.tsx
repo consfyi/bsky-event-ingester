@@ -273,7 +273,7 @@ function Header() {
                     type="submit"
                     size="sm"
                     leftSection={<IconBrandBluesky size={18} />}
-                    color={!usingDefaultPdsHost ? "#8338ec" : undefined}
+                    color={!usingDefaultPdsHost ? "#8338ec" : "#3c81f6"}
                   >
                     {!usingDefaultPdsHost ? (
                       <Trans>
@@ -299,7 +299,7 @@ function Header() {
                         size="sm"
                         px={4}
                         title={t`Log in via custom PDS`}
-                        color={!usingDefaultPdsHost ? "#8338ec" : undefined}
+                        color={!usingDefaultPdsHost ? "#8338ec" : "#3c81f6"}
                       >
                         <IconChevronDown size={14} />
                       </Button>
