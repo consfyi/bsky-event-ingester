@@ -55,7 +55,6 @@ msgstr "リンク"
 #: app/components/ConDetails.tsx:302
 #: app/components/LikeButton.tsx:31
 #: app/components/UserDetails.tsx:47
-#: app/components/UserDetails.tsx:133
 msgid "Going"
 msgstr "参加者"
 
@@ -287,6 +286,11 @@ msgstr "データの読み込み中にエラーが発生しました。"
 #: app/components/UserDetails.tsx:72
 msgid "{0, plural, one {# con you aren’t going to} other {# cons you aren’t going to}}"
 msgstr "あなたが参加予定のないコンベンション{0}件"
+
+#: app/components/UserDetails.tsx:133
+msgctxt "user attending cons"
+msgid "Going"
+msgstr "参加予定"
 
 #: app/root.tsx:159
 msgid "Dark mode"

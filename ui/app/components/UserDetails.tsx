@@ -130,7 +130,7 @@ export default function UserDetails({ profile }: { profile: Profile }) {
         fallback={
           <Box>
             <Title order={2} size="h5" fw={500} mb="sm">
-              <Trans>Going</Trans>
+              <Trans context="user attending cons">Going</Trans>
             </Title>
             <Center p="lg">
               <Loader />

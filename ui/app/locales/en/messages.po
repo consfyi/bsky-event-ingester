@@ -53,7 +53,6 @@ msgstr "Link"
 #: app/components/ConDetails.tsx:302
 #: app/components/LikeButton.tsx:31
 #: app/components/UserDetails.tsx:47
-#: app/components/UserDetails.tsx:133
 msgid "Going"
 msgstr "Going"
 
@@ -285,6 +284,11 @@ msgstr "An error occurred while attempting to load this data."
 #: app/components/UserDetails.tsx:72
 msgid "{0, plural, one {# con you aren’t going to} other {# cons you aren’t going to}}"
 msgstr "{0, plural, one {# con you aren’t going to} other {# cons you aren’t going to}}"
+
+#: app/components/UserDetails.tsx:133
+msgctxt "user attending cons"
+msgid "Going"
+msgstr "Going"
 
 #: app/root.tsx:159
 msgid "Dark mode"
