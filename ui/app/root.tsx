@@ -24,7 +24,6 @@ import {
   mantineHtmlProps,
   MantineProvider,
   Menu,
-  Select,
   Text,
   TextInput,
   Tooltip,
@@ -43,14 +42,13 @@ import {
   IconAlertTriangle,
   IconBrandBluesky,
   IconChevronDown,
-  IconLanguage,
   IconLogout2,
   IconMoon,
   IconPaw,
   IconSun,
 } from "@tabler/icons-react";
 import IntlLocale from "intl-locale-textinfo-polyfill";
-import { Suspense, useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import {
   Link,
   Links,
@@ -64,14 +62,11 @@ import {
   useRouteError,
 } from "react-router";
 import Avatar from "~/components/Avatar";
-import locales from "~/locales";
 import clientMetadata from "../public/client-metadata.json";
 import { DEFAULT_PDS_HOST, startLogin } from "./bluesky";
 import { GlobalMemoProvider } from "./components/GlobalMemoContext";
-import LinguiProvider, {
-  INITIAL_LOCALE,
-  useLinguiContext,
-} from "./components/LinguiProvider";
+import LinguiProvider, { INITIAL_LOCALE } from "./components/LinguiProvider";
+import LocaleSelector from "./components/LocaleSelector";
 import { LABELER_DID } from "./config";
 import { useGetPreferences, usePutPreferences } from "./endpoints";
 import { useClient, useHydrated, useIsLoggedIn, useSelf } from "./hooks";
@@ -322,20 +317,6 @@ function Header() {
 }
 
 function Footer() {
-  const { i18n } = useLingui();
-  const { setLocale, pending: localePending } = useLinguiContext();
-
-  const languageSelectorItems = useMemo(() => {
-    return Object.keys(locales).map((locale) => ({
-      value: locale,
-      label:
-        new Intl.DisplayNames(locale, {
-          type: "language",
-          languageDisplay: "standard",
-        }).of(locale) ?? locale,
-    }));
-  }, []);
-
   return (
     <Box
       style={{
@@ -387,21 +368,7 @@ function Footer() {
             <IconBrandBluesky size={18} stroke={1.5} />
           </ActionIcon>
         </Group>
-        <Select
-          withCheckIcon={false}
-          leftSection={<IconLanguage stroke={1.5} size={18} />}
-          size="xs"
-          mb="sm"
-          value={i18n.locale}
-          disabled={localePending}
-          onChange={(value) => {
-            if (value == null) {
-              return;
-            }
-            setLocale(value);
-          }}
-          data={languageSelectorItems}
-        />
+        <LocaleSelector />
       </Container>
     </Box>
   );
