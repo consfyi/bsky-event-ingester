@@ -1,4 +1,4 @@
-import { plural } from "@lingui/core/macro";
+import { msg, plural } from "@lingui/core/macro";
 import { Plural, Trans, useLingui } from "@lingui/react/macro";
 import {
   Anchor,
@@ -87,6 +87,7 @@ import {
 import removeDiacritics from "~/removeDiacritics";
 import Calendar from "./Calendar";
 import classes from "./ConsList.module.css";
+import { MessageDescriptor } from "@lingui/core";
 
 const MAX_AVATARS_IN_STACK = 3;
 
@@ -574,6 +575,56 @@ export type ViewOptions = z.infer<typeof ViewOptions>;
 
 export const DEFAULT_VIEW_OPTIONS: ViewOptions = ViewOptions.parse({});
 
+const SORT_BY_DISPLAYS: Record<
+  SortBy,
+  {
+    name: MessageDescriptor;
+    asc: MessageDescriptor;
+    AscIcon: Icon;
+    desc: MessageDescriptor;
+    DescIcon: Icon;
+  }
+> = {
+  date: {
+    name: msg`Date`,
+    asc: msg`Soonest to latest`,
+    AscIcon: IconSortAscendingNumbers,
+    desc: msg`Latest to soonest`,
+    DescIcon: IconSortDescendingNumbers,
+  },
+  name: {
+    name: msg`Name`,
+    asc: msg`A to Z`,
+    AscIcon: IconSortAscendingLetters,
+    desc: msg`Z to A`,
+    DescIcon: IconSortDescendingLetters,
+  },
+  attendees: {
+    name: msg({ message: `People going`, context: "number of people going" }),
+    asc: msg`Fewest to most`,
+    AscIcon: IconSortAscendingNumbers,
+    desc: msg`Most to fewest`,
+    DescIcon: IconSortDescendingNumbers,
+  },
+  followed: {
+    name: msg`People you follow going`,
+    asc: msg`Fewest to most`,
+    AscIcon: IconSortAscendingNumbers,
+    desc: msg`Most to fewest`,
+    DescIcon: IconSortDescendingNumbers,
+  },
+};
+
+const CONTINENT_NAMES: Record<Continent, MessageDescriptor> = {
+  NA: msg`North America`,
+  EU: msg`Europe`,
+  AS: msg`Asia`,
+  SA: msg`South America`,
+  OC: msg`Oceania`,
+  AF: msg`Africa`,
+  XX: msg`Unknown`,
+};
+
 function Filters({
   cons,
   viewOptions,
@@ -601,46 +652,6 @@ function Filters({
   const attendingFiltered = isLoggedIn && viewOptions.filter.attending;
   const followedFiltered = isLoggedIn && viewOptions.filter.followed;
 
-  const sortByDisplays: Record<
-    SortBy,
-    {
-      name: string;
-      asc: string;
-      AscIcon: Icon;
-      desc: string;
-      DescIcon: Icon;
-    }
-  > = {
-    date: {
-      name: t`Date`,
-      asc: t`Soonest to latest`,
-      AscIcon: IconSortAscendingNumbers,
-      desc: t`Latest to soonest`,
-      DescIcon: IconSortDescendingNumbers,
-    },
-    name: {
-      name: t`Name`,
-      asc: t`A to Z`,
-      AscIcon: IconSortAscendingLetters,
-      desc: t`Z to A`,
-      DescIcon: IconSortDescendingLetters,
-    },
-    attendees: {
-      name: t({ message: "People going", context: "number of people going" }),
-      asc: t`Fewest to most`,
-      AscIcon: IconSortAscendingNumbers,
-      desc: t`Most to fewest`,
-      DescIcon: IconSortDescendingNumbers,
-    },
-    followed: {
-      name: t`People you follow going`,
-      asc: t`Fewest to most`,
-      AscIcon: IconSortAscendingNumbers,
-      desc: t`Most to fewest`,
-      DescIcon: IconSortDescendingNumbers,
-    },
-  };
-
   const continentCount = useMemo(() => {
     const counts: Partial<Record<Continent, number>> = {};
     for (const con of cons) {
@@ -658,16 +669,6 @@ function Filters({
       ),
     [continentCount]
   );
-
-  const continentStrings: Record<Continent, string> = {
-    NA: t`North America`,
-    EU: t`Europe`,
-    AS: t`Asia`,
-    SA: t`South America`,
-    OC: t`Oceania`,
-    AF: t`Africa`,
-    XX: t`Unknown`,
-  };
 
   const continentsFiltered = !deepEqual(
     viewOptions.filter.continents,
@@ -791,7 +792,7 @@ function Filters({
               >
                 {continentsFiltered ? (
                   viewOptions.filter.continents.length == 1 ? (
-                    continentStrings[viewOptions.filter.continents[0]]
+                    t(CONTINENT_NAMES[viewOptions.filter.continents[0]])
                   ) : (
                     <Plural
                       value={viewOptions.filter.continents.length}
@@ -865,7 +866,7 @@ function Filters({
                       });
                     }}
                   >
-                    {continentStrings[code]}{" "}
+                    {t(CONTINENT_NAMES[code])}{" "}
                     <Text span size="xs" c="dimmed">
                       {continentCount[code] ?? 0}
                     </Text>
@@ -1014,15 +1015,15 @@ function Filters({
                   viewOptions.layout.type != "calendar"
                     ? (() => {
                         const currentSortByDisplay =
-                          sortByDisplays[viewOptions.layout.sort];
+                          SORT_BY_DISPLAYS[viewOptions.layout.sort];
                         return viewOptions.layout.desc ? (
                           <currentSortByDisplay.DescIcon
-                            title={currentSortByDisplay.desc}
+                            title={t(currentSortByDisplay.desc)}
                             size={14}
                           />
                         ) : (
                           <currentSortByDisplay.AscIcon
-                            title={currentSortByDisplay.asc}
+                            title={t(currentSortByDisplay.asc)}
                             size={14}
                           />
                         );
@@ -1032,7 +1033,7 @@ function Filters({
                 rightSection={<IconChevronDown size={14} />}
               >
                 {viewOptions.layout.type != "calendar" ? (
-                  sortByDisplays[viewOptions.layout.sort].name
+                  t(SORT_BY_DISPLAYS[viewOptions.layout.sort].name)
                 ) : (
                   <IconSettings size={14} />
                 )}
@@ -1084,7 +1085,7 @@ function Filters({
                           )
                         }
                       >
-                        {sortByDisplays[sortBy].name}
+                        {t(SORT_BY_DISPLAYS[sortBy].name)}
                       </Menu.Item>
                     );
                   })}
@@ -1111,13 +1112,13 @@ function Filters({
                         )}
                         {(() => {
                           const Icon =
-                            sortByDisplays[viewOptions.layout.sort].AscIcon;
+                            SORT_BY_DISPLAYS[viewOptions.layout.sort].AscIcon;
                           return <Icon size={14} />;
                         })()}
                       </Group>
                     }
                   >
-                    {sortByDisplays[viewOptions.layout.sort].asc}
+                    {t(SORT_BY_DISPLAYS[viewOptions.layout.sort].asc)}
                   </Menu.Item>
                   <Menu.Item
                     aria-selected={viewOptions.layout.desc}
@@ -1139,13 +1140,13 @@ function Filters({
                         )}
                         {(() => {
                           const Icon =
-                            sortByDisplays[viewOptions.layout.sort].DescIcon;
+                            SORT_BY_DISPLAYS[viewOptions.layout.sort].DescIcon;
                           return <Icon size={14} />;
                         })()}
                       </Group>
                     }
                   >
-                    {sortByDisplays[viewOptions.layout.sort].desc}
+                    {t(SORT_BY_DISPLAYS[viewOptions.layout.sort].desc)}
                   </Menu.Item>
                 </>
               ) : (
@@ -1353,7 +1354,7 @@ function Filters({
               }}
               label={
                 <>
-                  {continentStrings[code]}{" "}
+                  {t(CONTINENT_NAMES[code])}{" "}
                   <Text span size="xs" c="dimmed">
                     {continentCount[code] ?? 0}
                   </Text>
