@@ -331,6 +331,7 @@ function Footer() {
       label:
         new Intl.DisplayNames(locale, {
           type: "language",
+          languageDisplay: "standard",
         }).of(locale) ?? locale,
     }));
   }, []);
