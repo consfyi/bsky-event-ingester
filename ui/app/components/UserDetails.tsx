@@ -22,7 +22,7 @@ function Attending({ profile }: { profile: Profile }) {
     self == null ? profile.did : undefined
   );
 
-  const labels = queriedLabels ?? profile.labels!;
+  const labels = queriedLabels ?? profile.labels ?? [];
 
   const selfLabelsSet =
     self != null ? new Set(self.labels!.map((label) => label.val)) : null;
