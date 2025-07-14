@@ -8,7 +8,7 @@ import locales from "~/locales";
 
 const LOCALE_KEY = "fbl:locale";
 
-function getNegotiatedBrowserLocale(): Locale {
+function getRequestedLocales(): Locale[] {
   const requestedLocales: string[] = [];
 
   if (typeof window !== "undefined") {
@@ -22,13 +22,7 @@ function getNegotiatedBrowserLocale(): Locale {
   }
 
   requestedLocales.push(...navigator.languages);
-
-  const negotiatedLocale = match(
-    requestedLocales,
-    Object.keys(locales),
-    "en-US"
-  );
-  return negotiatedLocale;
+  return requestedLocales;
 }
 
 async function loadAndActivate(locale: string) {
@@ -37,7 +31,11 @@ async function loadAndActivate(locale: string) {
   window.localStorage.setItem(LOCALE_KEY, locale);
 }
 
-export const INITIAL_LOCALE = getNegotiatedBrowserLocale();
+export const INITIAL_LOCALE = match(
+  getRequestedLocales(),
+  Object.keys(locales),
+  "en-US"
+);
 
 const LinguiContext = createContext<{
   locale: string;
