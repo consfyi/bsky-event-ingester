@@ -206,10 +206,12 @@ export default function Calendar({
   events,
   firstDay,
   inYourTimeZone,
+  includeToday,
 }: {
   events: Event[];
   firstDay: Day;
   inYourTimeZone: boolean;
+  includeToday: boolean;
 }) {
   const { t, i18n } = useLingui();
 
@@ -291,8 +293,11 @@ export default function Calendar({
   );
 
   const startDate = useMemo(() => {
-    const d = min(map(events, (con) => new Date(con.start)))!;
-    return startOfDay(isBefore(now, d) ? now : d);
+    let d = min(map(events, (con) => new Date(con.start)))!;
+    if (includeToday) {
+      d = isBefore(now, d) ? now : d;
+    }
+    return startOfDay(d);
   }, [events, now]);
 
   const firstDayWeekday = getDay(startDate);

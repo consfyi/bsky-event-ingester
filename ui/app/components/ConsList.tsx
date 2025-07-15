@@ -1409,16 +1409,19 @@ function CalendarLayout({
   cons,
   inYourTimeZone,
   firstDayOfWeek,
+  includeToday,
 }: {
   cons: ConWithPost[];
   inYourTimeZone: boolean;
   firstDayOfWeek: Day;
+  includeToday: boolean;
 }) {
   return (
     <>
       <Calendar
         firstDay={firstDayOfWeek}
         inYourTimeZone={inYourTimeZone}
+        includeToday={includeToday}
         events={cons.map((con) => ({
           id: con.slug,
           label: (
@@ -1558,6 +1561,9 @@ export default function ConsList({
     );
   });
 
+  const compact =
+    viewOptions.filter.attending || viewOptions.filter.query != "";
+
   return (
     <>
       <Filters
@@ -1581,15 +1587,14 @@ export default function ConsList({
               cons={filteredCons}
               inYourTimeZone={viewOptions.layout.inYourTimeZone}
               firstDayOfWeek={firstDayOfWeek}
+              includeToday={!compact}
             />
           ) : (
             <ListLayout
               cons={filteredCons}
               sort={viewOptions.layout.sort}
               desc={viewOptions.layout.desc}
-              hideEmptyGroups={
-                viewOptions.filter.attending || viewOptions.filter.query != ""
-              }
+              hideEmptyGroups={compact}
             />
           )
         ) : (
