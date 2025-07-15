@@ -297,7 +297,7 @@ function Header() {
                             </Trans>
                           ) : null
                         }
-                        placeholder="https://your.pds.com"
+                        placeholder={t`https://your.pds.com`}
                         value={pdsHost}
                         onChange={(e) => {
                           setPdsHost(e.target.value);

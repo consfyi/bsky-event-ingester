@@ -296,68 +296,72 @@ msgstr "{0}"
 msgid "{0, plural, one {# con you aren’t going to} other {# cons you aren’t going to}}"
 msgstr "{0, plural, one {# con you aren’t going to} other {# cons you aren’t going to}}"
 
-#: app/root.tsx:159
+#: app/root.tsx:154
 msgid "Dark mode"
 msgstr "Dark mode"
 
-#: app/root.tsx:161
+#: app/root.tsx:156
 msgid "Light mode"
 msgstr "Light mode"
 
-#: app/root.tsx:231
+#: app/root.tsx:226
 msgid "Log out"
 msgstr "Log out"
 
 #. placeholder {0}: realPdsHost.replace(/^https?:\/\//, "")
-#: app/root.tsx:263
+#: app/root.tsx:258
 msgid "Log in via {0}"
 msgstr "Log in via {0}"
 
-#: app/root.tsx:267
+#: app/root.tsx:262
 msgid "Log in"
 msgstr "Log in"
 
-#: app/root.tsx:285
+#: app/root.tsx:280
 msgid "Log in via custom PDS"
 msgstr "Log in via custom PDS"
 
-#: app/root.tsx:293
+#: app/root.tsx:288
 msgid "Custom PDS"
 msgstr "Custom PDS"
 
-#: app/root.tsx:300
+#: app/root.tsx:295
 msgid "Couldn’t log in with this PDS. Is the URL correct?"
 msgstr "Couldn’t log in with this PDS. Is the URL correct?"
 
-#: app/root.tsx:346
+#: app/root.tsx:300
+msgid "https://your.pds.com"
+msgstr "https://your.pds.com"
+
+#: app/root.tsx:338
 msgid "All furry convention data courtesy of the volunteers at <0>FurryCons.com</0> – thank you! Convention missing? <1>Submit it here!</1>"
 msgstr "All furry convention data courtesy of the volunteers at <0>FurryCons.com</0> – thank you! Convention missing? <1>Submit it here!</1>"
 
-#: app/root.tsx:417
-#: app/root.tsx:423
+#: app/root.tsx:390
+#: app/root.tsx:396
 msgid "Not found"
 msgstr "Not found"
 
-#: app/root.tsx:426
+#: app/root.tsx:399
 msgid "The page you requested could not be found."
 msgstr "The page you requested could not be found."
 
-#: app/root.tsx:457
+#: app/root.tsx:430
 msgid "Welcome!"
 msgstr "Welcome!"
 
-#: app/root.tsx:463
+#: app/root.tsx:436
 msgid "<0>This the website for the <1><2/> @cons.furryli.st</1> service. For the full experience, please log in. You’ll be able to:</0><3><4>Tell people which cons you’re going to (you can also do this by liking the con post on Bluesky).</4><5>See who you follow is going to a con.</5></3><6><7>Note:</7> If you’re using a self-hosted PDS, you’ll need to use the dropdown next to the Log in button to specify it.</6><8>A huge thank you to <9>FurryCons.com</9> who provides all the data on conventions!</8>"
 msgstr "<0>This the website for the <1><2/> @cons.furryli.st</1> service. For the full experience, please log in. You’ll be able to:</0><3><4>Tell people which cons you’re going to (you can also do this by liking the con post on Bluesky).</4><5>See who you follow is going to a con.</5></3><6><7>Note:</7> If you’re using a self-hosted PDS, you’ll need to use the dropdown next to the Log in button to specify it.</6><8>A huge thank you to <9>FurryCons.com</9> who provides all the data on conventions!</8>"
 
-#: app/root.tsx:550
+#: app/root.tsx:523
 msgid "Not subscribed to labeler"
 msgstr "Not subscribed to labeler"
 
-#: app/root.tsx:554
+#: app/root.tsx:527
 msgid "You are currently not subscribed to the labeler. That means you won’t be able to see other people’s con labels on Bluesky."
 msgstr "You are currently not subscribed to the labeler. That means you won’t be able to see other people’s con labels on Bluesky."
 
-#: app/root.tsx:567
+#: app/root.tsx:540
 msgid "Fix this for me"
 msgstr "Fix this for me"
