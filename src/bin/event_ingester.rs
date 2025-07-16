@@ -490,9 +490,10 @@ async fn sync_labels(
                     if let Some(geocoded) = old_events
                         .get(&id)
                         .filter(|e| e.address == event.address)
-                        .and_then(|e| e.geocoded.clone())
+                        .and_then(|e| e.geocoded.as_ref())
+                        .filter(|g| g.timezone.is_none() || g.lat_lng.is_some())
                     {
-                        geocoded
+                        geocoded.clone()
                     } else {
                         if let Some(geocoding) = google_maps_client
                             .geocoding()
