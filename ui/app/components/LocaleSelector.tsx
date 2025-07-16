@@ -7,7 +7,7 @@ import { useLinguiContext } from "./LinguiProvider";
 
 export default function LocaleSelector() {
   const { i18n } = useLingui();
-  const { setLocale, pending: localePending } = useLinguiContext();
+  const { setLocale, pending } = useLinguiContext();
 
   const items = useMemo(() => {
     return Object.keys(LOCALES).map((locale) => ({
@@ -27,7 +27,7 @@ export default function LocaleSelector() {
       size="xs"
       mb="sm"
       value={i18n.locale}
-      disabled={localePending}
+      disabled={pending}
       onChange={(value) => {
         if (value == null) {
           return;
