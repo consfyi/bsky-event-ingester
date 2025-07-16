@@ -174,7 +174,7 @@ export function Title({ con }: { con: ConWithPost }) {
       ) : null}
       <MantineTitle size="h4" fw={500}>
         <Flag country={con.country} size={14} me={6} /> {con.name}{" "}
-        <Tooltip label={<Trans>View Bluesky Post</Trans>} position="bottom">
+        <Tooltip label={<Trans>View Bluesky Post</Trans>}>
           <Anchor
             href={`https://bsky.app/profile/${LABELER_DID}/post/${con.postRkey}`}
             target="_blank"
