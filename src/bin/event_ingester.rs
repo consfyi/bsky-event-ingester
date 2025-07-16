@@ -23,7 +23,7 @@ struct Config {
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct Geocoded {
-    lat_lng: Option<[f64; 2]>,
+    lat_lng: Option<[String; 2]>,
     timezone: Option<chrono_tz::Tz>,
 }
 
@@ -514,7 +514,7 @@ async fn sync_labels(
                                 .and_then(|v| chrono_tz::Tz::from_str(&v).ok());
 
                             Geocoded {
-                                lat_lng: Some([lat, lng]),
+                                lat_lng: Some([lat.to_string(), lng.to_string()]),
                                 timezone: tz,
                             }
                         } else {

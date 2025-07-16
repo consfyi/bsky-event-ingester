@@ -93,7 +93,7 @@ function useConPosts() {
 }
 
 export interface Geocoded {
-  latLng: [number, number] | null;
+  latLng: [string, string] | null;
   timezone: string | null;
 }
 
