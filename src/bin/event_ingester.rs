@@ -23,6 +23,7 @@ struct Config {
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct Geocoded {
+    lat_lng: Option<[f64; 2]>,
     timezone: Option<chrono_tz::Tz>,
 }
 
@@ -489,12 +490,10 @@ async fn sync_labels(
                     if let Some(geocoded) = old_events
                         .get(&id)
                         .filter(|e| e.address == event.address)
-                        .and_then(|e| e.geocoded.as_ref())
+                        .and_then(|e| e.geocoded.clone())
                     {
-                        // Already have geocoding data, ignore.
-                        geocoded.clone()
+                        geocoded
                     } else {
-                        // Need to geocode and get timezone from Google Maps.
                         if let Some(geocoding) = google_maps_client
                             .geocoding()
                             .with_address(&event.address)
@@ -504,18 +503,24 @@ async fn sync_labels(
                             .into_iter()
                             .next()
                         {
-                            let tz = geotz::lookup([
-                                geocoding.geometry.location.lng.to_f64().unwrap(),
-                                geocoding.geometry.location.lat.to_f64().unwrap(),
-                            ])
-                            .ok()
-                            .map(|v| v.into_iter().next())
-                            .flatten()
-                            .and_then(|v| chrono_tz::Tz::from_str(&v).ok());
+                            let lat = geocoding.geometry.location.lat.to_f64().unwrap();
+                            let lng = geocoding.geometry.location.lng.to_f64().unwrap();
 
-                            Geocoded { timezone: tz }
+                            let tz = geotz::lookup([lng, lat])
+                                .ok()
+                                .map(|v| v.into_iter().next())
+                                .flatten()
+                                .and_then(|v| chrono_tz::Tz::from_str(&v).ok());
+
+                            Geocoded {
+                                lat_lng: Some([lat, lng]),
+                                timezone: tz,
+                            }
                         } else {
-                            Geocoded { timezone: None }
+                            Geocoded {
+                                lat_lng: None,
+                                timezone: None,
+                            }
                         }
                     },
                 );
