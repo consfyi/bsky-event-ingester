@@ -1,3 +1,4 @@
+import { MessageDescriptor } from "@lingui/core";
 import { msg, plural } from "@lingui/core/macro";
 import { Plural, Trans, useLingui } from "@lingui/react/macro";
 import {
@@ -33,6 +34,7 @@ import {
   IconChevronDown,
   IconHeartFilled,
   IconList,
+  IconMap,
   IconMapPin,
   IconMinus,
   IconSearch,
@@ -68,7 +70,8 @@ import {
   sorted,
   toArray,
 } from "iter-fns";
-import { Fragment, Suspense, useMemo, useState } from "react";
+import "leaflet/dist/leaflet.css";
+import { Fragment, lazy, Suspense, useMemo, useState } from "react";
 import { Link } from "react-router";
 import regexpEscape from "regexp.escape";
 import { z } from "zod/v4-mini";
@@ -85,9 +88,7 @@ import {
   useNow,
 } from "~/hooks";
 import removeDiacritics from "~/removeDiacritics";
-import Calendar from "./Calendar";
 import classes from "./ConsList.module.css";
-import { MessageDescriptor } from "@lingui/core";
 
 const MAX_AVATARS_IN_STACK = 3;
 
@@ -561,9 +562,15 @@ export const CalendarLayoutOptions = z.object({
 });
 export type CalendarLayoutOptions = z.infer<typeof CalendarLayoutOptions>;
 
+export const MapLayoutOptions = z.object({
+  type: z._default(z.literal("map"), "map"),
+});
+export type MapLayoutOptions = z.infer<typeof MapLayoutOptions>;
+
 export const LayoutOptions = z.union([
   ListLayoutOptions,
   CalendarLayoutOptions,
+  MapLayoutOptions,
 ]);
 export type LayoutOptions = z.infer<typeof LayoutOptions>;
 
@@ -1012,7 +1019,7 @@ function Filters({
                 color="var(--mantine-color-dimmed)"
                 style={{ zIndex: 4, flexShrink: 0 }}
                 leftSection={
-                  viewOptions.layout.type != "calendar"
+                  viewOptions.layout.type == "list"
                     ? (() => {
                         const currentSortByDisplay =
                           SORT_BY_DISPLAYS[viewOptions.layout.sort];
@@ -1032,7 +1039,7 @@ function Filters({
                 }
                 rightSection={<IconChevronDown size={14} />}
               >
-                {viewOptions.layout.type != "calendar" ? (
+                {viewOptions.layout.type == "list" ? (
                   t(SORT_BY_DISPLAYS[viewOptions.layout.sort].name)
                 ) : (
                   <IconSettings size={14} />
@@ -1041,7 +1048,7 @@ function Filters({
             </Menu.Target>
 
             <Menu.Dropdown>
-              {viewOptions.layout.type != "calendar" ? (
+              {viewOptions.layout.type == "list" ? (
                 <>
                   <Menu.Label>
                     <Trans>Sort by</Trans>
@@ -1149,7 +1156,7 @@ function Filters({
                     {t(SORT_BY_DISPLAYS[viewOptions.layout.sort].desc)}
                   </Menu.Item>
                 </>
-              ) : (
+              ) : viewOptions.layout.type == "calendar" ? (
                 <>
                   <Menu.Label>
                     <Trans>Week starts on</Trans>
@@ -1217,7 +1224,7 @@ function Filters({
                     <Trans>Yours</Trans>
                   </Menu.Item>
                 </>
-              )}
+              ) : null}
             </Menu.Dropdown>
           </Menu>
           <SegmentedControl
@@ -1225,12 +1232,20 @@ function Filters({
               setViewOptions((vo) => ({
                 ...vo,
                 layout:
-                  value != "calendar"
-                    ? ListLayoutOptions.parse({})
-                    : CalendarLayoutOptions.parse({}),
+                  value == "calendar"
+                    ? CalendarLayoutOptions.parse({})
+                    : value == "map"
+                    ? MapLayoutOptions.parse({})
+                    : ListLayoutOptions.parse({}),
               }));
             }}
-            value={viewOptions.layout.type != "calendar" ? "list" : "calendar"}
+            value={
+              viewOptions.layout.type == "calendar"
+                ? "calendar"
+                : viewOptions.layout.type == "map"
+                ? "map"
+                : "list"
+            }
             data={[
               {
                 value: "list",
@@ -1254,6 +1269,17 @@ function Filters({
                   </Center>
                 ),
               },
+              // {
+              //   value: "map",
+              //   label: (
+              //     <Center style={{ gap: 6 }}>
+              //       <IconMap size={14} />
+              //       <Text span size="xs" visibleFrom="lg">
+              //         <Trans>Map</Trans>
+              //       </Text>
+              //     </Center>
+              //   ),
+              // },
             ]}
             size="xs"
           />
@@ -1405,6 +1431,8 @@ function Filters({
   );
 }
 
+const Calendar = lazy(() => import("./Calendar"));
+
 function CalendarLayout({
   cons,
   inYourTimeZone,
@@ -1473,6 +1501,12 @@ function ListLayout({
   ) : sort == "date" ? (
     <ConsByDate cons={cons} sortDesc={desc} hideEmptyGroups={hideEmptyGroups} />
   ) : null;
+}
+
+const Map = lazy(() => import("./Map"));
+
+function MapLayout({ cons }: { cons: ConWithPost[] }) {
+  return <Map cons={cons} />;
 }
 
 const FirstDayOfWeek = z.literal([0, 1, 6]);
@@ -1589,6 +1623,8 @@ export default function ConsList({
               firstDayOfWeek={firstDayOfWeek}
               includeToday={!compact}
             />
+          ) : viewOptions.layout.type == "map" ? (
+            <MapLayout cons={filteredCons} />
           ) : (
             <ListLayout
               cons={filteredCons}
