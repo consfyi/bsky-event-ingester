@@ -584,7 +584,7 @@ export type CalendarLayoutOptions = z.infer<typeof CalendarLayoutOptions>;
 
 export const MapLayoutOptions = z.object({
   type: z._default(z.literal("map"), "map"),
-  latLngZoom: z._default(
+  center: z._default(
     z.nullable(z.tuple([z.number(), z.number(), z.number()])),
     null
   ),
@@ -1710,11 +1710,11 @@ export default function ConsList({
           ) : viewOptions.layout.type == "map" ? (
             <MapLayout
               cons={filteredCons}
-              initialLatLngZoom={viewOptions.layout.latLngZoom}
+              initialLatLngZoom={viewOptions.layout.center}
               setLatLngZoom={(latLngZoom) => {
                 setViewOptions((vo) => ({
                   ...vo,
-                  layout: { ...vo.layout, latLngZoom },
+                  layout: { ...vo.layout, center: latLngZoom },
                 }));
               }}
             />
