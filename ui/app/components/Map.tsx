@@ -5,6 +5,7 @@ import { layers, namedFlavor } from "@protomaps/basemaps";
 import { IconMapPinFilled } from "@tabler/icons-react";
 import {
   AttributionControl,
+  GeolocateControl,
   Map as Maplibre,
   Marker,
   MarkerEvent,
@@ -153,7 +154,7 @@ export default function Map({ cons }: { cons: ConWithPost[] }) {
         initialViewState={{
           latitude: 0,
           longitude: 0,
-          zoom: 2,
+          zoom: 0,
         }}
         attributionControl={false}
         mapStyle={style}
