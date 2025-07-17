@@ -5,6 +5,7 @@ import { IconMapPinFilled } from "@tabler/icons-react";
 import {
   AttributionControl,
   Map as Maplibre,
+  MapRef,
   Marker,
   MarkerEvent,
   Popup,
@@ -13,7 +14,7 @@ import { getDay } from "date-fns";
 import maplibregl, { StyleSpecification } from "maplibre-gl";
 import "maplibre-theme/icons.default.css";
 import "maplibre-theme/modern.css";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { ConWithPost, hookifyPromise } from "~/hooks";
 import { ConRow } from "./ConsList";
 import classes from "./Map.module.css";
@@ -187,6 +188,16 @@ export default function Map({
   return (
     <Box className={`${colorScheme} ${classes.map}`} style={{ height: "100%" }}>
       <Maplibre
+        ref={(ref) => {
+          if (ref == null) {
+            return;
+          }
+          const map = ref.getMap();
+          map.dragRotate.disable();
+          map.touchPitch.disable();
+          map.touchZoomRotate.disableRotation();
+          map.keyboard.disableRotation();
+        }}
         mapLib={maplibregl}
         onMoveEnd={(e) => {
           setLatLngZoom([
