@@ -313,11 +313,16 @@ export function useIsLoggedIn() {
 export function useNow(interval: number = Infinity) {
   const [now, setNow] = useState(() => new Date());
   useEffect(() => {
-    const handle = setInterval(() => {
-      setNow(new Date());
-    }, interval);
+    const handle =
+      interval != Infinity
+        ? setInterval(() => {
+            setNow(new Date());
+          }, interval)
+        : null;
     return () => {
-      clearInterval(handle);
+      if (handle != null) {
+        clearInterval(handle);
+      }
     };
   }, [interval, setNow]);
   return now;
