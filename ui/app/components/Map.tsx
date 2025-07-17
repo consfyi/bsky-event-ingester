@@ -188,7 +188,7 @@ export default function Map({
     <Box className={`${colorScheme} ${classes.map}`} style={{ height: "100%" }}>
       <Maplibre
         mapLib={maplibregl}
-        onMove={(e) => {
+        onMoveEnd={(e) => {
           setLatLngZoom([
             e.viewState.latitude,
             e.viewState.longitude,
