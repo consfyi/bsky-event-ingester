@@ -133,19 +133,15 @@ function Pin({
   );
 }
 
-async function getMyLocation(
-  signal?: AbortSignal
-): Promise<{ latitude: number; longitude: number }> {
+async function getMyLocation(signal?: AbortSignal): Promise<[number, number]> {
   const resp = await fetch("https://free.freeipapi.com/api/json", {
     signal,
   });
   if (!resp.ok) {
     throw resp;
   }
-  return (await resp.json()) as {
-    latitude: number;
-    longitude: number;
-  };
+  const { latitude, longitude } = await resp.json();
+  return [latitude, longitude];
 }
 
 const useMyLocation = hookifyPromise(
@@ -155,22 +151,33 @@ const useMyLocation = hookifyPromise(
       ctrl.abort();
     }, 1000);
     try {
-      return { ok: true, latLon: await getMyLocation(ctrl.signal) };
+      return await getMyLocation(ctrl.signal);
     } catch {
-      return { ok: false };
+      return null;
     }
   })()
 );
 
-export default function Map({ cons }: { cons: ConWithPost[] }) {
+export default function Map({
+  cons,
+  initialLatLngZoom,
+  setLatLngZoom,
+}: {
+  cons: ConWithPost[];
+  initialLatLngZoom: [number, number, number] | null;
+  setLatLngZoom(latLngZoom: [number, number, number]): void;
+}) {
   const colorScheme = useComputedColorScheme();
   const { i18n, t } = useLingui();
   const [selected, setSelected] = useState<string | null>();
 
-  const r = useMyLocation();
-  const { latitude, longitude, zoom } = r.ok
-    ? { ...r.latLon, zoom: 3 }
-    : { latitude: 0, longitude: 0, zoom: 0 };
+  const latLon = useMyLocation();
+  const [latitude, longitude, zoom] =
+    initialLatLngZoom != null
+      ? initialLatLngZoom
+      : latLon != null
+      ? [...latLon, 3]
+      : [0, 0, 0];
 
   const style = useMemo(
     () => makeStyle({ colorScheme, locale: i18n.locale }),
@@ -181,6 +188,13 @@ export default function Map({ cons }: { cons: ConWithPost[] }) {
     <Box className={`${colorScheme} ${classes.map}`} style={{ height: "100%" }}>
       <Maplibre
         mapLib={maplibregl}
+        onMove={(e) => {
+          setLatLngZoom([
+            e.viewState.latitude,
+            e.viewState.longitude,
+            e.viewState.zoom,
+          ]);
+        }}
         onClick={() => {
           setSelected(null);
         }}

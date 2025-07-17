@@ -584,6 +584,10 @@ export type CalendarLayoutOptions = z.infer<typeof CalendarLayoutOptions>;
 
 export const MapLayoutOptions = z.object({
   type: z._default(z.literal("map"), "map"),
+  latLngZoom: z._default(
+    z.nullable(z.tuple([z.number(), z.number(), z.number()])),
+    null
+  ),
 });
 export type MapLayoutOptions = z.infer<typeof MapLayoutOptions>;
 
@@ -1544,7 +1548,16 @@ function ListLayout({
 
 const Map = lazy(() => import("./Map"));
 
-function MapLayout({ cons }: { cons: ConWithPost[] }) {
+function MapLayout({
+  cons,
+  initialLatLngZoom,
+  setLatLngZoom,
+}: {
+  cons: ConWithPost[];
+  initialLatLngZoom: [number, number, number] | null;
+  setLatLngZoom(latLngZoom: [number, number, number]): void;
+}) {
+  const [latLngZoom] = useState(initialLatLngZoom);
   return (
     <Box h="100dvh" mt={-50}>
       <Suspense
@@ -1554,7 +1567,11 @@ function MapLayout({ cons }: { cons: ConWithPost[] }) {
           </Center>
         }
       >
-        <Map cons={cons} />
+        <Map
+          cons={cons}
+          initialLatLngZoom={latLngZoom}
+          setLatLngZoom={setLatLngZoom}
+        />
       </Suspense>
     </Box>
   );
@@ -1691,7 +1708,16 @@ export default function ConsList({
               includeToday={!compact}
             />
           ) : viewOptions.layout.type == "map" ? (
-            <MapLayout cons={filteredCons} />
+            <MapLayout
+              cons={filteredCons}
+              initialLatLngZoom={viewOptions.layout.latLngZoom}
+              setLatLngZoom={(latLngZoom) => {
+                setViewOptions((vo) => ({
+                  ...vo,
+                  layout: { ...vo.layout, latLngZoom },
+                }));
+              }}
+            />
           ) : (
             <ListLayout
               cons={filteredCons}
