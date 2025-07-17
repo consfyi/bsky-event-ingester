@@ -15,7 +15,6 @@ export default function LocaleSelector() {
       label:
         new Intl.DisplayNames(locale, {
           type: "language",
-          languageDisplay: "standard",
         }).of(locale) ?? locale,
     }));
   }, []);
