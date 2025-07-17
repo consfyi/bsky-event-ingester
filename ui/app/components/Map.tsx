@@ -6,8 +6,9 @@ import "maplibre-theme/icons.default.css";
 import "maplibre-theme/modern.css";
 import { useState } from "react";
 import { ConWithPost } from "~/hooks";
-import ConDetails from "./ConDetails";
 import { ConRow } from "./ConsList";
+import lightStyle from "./Map/styles/light.json?url";
+import darkStyle from "./Map/styles/dark.json?url";
 
 function Pin({
   con,
@@ -85,11 +86,7 @@ export default function Map({ cons }: { cons: ConWithPost[] }) {
           setSelected(null);
         }}
         className={colorScheme}
-        mapStyle={
-          colorScheme == "dark"
-            ? "https://tiles.stadiamaps.com/styles/alidade_smooth_dark.json"
-            : "https://tiles.stadiamaps.com/styles/alidade_smooth.json"
-        }
+        mapStyle={colorScheme == "light" ? lightStyle : darkStyle}
         initialCenter={[0, 0]}
         initialZoom={1}
         style={{ height: "800px" }}
