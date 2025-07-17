@@ -1,9 +1,13 @@
 import { useLingui } from "@lingui/react/macro";
-import { useComputedColorScheme, useMantineTheme } from "@mantine/core";
+import { Box, useComputedColorScheme, useMantineTheme } from "@mantine/core";
 import { IconMapPinFilled } from "@tabler/icons-react";
+import {
+  Map as Maplibre,
+  Marker,
+  MarkerEvent,
+  Popup,
+} from "@vis.gl/react-maplibre";
 import { getDay } from "date-fns";
-import { partition } from "iter-fns";
-import { RMap, RMarker, RPopup } from "maplibre-react-components";
 import "maplibre-theme/icons.default.css";
 import "maplibre-theme/modern.css";
 import { useMemo, useState } from "react";
@@ -19,7 +23,7 @@ function Pin({
 }: {
   con: ConWithPost;
   showPopup: boolean;
-  onClick?(e: MouseEvent): void;
+  onClick?(e: MarkerEvent<MouseEvent>): void;
   zIndex: number;
 }) {
   const theme = useMantineTheme();
@@ -53,7 +57,12 @@ function Pin({
 
   return (
     <>
-      <RMarker latitude={lat} longitude={lng} onClick={onClick}>
+      <Marker
+        latitude={lat}
+        longitude={lng}
+        onClick={onClick}
+        style={{ zIndex }}
+      >
         <IconMapPinFilled
           size={32}
           color={
@@ -64,12 +73,11 @@ function Pin({
           style={{
             stroke: colors.color,
             marginTop: "-100%",
-            zIndex,
           }}
         />
-      </RMarker>
+      </Marker>
       {showPopup ? (
-        <RPopup latitude={lat} longitude={lng} offset={[0, -14]}>
+        <Popup latitude={lat} longitude={lng} offset={[0, -14]}>
           <ConRow
             con={con}
             showMonthInIcon
@@ -80,7 +88,7 @@ function Pin({
             showBigIcon={false}
             showDuration={false}
           />
-        </RPopup>
+        </Popup>
       ) : null}
     </>
   );
@@ -97,30 +105,34 @@ export default function Map({ cons }: { cons: ConWithPost[] }) {
   );
 
   return (
-    <RMap
-      onClick={() => {
-        setSelected(null);
-      }}
-      className={colorScheme}
-      mapStyle={style}
-      initialCenter={[0, 0]}
-      initialZoom={2}
-      style={{ height: "100%" }}
-    >
-      {cons.map((con) => (
-        <Pin
-          zIndex={
-            con.post.viewer != null && con.post.viewer.like != null ? 1 : 0
-          }
-          key={con.slug}
-          con={con}
-          showPopup={con.slug == selected}
-          onClick={(e) => {
-            e.stopPropagation();
-            setSelected(con.slug);
-          }}
-        />
-      ))}
-    </RMap>
+    <Box className={colorScheme} style={{ height: "100%" }}>
+      <Maplibre
+        onClick={() => {
+          setSelected(null);
+        }}
+        initialViewState={{
+          latitude: 0,
+          longitude: 0,
+          zoom: 2,
+        }}
+        mapStyle={style}
+        style={{ height: "100%" }}
+      >
+        {cons.map((con) => (
+          <Pin
+            key={con.slug}
+            con={con}
+            showPopup={con.slug == selected}
+            onClick={(e) => {
+              e.originalEvent.stopPropagation();
+              setSelected(con.slug);
+            }}
+            zIndex={
+              con.post.viewer != null && con.post.viewer.like != null ? 1 : 0
+            }
+          />
+        ))}
+      </Maplibre>
+    </Box>
   );
 }

@@ -1547,7 +1547,15 @@ const Map = lazy(() => import("./Map"));
 function MapLayout({ cons }: { cons: ConWithPost[] }) {
   return (
     <Box h="calc(100dvh - 50px)">
-      <Map cons={cons} />
+      <Suspense
+        fallback={
+          <Center p="lg" pt={50}>
+            <Loader />
+          </Center>
+        }
+      >
+        <Map cons={cons} />
+      </Suspense>
     </Box>
   );
 }
