@@ -41,7 +41,7 @@ export default function Index() {
     setViewOptions((vo) => ({
       ...vo,
       sort:
-        vo.layout.type != "calendar"
+        vo.layout.type == "list"
           ? {
               ...vo.layout,
               sort: vo.layout.sort == "followed" ? "attendees" : vo.layout.sort,

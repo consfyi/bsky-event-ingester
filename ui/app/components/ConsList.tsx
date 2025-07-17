@@ -9,6 +9,7 @@ import {
   Center,
   Checkbox,
   CloseButton,
+  Container,
   Divider,
   Drawer,
   Group,
@@ -1475,7 +1476,7 @@ function CalendarLayout({
   includeToday: boolean;
 }) {
   return (
-    <>
+    <Container size="lg" px={0}>
       <Calendar
         firstDay={firstDayOfWeek}
         inYourTimeZone={inYourTimeZone}
@@ -1507,7 +1508,7 @@ function CalendarLayout({
           end: con.end,
         }))}
       />
-    </>
+    </Container>
   );
 }
 
@@ -1522,15 +1523,23 @@ function ListLayout({
   desc: boolean;
   hideEmptyGroups: boolean;
 }) {
-  return sort == "attendees" ? (
-    <ConsByAttendees cons={cons} sortDesc={desc} />
-  ) : sort == "followed" ? (
-    <ConsByFollowed cons={cons} sortDesc={desc} />
-  ) : sort == "name" ? (
-    <ConsByName cons={cons} sortDesc={desc} />
-  ) : sort == "date" ? (
-    <ConsByDate cons={cons} sortDesc={desc} hideEmptyGroups={hideEmptyGroups} />
-  ) : null;
+  return (
+    <Container size="lg" px={0}>
+      {sort == "attendees" ? (
+        <ConsByAttendees cons={cons} sortDesc={desc} />
+      ) : sort == "followed" ? (
+        <ConsByFollowed cons={cons} sortDesc={desc} />
+      ) : sort == "name" ? (
+        <ConsByName cons={cons} sortDesc={desc} />
+      ) : sort == "date" ? (
+        <ConsByDate
+          cons={cons}
+          sortDesc={desc}
+          hideEmptyGroups={hideEmptyGroups}
+        />
+      ) : null}
+    </Container>
+  );
 }
 
 const Map = lazy(() => import("./Map"));
@@ -1630,13 +1639,15 @@ export default function ConsList({
 
   return (
     <>
-      <Filters
-        cons={cons}
-        viewOptions={viewOptions}
-        setViewOptions={setViewOptions}
-        firstDayOfWeek={firstDayOfWeek}
-        setFirstDayOfWeek={setFirstDayOfWeek}
-      />
+      <Container size="lg" px={0}>
+        <Filters
+          cons={cons}
+          viewOptions={viewOptions}
+          setViewOptions={setViewOptions}
+          firstDayOfWeek={firstDayOfWeek}
+          setFirstDayOfWeek={setFirstDayOfWeek}
+        />
+      </Container>
 
       <Suspense
         fallback={

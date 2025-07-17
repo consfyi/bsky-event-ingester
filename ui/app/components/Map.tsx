@@ -86,31 +86,29 @@ export default function Map({ cons }: { cons: ConWithPost[] }) {
   );
 
   return (
-    <Box px={{ base: 0, lg: "xs" }}>
-      <RMap
-        onClick={() => {
-          setSelected(null);
-        }}
-        className={colorScheme}
-        mapStyle={style}
-        initialCenter={[0, 0]}
-        initialZoom={1}
-        style={{ height: "800px" }}
-      >
-        {cons.map((con) => {
-          return (
-            <Pin
-              key={con.slug}
-              con={con}
-              showPopup={con.slug == selected}
-              onClick={(e) => {
-                e.stopPropagation();
-                setSelected(con.slug);
-              }}
-            />
-          );
-        })}
-      </RMap>
-    </Box>
+    <RMap
+      onClick={() => {
+        setSelected(null);
+      }}
+      className={colorScheme}
+      mapStyle={style}
+      initialCenter={[0, 0]}
+      initialZoom={1}
+      style={{ height: "800px" }}
+    >
+      {cons.map((con) => {
+        return (
+          <Pin
+            key={con.slug}
+            con={con}
+            showPopup={con.slug == selected}
+            onClick={(e) => {
+              e.stopPropagation();
+              setSelected(con.slug);
+            }}
+          />
+        );
+      })}
+    </RMap>
   );
 }

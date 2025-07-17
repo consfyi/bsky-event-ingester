@@ -1,5 +1,5 @@
+import { Container } from "@mantine/core";
 import type { ActorIdentifier } from "@atcute/lexicons";
-import { Box } from "@mantine/core";
 import { useEffect } from "react";
 import { useParams } from "react-router";
 import UserDetails from "~/components/UserDetails";
@@ -27,8 +27,8 @@ export default function Index() {
   }
 
   return (
-    <Box p="sm">
+    <Container size="lg" p="sm">
       <UserDetails profile={profile} />
-    </Box>
+    </Container>
   );
 }

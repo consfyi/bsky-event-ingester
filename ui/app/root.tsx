@@ -391,14 +391,16 @@ export function ErrorBoundary() {
   }, [t]);
 
   return (
-    <Box p={50} ta="center">
-      <Text size="xl" fw={500} mb="sm">
-        <Trans>Not found</Trans>
-      </Text>
-      <Text>
-        <Trans>The page you requested could not be found.</Trans>
-      </Text>
-    </Box>
+    <Container size="lg" p={0}>
+      <Box p={50} ta="center">
+        <Text size="xl" fw={500} mb="sm">
+          <Trans>Not found</Trans>
+        </Text>
+        <Text>
+          <Trans>The page you requested could not be found.</Trans>
+        </Text>
+      </Box>
+    </Container>
   );
 }
 
@@ -602,16 +604,16 @@ export function Layout({ children }: { children: React.ReactNode }) {
                       <Header />
                       <Container size="lg" px={0}>
                         <Alerts />
-                        <Suspense
-                          fallback={
-                            <Center p="lg">
-                              <Loader />
-                            </Center>
-                          }
-                        >
-                          {children}
-                        </Suspense>
                       </Container>
+                      <Suspense
+                        fallback={
+                          <Center p="lg">
+                            <Loader />
+                          </Center>
+                        }
+                      >
+                        {children}
+                      </Suspense>
                       <Footer />
                     </LinguiProvider>
                   </Suspense>

@@ -1,4 +1,4 @@
-import { Box } from "@mantine/core";
+import { Box, Container } from "@mantine/core";
 import { useEffect } from "react";
 import { useParams } from "react-router";
 import ConDetails from "~/components/ConDetails";
@@ -32,8 +32,8 @@ export default function Index() {
   }
 
   return (
-    <Box p="sm">
+    <Container size="lg" p="sm">
       <ConDetails con={con} />
-    </Box>
+    </Container>
   );
 }
