@@ -80,7 +80,7 @@ export default function Map({ cons }: { cons: ConWithPost[] }) {
   const [selected, setSelected] = useState<string | null>();
 
   return (
-    <Box px="xs">
+    <Box px={{ base: 0, lg: "xs" }}>
       <RMap
         onClick={() => {
           setSelected(null);
