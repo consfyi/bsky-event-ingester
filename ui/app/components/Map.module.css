@@ -1,0 +1,39 @@
+.map {
+  --ml-c-bg-1: var(--mantine-color-default);
+  --ml-ctrl-border-radius: var(--mantine-radius-default);
+  --ml-shadow: none;
+  --ml-c-link-1: var(--mantine-color-dimmed);
+  --ml-c-link-2: var(--mantine-color-dimmed);
+
+  --popover-border-color: var(--mantine-color-gray-2);
+}
+
+.map:global(.dark) {
+  --popover-border-color: var(--mantine-color-dark-4);
+}
+
+.map :global(.maplibregl-ctrl-attrib) a {
+  text-decoration: initial;
+}
+
+.map :global(.maplibregl-ctrl-attrib) a:hover {
+  text-decoration: underline;
+}
+
+.map :global(.maplibregl-popup-content) {
+  border: 1px solid var(--popover-border-color);
+}
+
+.map :global(.maplibregl-popup-tip) {
+  border: 1px solid var(--popover-border-color);
+  width: 7px;
+  height: 7px;
+  bottom: -2px;
+  background-color: var(--mantine-color-default);
+  transform: rotate(225deg);
+  position: absolute;
+  border-top-left-radius: 0px;
+  border-bottom-color: transparent;
+  border-right-color: transparent;
+  clip-path: polygon(0px 100%, 0px 0px, 100% 0px);
+}

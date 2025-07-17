@@ -16,6 +16,7 @@ import "maplibre-theme/modern.css";
 import { useMemo, useState } from "react";
 import { ConWithPost } from "~/hooks";
 import { ConRow } from "./ConsList";
+import classes from "./Map.module.css";
 
 const API_KEY = "a4d6fb59d9d6e179";
 
@@ -143,7 +144,7 @@ export default function Map({ cons }: { cons: ConWithPost[] }) {
   );
 
   return (
-    <Box className={colorScheme} style={{ height: "100%" }}>
+    <Box className={`${colorScheme} ${classes.map}`} style={{ height: "100%" }}>
       <Maplibre
         mapLib={maplibregl}
         onClick={() => {
@@ -159,12 +160,6 @@ export default function Map({ cons }: { cons: ConWithPost[] }) {
         style={{
           height: "100%",
           zIndex: 0,
-          ...{
-            "--ml-c-bg-1": "var(--mantine-color-default)",
-            "--ml-ctrl-border-radius": "var(--mantine-radius-default)",
-            "--ml-shadow": "none",
-            "--ml-c-link-1": "var(--mantine-color-dimmed)",
-          },
         }}
       >
         <AttributionControl
