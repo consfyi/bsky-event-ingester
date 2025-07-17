@@ -1,6 +1,5 @@
 import { useLingui } from "@lingui/react/macro";
 import { Box, useComputedColorScheme, useMantineTheme } from "@mantine/core";
-import { StyleSpecification } from "@maplibre/maplibre-gl-style-spec";
 import { layers, namedFlavor } from "@protomaps/basemaps";
 import { IconMapPinFilled } from "@tabler/icons-react";
 import {
@@ -11,7 +10,7 @@ import {
   Popup,
 } from "@vis.gl/react-maplibre";
 import { getDay } from "date-fns";
-import maplibregl from "maplibre-gl";
+import maplibregl, { StyleSpecification } from "maplibre-gl";
 import "maplibre-theme/icons.default.css";
 import "maplibre-theme/modern.css";
 import { useMemo, useState } from "react";
