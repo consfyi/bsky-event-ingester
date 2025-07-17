@@ -115,7 +115,7 @@ function Pin({
           maxWidth="none"
           latitude={lat}
           longitude={lng}
-          offset={[0, -14]}
+          offset={[0, -12]}
           style={{ zIndex: 100 }}
         >
           <ConRow
