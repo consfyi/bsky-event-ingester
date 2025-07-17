@@ -15,10 +15,12 @@ function Pin({
   con,
   showPopup,
   onClick,
+  zIndex,
 }: {
   con: ConWithPost;
   showPopup: boolean;
   onClick?(e: MouseEvent): void;
+  zIndex: number;
 }) {
   const theme = useMantineTheme();
 
@@ -62,6 +64,7 @@ function Pin({
           style={{
             stroke: colors.color,
             marginTop: "-100%",
+            zIndex,
           }}
         />
       </RMarker>
@@ -93,14 +96,6 @@ export default function Map({ cons }: { cons: ConWithPost[] }) {
     [colorScheme, t]
   );
 
-  const sortedCons = useMemo(() => {
-    const [notAttendingCons, attendingCons] = partition(
-      cons,
-      (con) => con.post.viewer == null || con.post.viewer.like == null
-    );
-    return [...notAttendingCons, ...attendingCons];
-  }, [cons]);
-
   return (
     <RMap
       onClick={() => {
@@ -112,8 +107,11 @@ export default function Map({ cons }: { cons: ConWithPost[] }) {
       initialZoom={2}
       style={{ height: "100%" }}
     >
-      {sortedCons.map((con) => (
+      {cons.map((con) => (
         <Pin
+          zIndex={
+            con.post.viewer != null && con.post.viewer.like != null ? 1 : 0
+          }
           key={con.slug}
           con={con}
           showPopup={con.slug == selected}
