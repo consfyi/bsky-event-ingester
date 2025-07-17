@@ -794,7 +794,7 @@ function Filters({
                 : {
                     c: "dimmed",
                     color: "var(--mantine-color-dimmed)",
-                    variant: "outline",
+                    variant: "default",
                   })}
             >
               <Trans>Going only</Trans>

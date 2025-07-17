@@ -2,7 +2,7 @@ import { useLingui } from "@lingui/react/macro";
 import { useComputedColorScheme, useMantineTheme } from "@mantine/core";
 import { IconMapPinFilled } from "@tabler/icons-react";
 import { getDay } from "date-fns";
-import { compareMany, comparing, partition, sort } from "iter-fns";
+import { partition } from "iter-fns";
 import { RMap, RMarker, RPopup } from "maplibre-react-components";
 import "maplibre-theme/icons.default.css";
 import "maplibre-theme/modern.css";
