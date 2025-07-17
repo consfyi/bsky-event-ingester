@@ -789,7 +789,7 @@ function Filters({
               {...(attendingFiltered
                 ? {
                     color: "red",
-                    variant: "light",
+                    variant: "filled",
                   }
                 : {
                     c: "dimmed",
@@ -809,7 +809,7 @@ function Filters({
                 rightSection={<IconChevronDown size={14} />}
                 {...(continentsFiltered
                   ? {
-                      variant: "light",
+                      variant: "filled",
                     }
                   : {
                       c: "dimmed",
@@ -911,7 +911,7 @@ function Filters({
                 rightSection={<IconChevronDown size={14} />}
                 {...(durationFiltered
                   ? {
-                      variant: "light",
+                      variant: "filled",
                     }
                   : {
                       c: "dimmed",
@@ -1011,7 +1011,7 @@ function Filters({
               }}
               {...(followedFiltered
                 ? {
-                    variant: "light",
+                    variant: "filled",
                   }
                 : {
                     c: "dimmed",
