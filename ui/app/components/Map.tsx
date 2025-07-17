@@ -1,21 +1,25 @@
 import { useLingui } from "@lingui/react/macro";
-import { Box, useComputedColorScheme, useMantineTheme } from "@mantine/core";
+import {
+  Box,
+  Indicator,
+  useComputedColorScheme,
+  useMantineTheme,
+} from "@mantine/core";
 import { layers, namedFlavor } from "@protomaps/basemaps";
 import { IconMapPinFilled } from "@tabler/icons-react";
 import {
   AttributionControl,
   Map as Maplibre,
-  MapRef,
   Marker,
   MarkerEvent,
   Popup,
 } from "@vis.gl/react-maplibre";
-import { getDay } from "date-fns";
+import { getDay, isAfter } from "date-fns";
 import maplibregl, { StyleSpecification } from "maplibre-gl";
 import "maplibre-theme/icons.default.css";
 import "maplibre-theme/modern.css";
-import { useMemo, useRef, useState } from "react";
-import { ConWithPost, hookifyPromise } from "~/hooks";
+import { useMemo, useState } from "react";
+import { ConWithPost, hookifyPromise, useNow } from "~/hooks";
 import { ConRow } from "./ConsList";
 import classes from "./Map.module.css";
 
@@ -89,6 +93,9 @@ function Pin({
     variant,
   });
 
+  const now = useNow();
+  const active = isAfter(now, con.start) && !isAfter(now, con.end);
+
   return (
     <>
       <Marker
@@ -97,18 +104,30 @@ function Pin({
         onClick={onClick}
         style={{ zIndex }}
       >
-        <IconMapPinFilled
-          size={32}
-          color={
-            variant == "light"
-              ? `color-mix(in srgb, var(--mantine-color-${color}-filled), var(--mantine-color-body) 90%)`
-              : colors.background
-          }
-          style={{
-            stroke: colors.color,
-            marginTop: "-100%",
-          }}
-        />
+        <Box style={{ marginTop: "-100%" }}>
+          <Indicator
+            position="top-start"
+            color="green"
+            processing
+            size={12}
+            withBorder
+            disabled={!active}
+            zIndex={2}
+            offset={6}
+          >
+            <IconMapPinFilled
+              size={32}
+              color={
+                variant == "light"
+                  ? `color-mix(in srgb, var(--mantine-color-${color}-filled), var(--mantine-color-body) 90%)`
+                  : colors.background
+              }
+              style={{
+                stroke: colors.color,
+              }}
+            />
+          </Indicator>
+        </Box>
       </Marker>
       {showPopup ? (
         <Popup
