@@ -4,6 +4,7 @@ import { StyleSpecification } from "@maplibre/maplibre-gl-style-spec";
 import { layers, namedFlavor } from "@protomaps/basemaps";
 import { IconMapPinFilled } from "@tabler/icons-react";
 import {
+  AttributionControl,
   Map as Maplibre,
   Marker,
   MarkerEvent,
@@ -110,6 +111,7 @@ function Pin({
       </Marker>
       {showPopup ? (
         <Popup
+          maxWidth="none"
           latitude={lat}
           longitude={lng}
           offset={[0, -14]}
@@ -154,7 +156,15 @@ export default function Map({ cons }: { cons: ConWithPost[] }) {
           zoom: 2,
         }}
         mapStyle={style}
-        style={{ height: "100%", zIndex: 0 }}
+        style={{
+          height: "100%",
+          zIndex: 0,
+          ...{
+            "--ml-c-bg-1": "var(--mantine-color-default)",
+            "--ml-ctrl-border-radius": "var(--mantine-radius-default)",
+            "--ml-shadow": "none",
+          },
+        }}
       >
         {cons.map((con) => (
           <Pin
