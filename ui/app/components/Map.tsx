@@ -1,7 +1,8 @@
 import { useLingui } from "@lingui/react/macro";
-import { Box, useComputedColorScheme, useMantineTheme } from "@mantine/core";
+import { useComputedColorScheme, useMantineTheme } from "@mantine/core";
 import { IconMapPinFilled } from "@tabler/icons-react";
 import { getDay } from "date-fns";
+import { concat, map, partition, toArray } from "iter-fns";
 import { RMap, RMarker, RPopup } from "maplibre-react-components";
 import "maplibre-theme/icons.default.css";
 import "maplibre-theme/modern.css";
@@ -94,6 +95,11 @@ export default function Map({ cons }: { cons: ConWithPost[] }) {
     [colorScheme, t]
   );
 
+  const [notAttendingCons, attendingCons] = partition(
+    cons,
+    (con) => con.post.viewer == null || con.post.viewer.like == null
+  );
+
   return (
     <RMap
       onClick={() => {
@@ -105,19 +111,21 @@ export default function Map({ cons }: { cons: ConWithPost[] }) {
       initialZoom={2}
       style={{ height: "100%" }}
     >
-      {cons.map((con) => {
-        return (
-          <Pin
-            key={con.slug}
-            con={con}
-            showPopup={con.slug == selected}
-            onClick={(e) => {
-              e.stopPropagation();
-              setSelected(con.slug);
-            }}
-          />
-        );
-      })}
+      {toArray(
+        map(concat(notAttendingCons, attendingCons), (con) => {
+          return (
+            <Pin
+              key={con.slug}
+              con={con}
+              showPopup={con.slug == selected}
+              onClick={(e) => {
+                e.stopPropagation();
+                setSelected(con.slug);
+              }}
+            />
+          );
+        })
+      )}
     </RMap>
   );
 }
