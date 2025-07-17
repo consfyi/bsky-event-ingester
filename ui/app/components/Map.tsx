@@ -77,7 +77,12 @@ function Pin({
         />
       </Marker>
       {showPopup ? (
-        <Popup latitude={lat} longitude={lng} offset={[0, -14]}>
+        <Popup
+          latitude={lat}
+          longitude={lng}
+          offset={[0, -14]}
+          style={{ zIndex: 100 }}
+        >
           <ConRow
             con={con}
             showMonthInIcon
@@ -116,7 +121,7 @@ export default function Map({ cons }: { cons: ConWithPost[] }) {
           zoom: 2,
         }}
         mapStyle={style}
-        style={{ height: "100%" }}
+        style={{ height: "100%", zIndex: 0 }}
       >
         {cons.map((con) => (
           <Pin
