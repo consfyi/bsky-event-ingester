@@ -70,7 +70,6 @@ import {
   sorted,
   toArray,
 } from "iter-fns";
-import "leaflet/dist/leaflet.css";
 import { Fragment, lazy, Suspense, useMemo, useState } from "react";
 import { Link } from "react-router";
 import regexpEscape from "regexp.escape";
@@ -99,6 +98,8 @@ export function ConRow({
   showLocation,
   showFollowed,
   showLikeButton,
+  showBigIcon,
+  showDuration,
 }: {
   con: ConWithPost;
   showMonthInIcon: boolean;
@@ -106,6 +107,8 @@ export function ConRow({
   showLocation: boolean;
   showFollowed: boolean;
   showLikeButton: boolean;
+  showBigIcon: boolean;
+  showDuration: boolean;
 }) {
   const isAttending = con.post.viewer?.like != null;
   const { data: followedConAttendees } = useFollowedConAttendeesDLE();
@@ -144,6 +147,10 @@ export function ConRow({
 
   const now = useNow();
   const active = isAfter(now, con.start) && !isAfter(now, con.end);
+  const dateRange = dateTimeFormat.formatRange(
+    reinterpretAsLocalDate(con.start),
+    reinterpretAsLocalDate(subDays(con.end, 1))
+  );
 
   return (
     <Group gap="xs" wrap="nowrap">
@@ -157,32 +164,40 @@ export function ConRow({
           disabled={!active}
           zIndex={2}
         >
-          <ThemeIcon
-            size="xl"
-            variant="light"
-            color={
-              ["red", "orange", "yellow", "green", "blue", "indigo", "violet"][
-                getDay(reinterpretAsLocalDate(con.start))
-              ]
-            }
-          >
-            <Stack gap={0}>
-              <Text size="md" ta="center" fw={500}>
-                {showMonthInIcon
-                  ? i18n.date(reinterpretAsLocalDate(con.start), {
-                      month: "short",
-                    })
-                  : i18n.date(reinterpretAsLocalDate(con.start), {
-                      weekday: "short",
-                    })}
-              </Text>
-              <Text size="xs" ta="center" fw={500}>
-                {i18n.date(reinterpretAsLocalDate(con.start), {
-                  day: "numeric",
-                })}
-              </Text>
-            </Stack>
-          </ThemeIcon>
+          {showBigIcon ? (
+            <ThemeIcon
+              size="xl"
+              variant="light"
+              color={
+                [
+                  "red",
+                  "orange",
+                  "yellow",
+                  "green",
+                  "blue",
+                  "indigo",
+                  "violet",
+                ][getDay(reinterpretAsLocalDate(con.start))]
+              }
+            >
+              <Stack gap={0}>
+                <Text size="md" ta="center" fw={500}>
+                  {showMonthInIcon
+                    ? i18n.date(reinterpretAsLocalDate(con.start), {
+                        month: "short",
+                      })
+                    : i18n.date(reinterpretAsLocalDate(con.start), {
+                        weekday: "short",
+                      })}
+                </Text>
+                <Text size="xs" ta="center" fw={500}>
+                  {i18n.date(reinterpretAsLocalDate(con.start), {
+                    day: "numeric",
+                  })}
+                </Text>
+              </Stack>
+            </ThemeIcon>
+          ) : null}
         </Indicator>
       </Anchor>
       <Box style={{ minWidth: 0 }}>
@@ -256,19 +271,19 @@ export function ConRow({
           {!showEndDateOnly ? (
             <Text span>
               <IconCalendar title={t`Date`} size={12} />{" "}
-              <Trans context="[start date]-[end date] ([duration] days long)">
-                {dateTimeFormat.formatRange(
-                  reinterpretAsLocalDate(con.start),
-                  reinterpretAsLocalDate(subDays(con.end, 1))
-                )}{" "}
-                (
-                <Plural
-                  value={differenceInDays(con.end, con.start)}
-                  one="# day long"
-                  other="# days long"
-                />
-                )
-              </Trans>
+              {showDuration ? (
+                <Trans context="[start date]-[end date] ([duration] days long)">
+                  {dateRange} (
+                  <Plural
+                    value={differenceInDays(con.end, con.start)}
+                    one="# day long"
+                    other="# days long"
+                  />
+                  )
+                </Trans>
+              ) : (
+                dateRange
+              )}
             </Text>
           ) : (
             <Text span>
@@ -422,6 +437,8 @@ function ConsByDate({
                   showLocation
                   showFollowed
                   showLikeButton
+                  showBigIcon
+                  showDuration
                 />
               </Box>
             );
@@ -518,6 +535,8 @@ function ConsBy({ cons }: { cons: ConWithPost[] }) {
               showLocation
               showFollowed
               showLikeButton
+              showBigIcon
+              showDuration
             />
           </Box>
         );
@@ -1269,17 +1288,17 @@ function Filters({
                   </Center>
                 ),
               },
-              // {
-              //   value: "map",
-              //   label: (
-              //     <Center style={{ gap: 6 }}>
-              //       <IconMap size={14} />
-              //       <Text span size="xs" visibleFrom="lg">
-              //         <Trans>Map</Trans>
-              //       </Text>
-              //     </Center>
-              //   ),
-              // },
+              {
+                value: "map",
+                label: (
+                  <Center style={{ gap: 6 }}>
+                    <IconMap size={14} />
+                    <Text span size="xs" visibleFrom="lg">
+                      <Trans>Map</Trans>
+                    </Text>
+                  </Center>
+                ),
+              },
             ]}
             size="xs"
           />
@@ -1615,7 +1634,7 @@ export default function ConsList({
           </Center>
         }
       >
-        {filteredCons.length > 0 ? (
+        {filteredCons.length > 0 || viewOptions.layout.type == "map" ? (
           viewOptions.layout.type == "calendar" ? (
             <CalendarLayout
               cons={filteredCons}
