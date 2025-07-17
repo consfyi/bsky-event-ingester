@@ -31,7 +31,7 @@ function makeStyle({
   return {
     version: 8,
     sources: {
-      openmaptiles: {
+      protomaps: {
         type: "vector",
         url: `https://api.protomaps.com/tiles/v4.json?key=${API_KEY}`,
         attribution:
@@ -41,7 +41,7 @@ function makeStyle({
     glyphs:
       "https://protomaps.github.io/basemaps-assets/fonts/{fontstack}/{range}.pbf",
     sprite: `https://protomaps.github.io/basemaps-assets/sprites/v4/${colorScheme}`,
-    layers: layers("openmaptiles", namedFlavor(colorScheme), {
+    layers: layers("protomaps", namedFlavor(colorScheme), {
       lang: loc.language,
     }),
   };
