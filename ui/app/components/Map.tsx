@@ -5,7 +5,6 @@ import { layers, namedFlavor } from "@protomaps/basemaps";
 import { IconMapPinFilled } from "@tabler/icons-react";
 import {
   AttributionControl,
-  GeolocateControl,
   Map as Maplibre,
   Marker,
   MarkerEvent,
@@ -165,6 +164,7 @@ export default function Map({ cons }: { cons: ConWithPost[] }) {
             "--ml-c-bg-1": "var(--mantine-color-default)",
             "--ml-ctrl-border-radius": "var(--mantine-radius-default)",
             "--ml-shadow": "none",
+            "--ml-c-link-1": "var(--mantine-color-dimmed)",
           },
         }}
       >
@@ -174,6 +174,7 @@ export default function Map({ cons }: { cons: ConWithPost[] }) {
             background: "var(--mantine-color-default)",
             fontSize: "var(--mantine-font-size-xs)",
             borderTopLeftRadius: "var(--mantine-radius-default)",
+            fontWeight: 500,
           }}
         />
         {cons.map((con) => (
