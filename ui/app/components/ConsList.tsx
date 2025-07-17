@@ -1023,229 +1023,240 @@ function Filters({
           ) : null}
         </Group>
         <Group gap="xs">
-          <Menu
-            position="bottom-end"
-            withArrow
-            opened={sortMenuOpen}
-            onChange={setSortMenuOpen}
-          >
-            <Menu.Target>
-              <Button
-                aria-label={t`Settings`}
-                variant="subtle"
-                size="xs"
-                c="dimmed"
-                color="var(--mantine-color-dimmed)"
-                style={{ zIndex: 4, flexShrink: 0 }}
-                leftSection={
-                  viewOptions.layout.type == "list"
-                    ? (() => {
-                        const currentSortByDisplay =
-                          SORT_BY_DISPLAYS[viewOptions.layout.sort];
-                        return viewOptions.layout.desc ? (
-                          <currentSortByDisplay.DescIcon
-                            title={t(currentSortByDisplay.desc)}
-                            size={14}
-                          />
-                        ) : (
-                          <currentSortByDisplay.AscIcon
-                            title={t(currentSortByDisplay.asc)}
-                            size={14}
-                          />
-                        );
-                      })()
-                    : null
-                }
-                rightSection={<IconChevronDown size={14} />}
-              >
-                {viewOptions.layout.type == "list" ? (
-                  t(SORT_BY_DISPLAYS[viewOptions.layout.sort].name)
-                ) : (
-                  <IconSettings size={14} />
-                )}
-              </Button>
-            </Menu.Target>
-
-            <Menu.Dropdown>
-              {viewOptions.layout.type == "list" ? (
-                <>
-                  <Menu.Label>
-                    <Trans>Sort by</Trans>
-                  </Menu.Label>
-                  {Object.values(SortBy.def.entries).map((sortBy) => {
-                    if (!isLoggedIn && sortBy == "followed") {
-                      return null;
-                    }
-
-                    const selected =
-                      viewOptions.layout.type == "list" &&
-                      viewOptions.layout.sort == sortBy;
-
-                    return (
-                      <Menu.Item
-                        disabled={
-                          sortBy == "followed" && followedConAttendees == null
-                        }
-                        aria-selected={selected}
-                        onClick={() => {
-                          setViewOptions((vo) => ({
-                            ...vo,
-                            layout: {
-                              type: "list",
-                              sort: sortBy,
-                              desc: DEFAULT_SORT_DESC_OPTIONS[sortBy],
-                            },
-                          }));
-                        }}
-                        key={sortBy}
-                        leftSection={
-                          sortBy != "followed" ||
-                          followedConAttendees != null ? (
-                            selected ? (
-                              <IconCheck size={14} />
-                            ) : (
-                              <EmptyIcon size={14} />
-                            )
-                          ) : (
-                            <Loader color="dimmed" size={14} />
-                          )
-                        }
-                      >
-                        {t(SORT_BY_DISPLAYS[sortBy].name)}
-                      </Menu.Item>
+          {viewOptions.layout.type == "list" ? (
+            <Menu
+              position="bottom-end"
+              withArrow
+              opened={sortMenuOpen}
+              onChange={setSortMenuOpen}
+            >
+              <Menu.Target>
+                <Button
+                  aria-label={t`Settings`}
+                  variant="subtle"
+                  size="xs"
+                  c="dimmed"
+                  color="var(--mantine-color-dimmed)"
+                  style={{ zIndex: 4, flexShrink: 0 }}
+                  leftSection={(() => {
+                    const currentSortByDisplay =
+                      SORT_BY_DISPLAYS[viewOptions.layout.sort];
+                    return viewOptions.layout.desc ? (
+                      <currentSortByDisplay.DescIcon
+                        title={t(currentSortByDisplay.desc)}
+                        size={14}
+                      />
+                    ) : (
+                      <currentSortByDisplay.AscIcon
+                        title={t(currentSortByDisplay.asc)}
+                        size={14}
+                      />
                     );
-                  })}
-                  <Menu.Label>
-                    <Trans>Order</Trans>
-                  </Menu.Label>
-                  <Menu.Item
-                    aria-selected={!viewOptions.layout.desc}
-                    onClick={() => {
-                      setViewOptions((vo) => ({
-                        ...vo,
-                        layout: {
-                          ...vo.layout,
-                          desc: false,
-                        },
-                      }));
-                    }}
-                    leftSection={
-                      <Group gap={6}>
-                        {!viewOptions.layout.desc ? (
-                          <IconCheck size={14} />
-                        ) : (
-                          <EmptyIcon size={14} />
-                        )}
-                        {(() => {
-                          const Icon =
-                            SORT_BY_DISPLAYS[viewOptions.layout.sort].AscIcon;
-                          return <Icon size={14} />;
-                        })()}
-                      </Group>
-                    }
-                  >
-                    {t(SORT_BY_DISPLAYS[viewOptions.layout.sort].asc)}
-                  </Menu.Item>
-                  <Menu.Item
-                    aria-selected={viewOptions.layout.desc}
-                    onClick={() => {
-                      setViewOptions((vo) => ({
-                        ...vo,
-                        layout: {
-                          ...vo.layout,
-                          desc: true,
-                        },
-                      }));
-                    }}
-                    leftSection={
-                      <Group gap={6}>
-                        {viewOptions.layout.desc ? (
-                          <IconCheck size={14} />
-                        ) : (
-                          <EmptyIcon size={14} />
-                        )}
-                        {(() => {
-                          const Icon =
-                            SORT_BY_DISPLAYS[viewOptions.layout.sort].DescIcon;
-                          return <Icon size={14} />;
-                        })()}
-                      </Group>
-                    }
-                  >
-                    {t(SORT_BY_DISPLAYS[viewOptions.layout.sort].desc)}
-                  </Menu.Item>
-                </>
-              ) : viewOptions.layout.type == "calendar" ? (
-                <>
-                  <Menu.Label>
-                    <Trans>Week starts on</Trans>
-                  </Menu.Label>
-                  {FirstDayOfWeek.def.values.map((day) => (
+                  })()}
+                  rightSection={<IconChevronDown size={14} />}
+                >
+                  {t(SORT_BY_DISPLAYS[viewOptions.layout.sort].name)}
+                </Button>
+              </Menu.Target>
+
+              <Menu.Dropdown>
+                <Menu.Label>
+                  <Trans>Sort by</Trans>
+                </Menu.Label>
+                {Object.values(SortBy.def.entries).map((sortBy) => {
+                  if (!isLoggedIn && sortBy == "followed") {
+                    return null;
+                  }
+
+                  const selected =
+                    viewOptions.layout.type == "list" &&
+                    viewOptions.layout.sort == sortBy;
+
+                  return (
                     <Menu.Item
-                      key={day as Day}
+                      disabled={
+                        sortBy == "followed" && followedConAttendees == null
+                      }
+                      aria-selected={selected}
+                      onClick={() => {
+                        setViewOptions((vo) => ({
+                          ...vo,
+                          layout: {
+                            type: "list",
+                            sort: sortBy,
+                            desc: DEFAULT_SORT_DESC_OPTIONS[sortBy],
+                          },
+                        }));
+                      }}
+                      key={sortBy}
                       leftSection={
-                        firstDayOfWeek == day ? (
-                          <IconCheck size={14} />
+                        sortBy != "followed" || followedConAttendees != null ? (
+                          selected ? (
+                            <IconCheck size={14} />
+                          ) : (
+                            <EmptyIcon size={14} />
+                          )
                         ) : (
-                          <EmptyIcon size={14} />
+                          <Loader color="dimmed" size={14} />
                         )
                       }
-                      onClick={() => {
-                        setFirstDayOfWeek(day as Day);
-                      }}
                     >
-                      {i18n.date(addDays(refStartDate, day as Day), {
-                        weekday: "long",
-                      })}
+                      {t(SORT_BY_DISPLAYS[sortBy].name)}
                     </Menu.Item>
-                  ))}
-                  <Menu.Label>
-                    <Trans>Use time zone</Trans>
-                  </Menu.Label>
+                  );
+                })}
+                <Menu.Label>
+                  <Trans>Order</Trans>
+                </Menu.Label>
+                <Menu.Item
+                  aria-selected={!viewOptions.layout.desc}
+                  onClick={() => {
+                    setViewOptions((vo) => ({
+                      ...vo,
+                      layout: {
+                        ...vo.layout,
+                        desc: false,
+                      },
+                    }));
+                  }}
+                  leftSection={
+                    <Group gap={6}>
+                      {!viewOptions.layout.desc ? (
+                        <IconCheck size={14} />
+                      ) : (
+                        <EmptyIcon size={14} />
+                      )}
+                      {(() => {
+                        const Icon =
+                          SORT_BY_DISPLAYS[viewOptions.layout.sort].AscIcon;
+                        return <Icon size={14} />;
+                      })()}
+                    </Group>
+                  }
+                >
+                  {t(SORT_BY_DISPLAYS[viewOptions.layout.sort].asc)}
+                </Menu.Item>
+                <Menu.Item
+                  aria-selected={viewOptions.layout.desc}
+                  onClick={() => {
+                    setViewOptions((vo) => ({
+                      ...vo,
+                      layout: {
+                        ...vo.layout,
+                        desc: true,
+                      },
+                    }));
+                  }}
+                  leftSection={
+                    <Group gap={6}>
+                      {viewOptions.layout.desc ? (
+                        <IconCheck size={14} />
+                      ) : (
+                        <EmptyIcon size={14} />
+                      )}
+                      {(() => {
+                        const Icon =
+                          SORT_BY_DISPLAYS[viewOptions.layout.sort].DescIcon;
+                        return <Icon size={14} />;
+                      })()}
+                    </Group>
+                  }
+                >
+                  {t(SORT_BY_DISPLAYS[viewOptions.layout.sort].desc)}
+                </Menu.Item>
+              </Menu.Dropdown>
+            </Menu>
+          ) : viewOptions.layout.type == "calendar" ? (
+            <Menu
+              position="bottom-end"
+              withArrow
+              opened={sortMenuOpen}
+              onChange={setSortMenuOpen}
+            >
+              <Menu.Target>
+                <Button
+                  aria-label={t`Settings`}
+                  variant="subtle"
+                  size="xs"
+                  c="dimmed"
+                  color="var(--mantine-color-dimmed)"
+                  style={{ zIndex: 4, flexShrink: 0 }}
+                  rightSection={<IconChevronDown size={14} />}
+                >
+                  <IconSettings size={14} />
+                </Button>
+              </Menu.Target>
+
+              <Menu.Dropdown>
+                <Menu.Label>
+                  <Trans>Week starts on</Trans>
+                </Menu.Label>
+                {FirstDayOfWeek.def.values.map((day) => (
                   <Menu.Item
+                    key={day as Day}
                     leftSection={
-                      !viewOptions.layout.inYourTimeZone ? (
+                      firstDayOfWeek == day ? (
                         <IconCheck size={14} />
                       ) : (
                         <EmptyIcon size={14} />
                       )
                     }
                     onClick={() => {
-                      setViewOptions((vo) => ({
-                        ...vo,
-                        layout: {
-                          ...vo.layout,
-                          inYourTimeZone: false,
-                        },
-                      }));
+                      setFirstDayOfWeek(day as Day);
                     }}
                   >
-                    <Trans>Theirs</Trans>
+                    {i18n.date(addDays(refStartDate, day as Day), {
+                      weekday: "long",
+                    })}
                   </Menu.Item>
-                  <Menu.Item
-                    leftSection={
-                      viewOptions.layout.inYourTimeZone ? (
-                        <IconCheck size={14} />
-                      ) : (
-                        <EmptyIcon size={14} />
-                      )
-                    }
-                    onClick={() => {
-                      setViewOptions((vo) => ({
-                        ...vo,
-                        layout: {
-                          ...vo.layout,
-                          inYourTimeZone: true,
-                        },
-                      }));
-                    }}
-                  >
-                    <Trans>Yours</Trans>
-                  </Menu.Item>
-                </>
-              ) : null}
-            </Menu.Dropdown>
-          </Menu>
+                ))}
+                <Menu.Label>
+                  <Trans>Use time zone</Trans>
+                </Menu.Label>
+                <Menu.Item
+                  leftSection={
+                    !viewOptions.layout.inYourTimeZone ? (
+                      <IconCheck size={14} />
+                    ) : (
+                      <EmptyIcon size={14} />
+                    )
+                  }
+                  onClick={() => {
+                    setViewOptions((vo) => ({
+                      ...vo,
+                      layout: {
+                        ...vo.layout,
+                        inYourTimeZone: false,
+                      },
+                    }));
+                  }}
+                >
+                  <Trans>Theirs</Trans>
+                </Menu.Item>
+                <Menu.Item
+                  leftSection={
+                    viewOptions.layout.inYourTimeZone ? (
+                      <IconCheck size={14} />
+                    ) : (
+                      <EmptyIcon size={14} />
+                    )
+                  }
+                  onClick={() => {
+                    setViewOptions((vo) => ({
+                      ...vo,
+                      layout: {
+                        ...vo.layout,
+                        inYourTimeZone: true,
+                      },
+                    }));
+                  }}
+                >
+                  <Trans>Yours</Trans>
+                </Menu.Item>
+              </Menu.Dropdown>
+            </Menu>
+          ) : null}
+
           <SegmentedControl
             onChange={(value) => {
               setViewOptions((vo) => ({
