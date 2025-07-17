@@ -175,6 +175,8 @@ export default function Map({ cons }: { cons: ConWithPost[] }) {
             fontSize: "var(--mantine-font-size-xs)",
             borderTopLeftRadius: "var(--mantine-radius-default)",
             fontWeight: 500,
+            WebkitTextStroke: "0.1px",
+            WebkitTextStrokeColor: "var(--mantine-color-default)",
           }}
         />
         {cons.map((con) => (
