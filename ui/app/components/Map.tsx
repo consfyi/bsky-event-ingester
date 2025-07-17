@@ -2,7 +2,7 @@ import { useLingui } from "@lingui/react/macro";
 import { useComputedColorScheme, useMantineTheme } from "@mantine/core";
 import { IconMapPinFilled } from "@tabler/icons-react";
 import { getDay } from "date-fns";
-import { concat, map, partition, toArray } from "iter-fns";
+import { compareMany, comparing, partition, sort } from "iter-fns";
 import { RMap, RMarker, RPopup } from "maplibre-react-components";
 import "maplibre-theme/icons.default.css";
 import "maplibre-theme/modern.css";
@@ -22,13 +22,11 @@ function Pin({
 }) {
   const theme = useMantineTheme();
 
-  const rawLatLng = con.geocoded?.latLng;
-  if (rawLatLng == null) {
+  const latLng = con.geocoded?.latLng;
+  if (latLng == null) {
     return null;
   }
-  const [rawLat, rawLng] = rawLatLng;
-  const lat = parseFloat(rawLat);
-  const lng = parseFloat(rawLng);
+  const [lat, lng] = latLng;
 
   const color = [
     "red",
@@ -95,10 +93,13 @@ export default function Map({ cons }: { cons: ConWithPost[] }) {
     [colorScheme, t]
   );
 
-  const [notAttendingCons, attendingCons] = partition(
-    cons,
-    (con) => con.post.viewer == null || con.post.viewer.like == null
-  );
+  const sortedCons = useMemo(() => {
+    const [notAttendingCons, attendingCons] = partition(
+      cons,
+      (con) => con.post.viewer == null || con.post.viewer.like == null
+    );
+    return [...notAttendingCons, ...attendingCons];
+  }, [cons]);
 
   return (
     <RMap
@@ -111,21 +112,17 @@ export default function Map({ cons }: { cons: ConWithPost[] }) {
       initialZoom={2}
       style={{ height: "100%" }}
     >
-      {toArray(
-        map(concat(notAttendingCons, attendingCons), (con) => {
-          return (
-            <Pin
-              key={con.slug}
-              con={con}
-              showPopup={con.slug == selected}
-              onClick={(e) => {
-                e.stopPropagation();
-                setSelected(con.slug);
-              }}
-            />
-          );
-        })
-      )}
+      {sortedCons.map((con) => (
+        <Pin
+          key={con.slug}
+          con={con}
+          showPopup={con.slug == selected}
+          onClick={(e) => {
+            e.stopPropagation();
+            setSelected(con.slug);
+          }}
+        />
+      ))}
     </RMap>
   );
 }

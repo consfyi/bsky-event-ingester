@@ -93,7 +93,7 @@ function useConPosts() {
 }
 
 export interface Geocoded {
-  latLng: [string, string] | null;
+  latLng: [number, number] | null;
   timezone: string | null;
 }
 
@@ -127,7 +127,10 @@ export function useCons() {
               date: string;
               address: string;
               country: string;
-              geocoded: Geocoded | null;
+              geocoded: {
+                latLng: [string, string] | null;
+                timezone: string | null;
+              } | null;
               url: string;
             };
             fbl_postRkey: string;
@@ -171,7 +174,18 @@ export function useCons() {
               end: endDate,
               address: fullDef.fbl_eventInfo.address,
               country: fullDef.fbl_eventInfo.country,
-              geocoded: fullDef.fbl_eventInfo.geocoded,
+              geocoded:
+                fullDef.fbl_eventInfo.geocoded != null
+                  ? {
+                      timezone: fullDef.fbl_eventInfo.geocoded.timezone,
+                      latLng:
+                        fullDef.fbl_eventInfo.geocoded.latLng != null
+                          ? (fullDef.fbl_eventInfo.geocoded.latLng.map((v) =>
+                              parseFloat(v)
+                            ) as [number, number])
+                          : null,
+                    }
+                  : null,
               postRkey: fullDef.fbl_postRkey,
               url: fullDef.fbl_eventInfo.url,
             } satisfies Con,
