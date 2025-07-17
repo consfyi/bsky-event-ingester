@@ -39,10 +39,15 @@ function Pin({
     "violet",
   ][getDay(con.start)];
 
+  const variant =
+    con.post.viewer != null && con.post.viewer.like != null
+      ? "filled"
+      : "light";
+
   const colors = theme.variantColorResolver({
     theme,
     color,
-    variant: "filled",
+    variant,
   });
 
   return (
@@ -50,7 +55,11 @@ function Pin({
       <RMarker latitude={lat} longitude={lng} onClick={onClick}>
         <IconMapPinFilled
           size={32}
-          color={colors.background}
+          color={
+            variant == "light"
+              ? `color-mix(in srgb, var(--mantine-color-${color}-filled), var(--mantine-color-body) 90%)`
+              : colors.background
+          }
           style={{
             stroke: colors.color,
             marginTop: "-100%",
