@@ -59,9 +59,12 @@ importers:
       '@maplibre/maplibre-gl-style-spec':
         specifier: ^23.3.0
         version: 23.3.0
+      '@protomaps/basemaps':
+        specifier: ^5.5.0
+        version: 5.5.0
       '@react-router/fs-routes':
         specifier: ^7.6.1
-        version: 7.6.1(@react-router/dev@7.6.1(@react-router/serve@7.6.1(react-router@7.6.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(typescript@5.8.3))(@types/node@22.15.27)(babel-plugin-macros@3.1.0)(jiti@1.21.7)(react-router@7.6.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(sugarss@4.0.1(postcss@8.5.4))(terser@5.43.1)(typescript@5.8.3)(vite@6.3.5(@types/node@22.15.27)(jiti@1.21.7)(sugarss@4.0.1(postcss@8.5.4))(terser@5.43.1)))(typescript@5.8.3)
+        version: 7.6.1(@react-router/dev@7.6.1(@react-router/serve@7.6.1(react-router@7.6.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(typescript@5.8.3))(@types/node@22.15.27)(babel-plugin-macros@3.1.0)(jiti@1.21.7)(react-router@7.6.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(sugarss@4.0.1(postcss@8.5.4))(terser@5.43.1)(tsx@4.20.3)(typescript@5.8.3)(vite@6.3.5(@types/node@22.15.27)(jiti@1.21.7)(sugarss@4.0.1(postcss@8.5.4))(terser@5.43.1)(tsx@4.20.3)))(typescript@5.8.3)
       '@react-router/node':
         specifier: ^7.0.0
         version: 7.6.1(react-router@7.6.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(typescript@5.8.3)
@@ -125,10 +128,10 @@ importers:
         version: 5.3.2(typescript@5.8.3)
       '@lingui/vite-plugin':
         specifier: ^5.3.1
-        version: 5.3.2(typescript@5.8.3)(vite@6.3.5(@types/node@22.15.27)(jiti@1.21.7)(sugarss@4.0.1(postcss@8.5.4))(terser@5.43.1))
+        version: 5.3.2(typescript@5.8.3)(vite@6.3.5(@types/node@22.15.27)(jiti@1.21.7)(sugarss@4.0.1(postcss@8.5.4))(terser@5.43.1)(tsx@4.20.3))
       '@react-router/dev':
         specifier: ^7.0.0
-        version: 7.6.1(@react-router/serve@7.6.1(react-router@7.6.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(typescript@5.8.3))(@types/node@22.15.27)(babel-plugin-macros@3.1.0)(jiti@1.21.7)(react-router@7.6.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(sugarss@4.0.1(postcss@8.5.4))(terser@5.43.1)(typescript@5.8.3)(vite@6.3.5(@types/node@22.15.27)(jiti@1.21.7)(sugarss@4.0.1(postcss@8.5.4))(terser@5.43.1))
+        version: 7.6.1(@react-router/serve@7.6.1(react-router@7.6.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(typescript@5.8.3))(@types/node@22.15.27)(babel-plugin-macros@3.1.0)(jiti@1.21.7)(react-router@7.6.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(sugarss@4.0.1(postcss@8.5.4))(terser@5.43.1)(tsx@4.20.3)(typescript@5.8.3)(vite@6.3.5(@types/node@22.15.27)(jiti@1.21.7)(sugarss@4.0.1(postcss@8.5.4))(terser@5.43.1)(tsx@4.20.3))
       '@types/deep-equal':
         specifier: ^1.0.4
         version: 1.0.4
@@ -182,16 +185,16 @@ importers:
         version: 5.8.3
       vite:
         specifier: ^6.0.0
-        version: 6.3.5(@types/node@22.15.27)(jiti@1.21.7)(sugarss@4.0.1(postcss@8.5.4))(terser@5.43.1)
+        version: 6.3.5(@types/node@22.15.27)(jiti@1.21.7)(sugarss@4.0.1(postcss@8.5.4))(terser@5.43.1)(tsx@4.20.3)
       vite-plugin-babel:
         specifier: ^1.3.1
-        version: 1.3.1(@babel/core@7.27.3)(vite@6.3.5(@types/node@22.15.27)(jiti@1.21.7)(sugarss@4.0.1(postcss@8.5.4))(terser@5.43.1))
+        version: 1.3.1(@babel/core@7.27.3)(vite@6.3.5(@types/node@22.15.27)(jiti@1.21.7)(sugarss@4.0.1(postcss@8.5.4))(terser@5.43.1)(tsx@4.20.3))
       vite-plugin-babel-macros:
         specifier: ^1.0.6
-        version: 1.0.6(vite@6.3.5(@types/node@22.15.27)(jiti@1.21.7)(sugarss@4.0.1(postcss@8.5.4))(terser@5.43.1))
+        version: 1.0.6(vite@6.3.5(@types/node@22.15.27)(jiti@1.21.7)(sugarss@4.0.1(postcss@8.5.4))(terser@5.43.1)(tsx@4.20.3))
       vite-tsconfig-paths:
         specifier: ^4.2.1
-        version: 4.3.2(typescript@5.8.3)(vite@6.3.5(@types/node@22.15.27)(jiti@1.21.7)(sugarss@4.0.1(postcss@8.5.4))(terser@5.43.1))
+        version: 4.3.2(typescript@5.8.3)(vite@6.3.5(@types/node@22.15.27)(jiti@1.21.7)(sugarss@4.0.1(postcss@8.5.4))(terser@5.43.1)(tsx@4.20.3))
 
 packages:
 
@@ -828,6 +831,10 @@ packages:
   '@pkgjs/parseargs@0.11.0':
     resolution: {integrity: sha512-+1VkjdD0QBLPodGrJUeqarH8VAIvQODIbwh9XpP5Syisf7YoQgsJKPNFoqqLQlu+VQ/tVSshMR6loPMn8U+dPg==}
     engines: {node: '>=14'}
+
+  '@protomaps/basemaps@5.5.0':
+    resolution: {integrity: sha512-4SSFwLf7nRpe85pUPdmTtR4quzSb35W0w55gBlwFhF2X5ItgzEfTDfQCYJzorY8/Zx3g6ixSeiEogIo6BO1RiA==}
+    hasBin: true
 
   '@react-router/dev@7.6.1':
     resolution: {integrity: sha512-E4pzxViSQ1Z4EPUz1p47ldm+qIbzfFbJtbXvxi+KSidpftf/ttjr+DtLEiTEdIqZTYv8trBASRtV6C5hn9GZQQ==}
@@ -3345,6 +3352,11 @@ packages:
   tslib@2.8.1:
     resolution: {integrity: sha512-oJFu94HQb+KVduSUQL7wnpmqnfmLsOA/nAh6b6EH0wCEoK0/mPeXU6c3wKDV83MkOuHPRHtSXKKU99IBazS/2w==}
 
+  tsx@4.20.3:
+    resolution: {integrity: sha512-qjbnuR9Tr+FJOMBqJCW5ehvIo/buZq7vH7qD7JziU98h6l3qGy0a/yPFjwO+y0/T7GFpNgNAvEcPPVfyT8rrPQ==}
+    engines: {node: '>=18.0.0'}
+    hasBin: true
+
   type-check@0.4.0:
     resolution: {integrity: sha512-XleUoc9uwGXqjWwXaUTZAmzMcFZ5858QA2vvx1Ur5xIcixXIP+8LnFDgRplU30us6teqdlskFfu+ae4K79Ooew==}
     engines: {node: '>= 0.8.0'}
@@ -4229,11 +4241,11 @@ snapshots:
       '@lingui/babel-plugin-lingui-macro': 5.3.2(babel-plugin-macros@3.1.0)(typescript@5.8.3)
       babel-plugin-macros: 3.1.0
 
-  '@lingui/vite-plugin@5.3.2(typescript@5.8.3)(vite@6.3.5(@types/node@22.15.27)(jiti@1.21.7)(sugarss@4.0.1(postcss@8.5.4))(terser@5.43.1))':
+  '@lingui/vite-plugin@5.3.2(typescript@5.8.3)(vite@6.3.5(@types/node@22.15.27)(jiti@1.21.7)(sugarss@4.0.1(postcss@8.5.4))(terser@5.43.1)(tsx@4.20.3))':
     dependencies:
       '@lingui/cli': 5.3.2(typescript@5.8.3)
       '@lingui/conf': 5.3.2(typescript@5.8.3)
-      vite: 6.3.5(@types/node@22.15.27)(jiti@1.21.7)(sugarss@4.0.1(postcss@8.5.4))(terser@5.43.1)
+      vite: 6.3.5(@types/node@22.15.27)(jiti@1.21.7)(sugarss@4.0.1(postcss@8.5.4))(terser@5.43.1)(tsx@4.20.3)
     transitivePeerDependencies:
       - supports-color
       - typescript
@@ -4365,7 +4377,11 @@ snapshots:
   '@pkgjs/parseargs@0.11.0':
     optional: true
 
-  '@react-router/dev@7.6.1(@react-router/serve@7.6.1(react-router@7.6.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(typescript@5.8.3))(@types/node@22.15.27)(babel-plugin-macros@3.1.0)(jiti@1.21.7)(react-router@7.6.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(sugarss@4.0.1(postcss@8.5.4))(terser@5.43.1)(typescript@5.8.3)(vite@6.3.5(@types/node@22.15.27)(jiti@1.21.7)(sugarss@4.0.1(postcss@8.5.4))(terser@5.43.1))':
+  '@protomaps/basemaps@5.5.0':
+    dependencies:
+      tsx: 4.20.3
+
+  '@react-router/dev@7.6.1(@react-router/serve@7.6.1(react-router@7.6.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(typescript@5.8.3))(@types/node@22.15.27)(babel-plugin-macros@3.1.0)(jiti@1.21.7)(react-router@7.6.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(sugarss@4.0.1(postcss@8.5.4))(terser@5.43.1)(tsx@4.20.3)(typescript@5.8.3)(vite@6.3.5(@types/node@22.15.27)(jiti@1.21.7)(sugarss@4.0.1(postcss@8.5.4))(terser@5.43.1)(tsx@4.20.3))':
     dependencies:
       '@babel/core': 7.27.3
       '@babel/generator': 7.27.3
@@ -4394,8 +4410,8 @@ snapshots:
       semver: 7.7.2
       set-cookie-parser: 2.7.1
       valibot: 0.41.0(typescript@5.8.3)
-      vite: 6.3.5(@types/node@22.15.27)(jiti@1.21.7)(sugarss@4.0.1(postcss@8.5.4))(terser@5.43.1)
-      vite-node: 3.0.0-beta.2(@types/node@22.15.27)(jiti@1.21.7)(sugarss@4.0.1(postcss@8.5.4))(terser@5.43.1)
+      vite: 6.3.5(@types/node@22.15.27)(jiti@1.21.7)(sugarss@4.0.1(postcss@8.5.4))(terser@5.43.1)(tsx@4.20.3)
+      vite-node: 3.0.0-beta.2(@types/node@22.15.27)(jiti@1.21.7)(sugarss@4.0.1(postcss@8.5.4))(terser@5.43.1)(tsx@4.20.3)
     optionalDependencies:
       '@react-router/serve': 7.6.1(react-router@7.6.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(typescript@5.8.3)
       typescript: 5.8.3
@@ -4423,9 +4439,9 @@ snapshots:
     optionalDependencies:
       typescript: 5.8.3
 
-  '@react-router/fs-routes@7.6.1(@react-router/dev@7.6.1(@react-router/serve@7.6.1(react-router@7.6.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(typescript@5.8.3))(@types/node@22.15.27)(babel-plugin-macros@3.1.0)(jiti@1.21.7)(react-router@7.6.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(sugarss@4.0.1(postcss@8.5.4))(terser@5.43.1)(typescript@5.8.3)(vite@6.3.5(@types/node@22.15.27)(jiti@1.21.7)(sugarss@4.0.1(postcss@8.5.4))(terser@5.43.1)))(typescript@5.8.3)':
+  '@react-router/fs-routes@7.6.1(@react-router/dev@7.6.1(@react-router/serve@7.6.1(react-router@7.6.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(typescript@5.8.3))(@types/node@22.15.27)(babel-plugin-macros@3.1.0)(jiti@1.21.7)(react-router@7.6.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(sugarss@4.0.1(postcss@8.5.4))(terser@5.43.1)(tsx@4.20.3)(typescript@5.8.3)(vite@6.3.5(@types/node@22.15.27)(jiti@1.21.7)(sugarss@4.0.1(postcss@8.5.4))(terser@5.43.1)(tsx@4.20.3)))(typescript@5.8.3)':
     dependencies:
-      '@react-router/dev': 7.6.1(@react-router/serve@7.6.1(react-router@7.6.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(typescript@5.8.3))(@types/node@22.15.27)(babel-plugin-macros@3.1.0)(jiti@1.21.7)(react-router@7.6.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(sugarss@4.0.1(postcss@8.5.4))(terser@5.43.1)(typescript@5.8.3)(vite@6.3.5(@types/node@22.15.27)(jiti@1.21.7)(sugarss@4.0.1(postcss@8.5.4))(terser@5.43.1))
+      '@react-router/dev': 7.6.1(@react-router/serve@7.6.1(react-router@7.6.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(typescript@5.8.3))(@types/node@22.15.27)(babel-plugin-macros@3.1.0)(jiti@1.21.7)(react-router@7.6.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(sugarss@4.0.1(postcss@8.5.4))(terser@5.43.1)(tsx@4.20.3)(typescript@5.8.3)(vite@6.3.5(@types/node@22.15.27)(jiti@1.21.7)(sugarss@4.0.1(postcss@8.5.4))(terser@5.43.1)(tsx@4.20.3))
       minimatch: 9.0.5
     optionalDependencies:
       typescript: 5.8.3
@@ -7168,6 +7184,13 @@ snapshots:
 
   tslib@2.8.1: {}
 
+  tsx@4.20.3:
+    dependencies:
+      esbuild: 0.25.5
+      get-tsconfig: 4.10.1
+    optionalDependencies:
+      fsevents: 2.3.3
+
   type-check@0.4.0:
     dependencies:
       prelude-ls: 1.2.1
@@ -7331,13 +7354,13 @@ snapshots:
 
   vary@1.1.2: {}
 
-  vite-node@3.0.0-beta.2(@types/node@22.15.27)(jiti@1.21.7)(sugarss@4.0.1(postcss@8.5.4))(terser@5.43.1):
+  vite-node@3.0.0-beta.2(@types/node@22.15.27)(jiti@1.21.7)(sugarss@4.0.1(postcss@8.5.4))(terser@5.43.1)(tsx@4.20.3):
     dependencies:
       cac: 6.7.14
       debug: 4.4.1
       es-module-lexer: 1.7.0
       pathe: 1.1.2
-      vite: 6.3.5(@types/node@22.15.27)(jiti@1.21.7)(sugarss@4.0.1(postcss@8.5.4))(terser@5.43.1)
+      vite: 6.3.5(@types/node@22.15.27)(jiti@1.21.7)(sugarss@4.0.1(postcss@8.5.4))(terser@5.43.1)(tsx@4.20.3)
     transitivePeerDependencies:
       - '@types/node'
       - jiti
@@ -7352,34 +7375,34 @@ snapshots:
       - tsx
       - yaml
 
-  vite-plugin-babel-macros@1.0.6(vite@6.3.5(@types/node@22.15.27)(jiti@1.21.7)(sugarss@4.0.1(postcss@8.5.4))(terser@5.43.1)):
+  vite-plugin-babel-macros@1.0.6(vite@6.3.5(@types/node@22.15.27)(jiti@1.21.7)(sugarss@4.0.1(postcss@8.5.4))(terser@5.43.1)(tsx@4.20.3)):
     dependencies:
       '@babel/core': 7.27.3
       '@babel/plugin-syntax-jsx': 7.27.1(@babel/core@7.27.3)
       '@babel/plugin-syntax-typescript': 7.27.1(@babel/core@7.27.3)
       '@types/babel__core': 7.20.5
       babel-plugin-macros: 3.1.0
-      vite: 6.3.5(@types/node@22.15.27)(jiti@1.21.7)(sugarss@4.0.1(postcss@8.5.4))(terser@5.43.1)
+      vite: 6.3.5(@types/node@22.15.27)(jiti@1.21.7)(sugarss@4.0.1(postcss@8.5.4))(terser@5.43.1)(tsx@4.20.3)
     transitivePeerDependencies:
       - supports-color
 
-  vite-plugin-babel@1.3.1(@babel/core@7.27.3)(vite@6.3.5(@types/node@22.15.27)(jiti@1.21.7)(sugarss@4.0.1(postcss@8.5.4))(terser@5.43.1)):
+  vite-plugin-babel@1.3.1(@babel/core@7.27.3)(vite@6.3.5(@types/node@22.15.27)(jiti@1.21.7)(sugarss@4.0.1(postcss@8.5.4))(terser@5.43.1)(tsx@4.20.3)):
     dependencies:
       '@babel/core': 7.27.3
-      vite: 6.3.5(@types/node@22.15.27)(jiti@1.21.7)(sugarss@4.0.1(postcss@8.5.4))(terser@5.43.1)
+      vite: 6.3.5(@types/node@22.15.27)(jiti@1.21.7)(sugarss@4.0.1(postcss@8.5.4))(terser@5.43.1)(tsx@4.20.3)
 
-  vite-tsconfig-paths@4.3.2(typescript@5.8.3)(vite@6.3.5(@types/node@22.15.27)(jiti@1.21.7)(sugarss@4.0.1(postcss@8.5.4))(terser@5.43.1)):
+  vite-tsconfig-paths@4.3.2(typescript@5.8.3)(vite@6.3.5(@types/node@22.15.27)(jiti@1.21.7)(sugarss@4.0.1(postcss@8.5.4))(terser@5.43.1)(tsx@4.20.3)):
     dependencies:
       debug: 4.4.1
       globrex: 0.1.2
       tsconfck: 3.1.6(typescript@5.8.3)
     optionalDependencies:
-      vite: 6.3.5(@types/node@22.15.27)(jiti@1.21.7)(sugarss@4.0.1(postcss@8.5.4))(terser@5.43.1)
+      vite: 6.3.5(@types/node@22.15.27)(jiti@1.21.7)(sugarss@4.0.1(postcss@8.5.4))(terser@5.43.1)(tsx@4.20.3)
     transitivePeerDependencies:
       - supports-color
       - typescript
 
-  vite@6.3.5(@types/node@22.15.27)(jiti@1.21.7)(sugarss@4.0.1(postcss@8.5.4))(terser@5.43.1):
+  vite@6.3.5(@types/node@22.15.27)(jiti@1.21.7)(sugarss@4.0.1(postcss@8.5.4))(terser@5.43.1)(tsx@4.20.3):
     dependencies:
       esbuild: 0.25.5
       fdir: 6.4.5(picomatch@4.0.2)
@@ -7393,6 +7416,7 @@ snapshots:
       jiti: 1.21.7
       sugarss: 4.0.1(postcss@8.5.4)
       terser: 5.43.1
+      tsx: 4.20.3
 
   vt-pbf@3.1.3:
     dependencies:

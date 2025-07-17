@@ -29,6 +29,7 @@
     "@mantine/hooks": "^8.0.1",
     "@mantine/nprogress": "^8.0.2",
     "@maplibre/maplibre-gl-style-spec": "^23.3.0",
+    "@protomaps/basemaps": "^5.5.0",
     "@react-router/fs-routes": "^7.6.1",
     "@react-router/node": "^7.0.0",
     "@react-router/serve": "^7.0.0",

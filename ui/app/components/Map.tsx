@@ -1,5 +1,7 @@
 import { useLingui } from "@lingui/react/macro";
 import { Box, useComputedColorScheme, useMantineTheme } from "@mantine/core";
+import { StyleSpecification } from "@maplibre/maplibre-gl-style-spec";
+import { layers, namedFlavor } from "@protomaps/basemaps";
 import { IconMapPinFilled } from "@tabler/icons-react";
 import {
   Map as Maplibre,
@@ -8,12 +10,42 @@ import {
   Popup,
 } from "@vis.gl/react-maplibre";
 import { getDay } from "date-fns";
+import maplibregl from "maplibre-gl";
 import "maplibre-theme/icons.default.css";
 import "maplibre-theme/modern.css";
 import { useMemo, useState } from "react";
 import { ConWithPost } from "~/hooks";
 import { ConRow } from "./ConsList";
-import makeStyle from "./Map/style";
+
+const API_KEY = "a4d6fb59d9d6e179";
+
+function makeStyle({
+  colorScheme,
+  locale,
+}: {
+  colorScheme: "light" | "dark";
+  locale: string;
+}): StyleSpecification {
+  const loc = new Intl.Locale(locale);
+
+  return {
+    version: 8,
+    sources: {
+      openmaptiles: {
+        type: "vector",
+        url: `https://api.protomaps.com/tiles/v4.json?key=${API_KEY}`,
+        attribution:
+          "<a href='https://openstreetmap.org/copyright'>© OpenStreetMap Contributors</a>",
+      },
+    },
+    glyphs:
+      "https://protomaps.github.io/basemaps-assets/fonts/{fontstack}/{range}.pbf",
+    sprite: `https://protomaps.github.io/basemaps-assets/sprites/v4/${colorScheme}`,
+    layers: layers("openmaptiles", namedFlavor(colorScheme), {
+      lang: loc.language,
+    }),
+  };
+}
 
 function Pin({
   con,
@@ -112,6 +144,7 @@ export default function Map({ cons }: { cons: ConWithPost[] }) {
   return (
     <Box className={colorScheme} style={{ height: "100%" }}>
       <Maplibre
+        mapLib={maplibregl}
         onClick={() => {
           setSelected(null);
         }}
