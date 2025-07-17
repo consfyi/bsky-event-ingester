@@ -154,17 +154,17 @@ export function ConRow({
 
   return (
     <Group gap="xs" wrap="nowrap">
-      <Anchor component={Link} to={`/cons/${con.slug}`}>
-        <Indicator
-          position="top-start"
-          color="green"
-          processing
-          size={12}
-          withBorder
-          disabled={!active}
-          zIndex={2}
-        >
-          {showBigIcon ? (
+      {showBigIcon ? (
+        <Anchor component={Link} to={`/cons/${con.slug}`}>
+          <Indicator
+            position="top-start"
+            color="green"
+            processing
+            size={12}
+            withBorder
+            disabled={!active}
+            zIndex={2}
+          >
             <ThemeIcon
               size="xl"
               variant="light"
@@ -197,9 +197,9 @@ export function ConRow({
                 </Text>
               </Stack>
             </ThemeIcon>
-          ) : null}
-        </Indicator>
-      </Anchor>
+          </Indicator>
+        </Anchor>
+      ) : null}
       <Box style={{ minWidth: 0 }}>
         <Group gap={7} wrap="nowrap">
           {showLikeButton && con.post.viewer != null ? (
