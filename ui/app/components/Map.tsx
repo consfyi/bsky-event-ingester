@@ -155,6 +155,7 @@ export default function Map({ cons }: { cons: ConWithPost[] }) {
           longitude: 0,
           zoom: 2,
         }}
+        attributionControl={false}
         mapStyle={style}
         style={{
           height: "100%",
@@ -166,6 +167,14 @@ export default function Map({ cons }: { cons: ConWithPost[] }) {
           },
         }}
       >
+        <AttributionControl
+          compact={false}
+          style={{
+            background: "var(--mantine-color-default)",
+            fontSize: "var(--mantine-font-size-xs)",
+            borderTopLeftRadius: "var(--mantine-radius-default)",
+          }}
+        />
         {cons.map((con) => (
           <Pin
             key={con.slug}
