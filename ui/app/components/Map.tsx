@@ -171,7 +171,7 @@ export default function Map({ cons }: { cons: ConWithPost[] }) {
         <AttributionControl
           compact={false}
           style={{
-            background: "var(--mantine-color-default)",
+            background: "none",
             fontSize: "var(--mantine-font-size-xs)",
             borderTopLeftRadius: "var(--mantine-radius-default)",
             fontWeight: 500,
