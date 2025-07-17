@@ -273,7 +273,7 @@ export function ConRow({
               <IconCalendar title={t`Date`} size={12} />{" "}
               {showDuration ? (
                 <Trans context="[start date]-[end date] ([duration] days long)">
-                  {dateRange} (
+                  {[dateRange][0]} (
                   <Plural
                     value={differenceInDays(con.end, con.start)}
                     one="# day long"
