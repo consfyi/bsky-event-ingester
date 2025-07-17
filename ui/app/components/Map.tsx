@@ -93,8 +93,8 @@ export default function Map({ cons }: { cons: ConWithPost[] }) {
       className={colorScheme}
       mapStyle={style}
       initialCenter={[0, 0]}
-      initialZoom={1}
-      style={{ height: "800px" }}
+      initialZoom={2}
+      style={{ height: "100%" }}
     >
       {cons.map((con) => {
         return (

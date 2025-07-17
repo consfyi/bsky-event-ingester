@@ -814,7 +814,7 @@ function Filters({
                   : {
                       c: "dimmed",
                       color: "var(--mantine-color-dimmed)",
-                      variant: "outline",
+                      variant: "default",
                     })}
               >
                 {continentsFiltered ? (
@@ -916,7 +916,7 @@ function Filters({
                   : {
                       c: "dimmed",
                       color: "var(--mantine-color-dimmed)",
-                      variant: "outline",
+                      variant: "default",
                     })}
               >
                 {durationFiltered ? (
@@ -1016,7 +1016,7 @@ function Filters({
                 : {
                     c: "dimmed",
                     color: "var(--mantine-color-dimmed)",
-                    variant: "outline",
+                    variant: "default",
                   })}
             >
               <Trans>With followed only</Trans>
@@ -1545,7 +1545,11 @@ function ListLayout({
 const Map = lazy(() => import("./Map"));
 
 function MapLayout({ cons }: { cons: ConWithPost[] }) {
-  return <Map cons={cons} />;
+  return (
+    <Box h="calc(100dvh - 50px)">
+      <Map cons={cons} />
+    </Box>
+  );
 }
 
 const FirstDayOfWeek = z.literal([0, 1, 6]);
@@ -1638,8 +1642,22 @@ export default function ConsList({
     viewOptions.filter.attending || viewOptions.filter.query != "";
 
   return (
-    <>
-      <Container size="lg" px={0}>
+    <Box style={{ position: "relative" }}>
+      <Container
+        size="lg"
+        px={0}
+        style={
+          viewOptions.layout.type == "map"
+            ? {
+                left: 0,
+                right: 0,
+                top: 0,
+                position: "absolute",
+                zIndex: 1,
+              }
+            : {}
+        }
+      >
         <Filters
           cons={cons}
           viewOptions={viewOptions}
@@ -1699,6 +1717,6 @@ export default function ConsList({
           </Box>
         )}
       </Suspense>
-    </>
+    </Box>
   );
 }
