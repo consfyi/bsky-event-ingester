@@ -1546,7 +1546,7 @@ const Map = lazy(() => import("./Map"));
 
 function MapLayout({ cons }: { cons: ConWithPost[] }) {
   return (
-    <Box h="calc(100dvh - 50px)">
+    <Box h="100dvh" mt={-50}>
       <Suspense
         fallback={
           <Center p="lg" h="100%">
@@ -1659,7 +1659,7 @@ export default function ConsList({
             ? {
                 left: 0,
                 right: 0,
-                top: 0,
+                top: 50,
                 position: "absolute",
                 zIndex: 1,
               }
