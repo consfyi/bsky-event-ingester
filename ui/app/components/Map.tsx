@@ -135,16 +135,16 @@ function Pin({
 
 async function getMyLocation(
   signal?: AbortSignal
-): Promise<{ lat: number; lon: number }> {
-  const resp = await fetch("http://ip-api.com/json/?fields=lat,lon", {
+): Promise<{ latitude: number; longitude: number }> {
+  const resp = await fetch("https://free.freeipapi.com/api/json", {
     signal,
   });
   if (!resp.ok) {
     throw resp;
   }
   return (await resp.json()) as {
-    lat: number;
-    lon: number;
+    latitude: number;
+    longitude: number;
   };
 }
 
@@ -168,9 +168,9 @@ export default function Map({ cons }: { cons: ConWithPost[] }) {
   const [selected, setSelected] = useState<string | null>();
 
   const r = useMyLocation();
-  const { lat, lon, zoom } = r.ok
+  const { latitude, longitude, zoom } = r.ok
     ? { ...r.latLon, zoom: 3 }
-    : { lat: 0, lon: 0, zoom: 0 };
+    : { latitude: 0, longitude: 0, zoom: 0 };
 
   const style = useMemo(
     () => makeStyle({ colorScheme, locale: i18n.locale }),
@@ -185,8 +185,8 @@ export default function Map({ cons }: { cons: ConWithPost[] }) {
           setSelected(null);
         }}
         initialViewState={{
-          latitude: lat,
-          longitude: lon,
+          latitude,
+          longitude,
           zoom,
         }}
         attributionControl={false}
