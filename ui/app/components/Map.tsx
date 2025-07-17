@@ -36,7 +36,7 @@ function makeStyle({
         type: "vector",
         url: `https://api.protomaps.com/tiles/v4.json?key=${API_KEY}`,
         attribution:
-          "<a href='https://openstreetmap.org/copyright'>© OpenStreetMap Contributors</a>",
+          '<a href="https://openstreetmap.org/copyright" target="_blank">© OpenStreetMap Contributors</a>',
       },
     },
     glyphs:
