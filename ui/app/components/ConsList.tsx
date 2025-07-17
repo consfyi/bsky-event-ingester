@@ -1549,7 +1549,7 @@ function MapLayout({ cons }: { cons: ConWithPost[] }) {
     <Box h="calc(100dvh - 50px)">
       <Suspense
         fallback={
-          <Center p="lg" pt={50}>
+          <Center p="lg" h="100%">
             <Loader />
           </Center>
         }
