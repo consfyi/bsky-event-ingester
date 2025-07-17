@@ -1,14 +1,14 @@
+import { useLingui } from "@lingui/react/macro";
 import { Box, useComputedColorScheme, useMantineTheme } from "@mantine/core";
 import { IconMapPinFilled } from "@tabler/icons-react";
 import { getDay } from "date-fns";
 import { RMap, RMarker, RPopup } from "maplibre-react-components";
 import "maplibre-theme/icons.default.css";
 import "maplibre-theme/modern.css";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { ConWithPost } from "~/hooks";
 import { ConRow } from "./ConsList";
-import lightStyle from "./Map/styles/light.json?url";
-import darkStyle from "./Map/styles/dark.json?url";
+import makeStyle from "./Map/style";
 
 function Pin({
   con,
@@ -77,7 +77,13 @@ function Pin({
 
 export default function Map({ cons }: { cons: ConWithPost[] }) {
   const colorScheme = useComputedColorScheme();
+  const { i18n, t } = useLingui();
   const [selected, setSelected] = useState<string | null>();
+
+  const style = useMemo(
+    () => makeStyle({ colorScheme, locale: i18n.locale }),
+    [colorScheme, t]
+  );
 
   return (
     <Box px={{ base: 0, lg: "xs" }}>
@@ -86,7 +92,7 @@ export default function Map({ cons }: { cons: ConWithPost[] }) {
           setSelected(null);
         }}
         className={colorScheme}
-        mapStyle={colorScheme == "light" ? lightStyle : darkStyle}
+        mapStyle={style}
         initialCenter={[0, 0]}
         initialZoom={1}
         style={{ height: "800px" }}
