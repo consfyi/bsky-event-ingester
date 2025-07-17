@@ -14,7 +14,7 @@ import maplibregl, { StyleSpecification } from "maplibre-gl";
 import "maplibre-theme/icons.default.css";
 import "maplibre-theme/modern.css";
 import { useMemo, useState } from "react";
-import { ConWithPost } from "~/hooks";
+import { ConWithPost, hookifyPromise } from "~/hooks";
 import { ConRow } from "./ConsList";
 import classes from "./Map.module.css";
 
@@ -133,10 +133,44 @@ function Pin({
   );
 }
 
+async function getMyLocation(
+  signal?: AbortSignal
+): Promise<{ lat: number; lon: number }> {
+  const resp = await fetch("http://ip-api.com/json/?fields=lat,lon", {
+    signal,
+  });
+  if (!resp.ok) {
+    throw resp;
+  }
+  return (await resp.json()) as {
+    lat: number;
+    lon: number;
+  };
+}
+
+const useMyLocation = hookifyPromise(
+  (async () => {
+    const ctrl = new AbortController();
+    setTimeout(() => {
+      ctrl.abort();
+    }, 1000);
+    try {
+      return { ok: true, latLon: await getMyLocation(ctrl.signal) };
+    } catch {
+      return { ok: false };
+    }
+  })()
+);
+
 export default function Map({ cons }: { cons: ConWithPost[] }) {
   const colorScheme = useComputedColorScheme();
   const { i18n, t } = useLingui();
   const [selected, setSelected] = useState<string | null>();
+
+  const r = useMyLocation();
+  const { lat, lon, zoom } = r.ok
+    ? { ...r.latLon, zoom: 3 }
+    : { lat: 0, lon: 0, zoom: 0 };
 
   const style = useMemo(
     () => makeStyle({ colorScheme, locale: i18n.locale }),
@@ -151,9 +185,9 @@ export default function Map({ cons }: { cons: ConWithPost[] }) {
           setSelected(null);
         }}
         initialViewState={{
-          latitude: 0,
-          longitude: 0,
-          zoom: 0,
+          latitude: lat,
+          longitude: lon,
+          zoom,
         }}
         attributionControl={false}
         mapStyle={style}
