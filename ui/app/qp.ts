@@ -190,9 +190,7 @@ export function schema<T extends Schema>(schema: T): T {
   return schema;
 }
 
-type InferField<F extends Field<any>> = F extends {
-  multiple: true;
-}
+type InferField<F extends Field<any>> = F extends MultipleField<any>
   ? InferType<F["type"]>[]
   : F extends ScalarField<any, true>
   ? InferType<F["type"]>
