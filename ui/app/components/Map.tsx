@@ -185,24 +185,35 @@ const useMyLocation = hookifyPromise(
 
 export default function Map({
   cons,
-  initialLatLngZoom,
-  setLatLngZoom,
+  initialOptions,
+  setOptions,
 }: {
   cons: ConWithPost[];
-  initialLatLngZoom: [number, number, number] | null;
-  setLatLngZoom(latLngZoom: [number, number, number]): void;
+  initialOptions: { latLng: [number, number] | null; zoom: number | null };
+  setOptions(options: { latLng: [number, number]; zoom: number }): void;
 }) {
   const colorScheme = useComputedColorScheme();
   const { i18n, t } = useLingui();
   const [selected, setSelected] = useState<string | null>();
 
-  const latLon = useMyLocation();
-  const [latitude, longitude, zoom] =
-    initialLatLngZoom != null
-      ? initialLatLngZoom
-      : latLon != null
-      ? [...latLon, 3]
-      : [0, 0, 0];
+  const myLatLng = useMyLocation();
+
+  let { latLng, zoom } = initialOptions;
+  if (latLng == null) {
+    if (myLatLng != null) {
+      latLng = myLatLng;
+    } else {
+      latLng = [0, 0];
+      if (zoom == null) {
+        zoom = 0;
+      }
+    }
+  }
+  if (zoom == null) {
+    zoom = 3;
+  }
+
+  const [lat, lng] = latLng;
 
   const style = useMemo(
     () => makeStyle({ colorScheme, locale: i18n.locale }),
@@ -227,18 +238,17 @@ export default function Map({
         }}
         mapLib={maplibregl}
         onMoveEnd={(e) => {
-          setLatLngZoom([
-            e.viewState.latitude,
-            e.viewState.longitude,
-            e.viewState.zoom,
-          ]);
+          setOptions({
+            latLng: [e.viewState.latitude, e.viewState.longitude],
+            zoom: e.viewState.zoom,
+          });
         }}
         onClick={() => {
           setSelected(null);
         }}
         initialViewState={{
-          latitude,
-          longitude,
+          latitude: lat,
+          longitude: lng,
           zoom,
         }}
         attributionControl={false}

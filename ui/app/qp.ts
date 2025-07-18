@@ -44,6 +44,40 @@ export const boolean: Type<boolean> = {
   },
 };
 
+export function tuple<Ts extends readonly any[]>(
+  types: { [K in keyof Ts]: Type<Ts[K]> },
+  sep: string
+): Type<Ts> {
+  return {
+    parse(v) {
+      const parts = v.split(sep);
+
+      if (parts.length !== types.length) {
+        return undefined;
+      }
+
+      const parsed: any[] = [];
+      for (let i = 0; i < types.length; i++) {
+        const result = types[i].parse(parts[i]);
+        if (result === undefined) {
+          return undefined;
+        }
+        parsed.push(result);
+      }
+
+      return parsed as Ts;
+    },
+    serialize(v) {
+      return v.map((item, i) => types[i].serialize(item)).join(sep);
+    },
+    equals(xs, ys) {
+      return (
+        xs.length === ys.length && xs.every((x, i) => types[i].equals(x, ys[i]))
+      );
+    },
+  };
+}
+
 export function sepBy<T>(type: Type<T>, sep: string): Type<T[]> {
   return {
     parse(v) {

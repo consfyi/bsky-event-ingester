@@ -586,8 +586,7 @@ export type CalendarLayoutOptions = qp.InferSchema<
 >;
 
 export const MapLayoutOptions = qp.schema({
-  lat: qp.scalar(qp.number),
-  lng: qp.scalar(qp.number),
+  latLng: qp.scalar(qp.tuple([qp.number, qp.number], ",")),
   zoom: qp.scalar(qp.number),
 });
 export type MapLayoutOptions = qp.InferSchema<typeof MapLayoutOptions>;
@@ -1561,14 +1560,19 @@ const Map = lazy(() => import("./Map"));
 
 function MapLayout({
   cons,
-  initialLatLngZoom,
-  setLatLngZoom,
+  initialLatLng,
+  initialZoom,
+  setOptions,
 }: {
   cons: ConWithPost[];
-  initialLatLngZoom: [number, number, number] | null;
-  setLatLngZoom(latLngZoom: [number, number, number]): void;
+  initialLatLng: [number, number] | null;
+  initialZoom: number | null;
+  setOptions(options: { latLng: [number, number]; zoom: number }): void;
 }) {
-  const [latLngZoom] = useState(initialLatLngZoom);
+  const [options] = useState({
+    latLng: initialLatLng,
+    zoom: initialZoom,
+  });
   return (
     <Box h="100dvh" mt={-50}>
       <Suspense
@@ -1578,11 +1582,7 @@ function MapLayout({
           </Center>
         }
       >
-        <Map
-          cons={cons}
-          initialLatLngZoom={latLngZoom}
-          setLatLngZoom={setLatLngZoom}
-        />
+        <Map cons={cons} initialOptions={options} setOptions={setOptions} />
       </Suspense>
     </Box>
   );
@@ -1714,26 +1714,16 @@ export default function ConsList({
           ) : view.layout.type == "map" ? (
             <MapLayout
               cons={filteredCons}
-              initialLatLngZoom={
-                view.layout.options.lat !== undefined &&
-                view.layout.options.lng !== undefined &&
-                view.layout.options.zoom !== undefined
-                  ? [
-                      view.layout.options.lat,
-                      view.layout.options.lng,
-                      view.layout.options.zoom,
-                    ]
-                  : null
-              }
-              setLatLngZoom={([lat, lng, zoom]) => {
+              initialLatLng={view.layout.options.latLng ?? null}
+              initialZoom={view.layout.options.zoom ?? null}
+              setOptions={({ latLng, zoom }) => {
                 setView({
                   ...view,
                   layout: {
                     ...view.layout,
                     type: "map",
                     options: {
-                      lat,
-                      lng,
+                      latLng,
                       zoom,
                     } satisfies MapLayoutOptions,
                   },
