@@ -75,11 +75,10 @@ import { Fragment, lazy, Suspense, useMemo, useState } from "react";
 import { Link } from "react-router";
 import regexpEscape from "regexp.escape";
 import { z } from "zod/v4-mini";
-import * as qp from "~/qp";
 import Avatar from "~/components/Avatar";
 import Flag from "~/components/Flag";
 import LikeButton from "~/components/LikeButton";
-import { CONTINENTS, getContinentForCountry } from "~/continents";
+import { Continent, CONTINENTS, getContinentForCountry } from "~/continents";
 import { reinterpretAsLocalDate } from "~/date";
 import {
   ConWithPost,
@@ -88,6 +87,7 @@ import {
   useIsLoggedIn,
   useNow,
 } from "~/hooks";
+import * as qp from "~/qp";
 import removeDiacritics from "~/removeDiacritics";
 import classes from "./ConsList.module.css";
 
@@ -558,14 +558,11 @@ const DEFAULT_SORT_DESC_OPTIONS: Record<SortBy, boolean> = {
   followed: true,
 };
 
-const Continent = qp.enum_(CONTINENTS);
-export type Continent = qp.InferType<typeof Continent>;
-
 export const FilterOptions = qp.schema({
   q: qp.scalar(qp.string, ""),
   attending: qp.scalar(qp.boolean, false),
   followed: qp.scalar(qp.boolean, false),
-  continents: qp.scalar(qp.sepBy(Continent, " "), [...Continent.values]),
+  continents: qp.scalar(qp.sepBy(qp.enum_(CONTINENTS), " "), [...CONTINENTS]),
   minDays: qp.scalar(qp.number, 1),
   maxDays: qp.scalar(qp.number, 7),
 });

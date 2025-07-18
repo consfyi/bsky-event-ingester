@@ -4,10 +4,6 @@ export interface Type<T> {
   equals(x: T, y: T): boolean;
 }
 
-export interface EnumType<T> extends Type<T> {
-  values: readonly T[];
-}
-
 export const string: Type<string> = {
   parse(v) {
     return v;
@@ -126,7 +122,7 @@ export function literal<T extends string | number>(lit: T): Type<T> {
 export function enumImpl<T, U extends T>(
   type: Type<T>,
   values: readonly U[]
-): EnumType<U> {
+): Type<U> {
   const set = new Set<T>(values);
 
   return {
@@ -142,13 +138,12 @@ export function enumImpl<T, U extends T>(
     equals(x, y) {
       return type.equals(x, y);
     },
-    values,
   };
 }
 
 export function enum_<T extends string | number>(
   values: readonly T[]
-): EnumType<T> {
+): Type<T> {
   if (values.every((v) => typeof v === "string")) {
     return enumImpl(string, values);
   }
