@@ -1,14 +1,11 @@
-import { Container } from "@mantine/core";
 import type { ActorIdentifier } from "@atcute/lexicons";
+import { Container } from "@mantine/core";
 import { useEffect } from "react";
-import { useParams } from "react-router";
 import UserDetails from "~/components/UserDetails";
 import { useProfile } from "~/hooks";
 import { Route } from "./+types/users.$actor";
 
-export default function Index() {
-  const { actor } = useParams<Route.LoaderArgs["params"]>();
-
+export default function Index({ params: { actor } }: Route.ComponentProps) {
   const profile = useProfile(actor as ActorIdentifier);
 
   useEffect(() => {

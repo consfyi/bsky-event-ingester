@@ -1,14 +1,11 @@
-import { Box, Container } from "@mantine/core";
+import { Container } from "@mantine/core";
 import { useEffect } from "react";
-import { useParams } from "react-router";
 import ConDetails from "~/components/ConDetails";
-import { useConsWithPosts, useFollowedConAttendeesDLE } from "~/hooks";
+import { useConsWithPosts } from "~/hooks";
 import { Route } from "./+types/cons.$slug";
 
-export default function Index() {
+export default function Index({ params: { slug } }: Route.ComponentProps) {
   const cons = useConsWithPosts();
-
-  const { slug } = useParams<Route.LoaderArgs["params"]>();
 
   const con =
     cons != null
