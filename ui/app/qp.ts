@@ -44,7 +44,7 @@ export const boolean: Type<boolean> = {
   },
 };
 
-export function tuple<Ts extends readonly any[]>(
+export function tuple<Ts extends any[]>(
   types: { [K in keyof Ts]: Type<Ts[K]> },
   sep: string
 ): Type<Ts> {
