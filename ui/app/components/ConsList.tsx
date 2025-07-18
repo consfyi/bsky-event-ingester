@@ -75,10 +75,11 @@ import { Fragment, lazy, Suspense, useMemo, useState } from "react";
 import { Link } from "react-router";
 import regexpEscape from "regexp.escape";
 import { z } from "zod/v4-mini";
+import * as qp from "~/qp";
 import Avatar from "~/components/Avatar";
 import Flag from "~/components/Flag";
 import LikeButton from "~/components/LikeButton";
-import { Continent, getContinentForCountry } from "~/continents";
+import { CONTINENTS, getContinentForCountry } from "~/continents";
 import { reinterpretAsLocalDate } from "~/date";
 import {
   ConWithPost,
@@ -546,8 +547,8 @@ function ConsBy({ cons }: { cons: ConWithPost[] }) {
   );
 }
 
-const SortBy = z.enum(["date", "name", "attendees", "followed"]);
-type SortBy = z.infer<typeof SortBy>;
+const SORT_BY = ["date", "name", "attendees", "followed"] as const;
+type SortBy = (typeof SORT_BY)[number];
 
 const DEFAULT_SORT_DESC_OPTIONS: Record<SortBy, boolean> = {
   date: false,
@@ -556,55 +557,54 @@ const DEFAULT_SORT_DESC_OPTIONS: Record<SortBy, boolean> = {
   followed: true,
 };
 
-export const FilterOptions = z.object({
-  query: z._default(z.string(), ""),
-  attending: z._default(z.boolean(), false),
-  followed: z._default(z.boolean(), false),
-  continents: z._default(
-    z.array(Continent),
-    Object.values(Continent.def.entries)
-  ),
-  minDays: z._default(z.number(), 1),
-  maxDays: z._default(z.number(), 7),
+const Continent = qp.enum_(CONTINENTS);
+export type Continent = qp.InferType<typeof Continent>;
+
+export const FilterOptions = qp.schema({
+  q: qp.scalar(qp.string, ""),
+  attending: qp.scalar(qp.boolean, false),
+  followed: qp.scalar(qp.boolean, false),
+  continent: qp.multiple(Continent, Continent.values),
+  minDays: qp.scalar(qp.number, 1),
+  maxDays: qp.scalar(qp.number, 7),
 });
-export type FilterOptions = z.infer<typeof FilterOptions>;
+export type FilterOptions = qp.InferSchema<typeof FilterOptions>;
+export const DEFAULT_FILTER_OPTIONS = qp.defaults(FilterOptions);
 
-export const ListLayoutOptions = z.object({
-  type: z._default(z.literal("list"), "list"),
-  sort: z._default(SortBy, "date"),
-  desc: z._default(z.boolean(), false),
+export const ListLayoutOptions = qp.schema({
+  sort: qp.scalar(qp.enum_(SORT_BY), "date"),
+  desc: qp.scalar(qp.boolean, false),
 });
-export type ListLayoutOptions = z.infer<typeof ListLayoutOptions>;
+export type ListLayoutOptions = qp.InferSchema<typeof ListLayoutOptions>;
+export const DEFAULT_LIST_LAYOUT_OPTIONS = qp.defaults(ListLayoutOptions);
 
-export const CalendarLayoutOptions = z.object({
-  type: z._default(z.literal("calendar"), "calendar"),
-  inYourTimeZone: z._default(z.boolean(), false),
+export const CalendarLayoutOptions = qp.schema({
+  inYourTimeZone: qp.scalar(qp.boolean, false),
 });
-export type CalendarLayoutOptions = z.infer<typeof CalendarLayoutOptions>;
+export type CalendarLayoutOptions = qp.InferSchema<
+  typeof CalendarLayoutOptions
+>;
+export const DEFAULT_CALENDAR_LAYOUT_OPTIONS = qp.defaults(
+  CalendarLayoutOptions
+);
 
-export const MapLayoutOptions = z.object({
-  type: z._default(z.literal("map"), "map"),
-  center: z._default(
-    z.nullable(z.tuple([z.number(), z.number(), z.number()])),
-    null
-  ),
+export const MapLayoutOptions = qp.schema({
+  lat: qp.scalar(qp.number),
+  lng: qp.scalar(qp.number),
+  zoom: qp.scalar(qp.number),
 });
-export type MapLayoutOptions = z.infer<typeof MapLayoutOptions>;
+export type MapLayoutOptions = qp.InferSchema<typeof MapLayoutOptions>;
+export const DEFAULT_MAP_LAYOUT_OPTIONS = qp.defaults(MapLayoutOptions);
 
-export const LayoutOptions = z.union([
-  ListLayoutOptions,
-  CalendarLayoutOptions,
-  MapLayoutOptions,
-]);
-export type LayoutOptions = z.infer<typeof LayoutOptions>;
+export type LayoutOptions =
+  | { type: "list"; options: ListLayoutOptions }
+  | { type: "calendar"; options: CalendarLayoutOptions }
+  | { type: "map"; options: MapLayoutOptions };
 
-export const ViewOptions = z.object({
-  filter: z._default(FilterOptions, FilterOptions.parse({})),
-  layout: z._default(LayoutOptions, ListLayoutOptions.parse({})),
-});
-export type ViewOptions = z.infer<typeof ViewOptions>;
-
-export const DEFAULT_VIEW_OPTIONS: ViewOptions = ViewOptions.parse({});
+export interface ViewOptions {
+  layout: LayoutOptions;
+  filter: FilterOptions;
+}
 
 const SORT_BY_DISPLAYS: Record<
   SortBy,
@@ -658,16 +658,14 @@ const CONTINENT_NAMES: Record<Continent, MessageDescriptor> = {
 
 function Filters({
   cons,
-  viewOptions,
-  setViewOptions,
+  view,
+  setView,
   firstDayOfWeek,
   setFirstDayOfWeek,
 }: {
   cons: ConWithPost[];
-  viewOptions: ViewOptions;
-  setViewOptions: (
-    val: ViewOptions | ((prevState: ViewOptions) => ViewOptions)
-  ) => void;
+  view: ViewOptions;
+  setView(f: (view: ViewOptions) => ViewOptions): void;
   firstDayOfWeek: Day;
   setFirstDayOfWeek: (day: Day) => void;
 }) {
@@ -680,8 +678,8 @@ function Filters({
   const [sortMenuOpen, setSortMenuOpen] = useState(false);
   const [filterDrawerOpen, setFilterDrawerOpen] = useState(false);
 
-  const attendingFiltered = isLoggedIn && viewOptions.filter.attending;
-  const followedFiltered = isLoggedIn && viewOptions.filter.followed;
+  const attendingFiltered = isLoggedIn && view.filter.attending;
+  const followedFiltered = isLoggedIn && view.filter.followed;
 
   const continentCount = useMemo(() => {
     const counts: Partial<Record<Continent, number>> = {};
@@ -695,19 +693,19 @@ function Filters({
   const sortedContinents = useMemo(
     () =>
       sorted(
-        DEFAULT_VIEW_OPTIONS.filter.continents,
+        [...FilterOptions.continent.default],
         compareDesc(comparing((code) => continentCount[code] ?? 0))
       ),
     [continentCount]
   );
 
   const continentsFiltered = !deepEqual(
-    viewOptions.filter.continents,
-    DEFAULT_VIEW_OPTIONS.filter.continents
+    view.filter.continent,
+    DEFAULT_FILTER_OPTIONS.continent
   );
   const durationFiltered =
-    viewOptions.filter.minDays != DEFAULT_VIEW_OPTIONS.filter.minDays ||
-    viewOptions.filter.maxDays != DEFAULT_VIEW_OPTIONS.filter.maxDays;
+    view.filter.minDays != DEFAULT_FILTER_OPTIONS.minDays ||
+    view.filter.maxDays != DEFAULT_FILTER_OPTIONS.maxDays;
 
   const numFilters = [
     followedFiltered,
@@ -726,22 +724,22 @@ function Filters({
           <CloseButton
             icon={<IconX size={16} />}
             onClick={() => {
-              setViewOptions((vo) => ({
-                ...vo,
-                filter: { ...vo.filter, query: "" },
+              setView((v) => ({
+                ...v,
+                filter: { ...v.filter, q: "" } satisfies FilterOptions,
               }));
             }}
             style={{
-              display: viewOptions.filter.query != "" ? undefined : "none",
+              display: view.filter.q != "" ? undefined : "none",
             }}
           />
         }
         placeholder={t`Search`}
-        value={viewOptions.filter.query}
+        value={view.filter.q}
         onChange={(e) => {
-          setViewOptions((vo) => ({
-            ...vo,
-            filter: { ...vo.filter, query: e.target.value },
+          setView((v) => ({
+            ...v,
+            filter: { ...v.filter, q: e.target.value } satisfies FilterOptions,
           }));
         }}
       />
@@ -782,13 +780,13 @@ function Filters({
               size="xs"
               style={{ flexShrink: 0 }}
               onClick={() => {
-                setViewOptions({
-                  ...viewOptions,
+                setView((v) => ({
+                  ...v,
                   filter: {
-                    ...viewOptions.filter,
-                    attending: !viewOptions.filter.attending,
+                    ...v.filter,
+                    attending: !view.filter.attending,
                   },
-                });
+                }));
               }}
               {...(attendingFiltered
                 ? {
@@ -822,11 +820,11 @@ function Filters({
                     })}
               >
                 {continentsFiltered ? (
-                  viewOptions.filter.continents.length == 1 ? (
-                    t(CONTINENT_NAMES[viewOptions.filter.continents[0]])
+                  view.filter.continent.length == 1 ? (
+                    t(CONTINENT_NAMES[view.filter.continent[0]])
                   ) : (
                     <Plural
-                      value={viewOptions.filter.continents.length}
+                      value={view.filter.continent.length}
                       one="# region"
                       other="# regions"
                     />
@@ -839,7 +837,7 @@ function Filters({
             <Menu.Dropdown visibleFrom="lg">
               <Menu.Item
                 leftSection={
-                  viewOptions.filter.continents.length > 0 ? (
+                  view.filter.continent.length > 0 ? (
                     continentsFiltered ? (
                       <IconMinus size={14} />
                     ) : (
@@ -850,27 +848,27 @@ function Filters({
                   )
                 }
                 onClick={() => {
-                  setViewOptions({
-                    ...viewOptions,
+                  setView((v) => ({
+                    ...v,
                     filter: {
-                      ...viewOptions.filter,
-                      continents: continentsFiltered
-                        ? DEFAULT_VIEW_OPTIONS.filter.continents
+                      ...v.filter,
+                      continent: continentsFiltered
+                        ? DEFAULT_FILTER_OPTIONS.continent
                         : [],
                     },
-                  });
+                  }));
                 }}
                 fw={500}
               >
                 <Plural
-                  value={viewOptions.filter.continents.length}
+                  value={view.filter.continent.length}
                   one="# selected"
                   other="# selected"
                 />
               </Menu.Item>
               <Menu.Divider />
               {sortedContinents.map((code) => {
-                const selected = viewOptions.filter.continents.includes(code);
+                const selected = view.filter.continent.includes(code);
 
                 return (
                   <Menu.Item
@@ -884,17 +882,15 @@ function Filters({
                       )
                     }
                     onClick={() => {
-                      setViewOptions({
-                        ...viewOptions,
+                      setView((v) => ({
+                        ...v,
                         filter: {
-                          ...viewOptions.filter,
-                          continents: !selected
-                            ? sorted([...viewOptions.filter.continents, code])
-                            : viewOptions.filter.continents.filter(
-                                (c) => c != code
-                              ),
+                          ...v.filter,
+                          continent: !selected
+                            ? sorted([...view.filter.continent, code])
+                            : view.filter.continent.filter((c) => c != code),
                         },
-                      });
+                      }));
                     }}
                   >
                     {t(CONTINENT_NAMES[code])}{" "}
@@ -924,32 +920,29 @@ function Filters({
                     })}
               >
                 {durationFiltered ? (
-                  viewOptions.filter.minDays == viewOptions.filter.maxDays ? (
-                    viewOptions.filter.minDays >=
-                    DEFAULT_VIEW_OPTIONS.filter.maxDays ? (
+                  view.filter.minDays == view.filter.maxDays ? (
+                    view.filter.minDays >= DEFAULT_FILTER_OPTIONS.maxDays ? (
                       <Plural
-                        value={DEFAULT_VIEW_OPTIONS.filter.maxDays}
+                        value={DEFAULT_FILTER_OPTIONS.maxDays}
                         one="# day or more"
                         other="# days or more"
                       />
                     ) : (
                       <Plural
-                        value={viewOptions.filter.minDays}
+                        value={view.filter.minDays}
                         one="# day"
                         other="# days"
                       />
                     )
-                  ) : viewOptions.filter.maxDays >=
-                    DEFAULT_VIEW_OPTIONS.filter.maxDays ? (
+                  ) : view.filter.maxDays >= DEFAULT_FILTER_OPTIONS.maxDays ? (
                     <Plural
-                      value={viewOptions.filter.minDays}
+                      value={view.filter.minDays}
                       one="# day or more"
                       other="# days or more"
                     />
                   ) : (
                     <Trans>
-                      {viewOptions.filter.minDays} to{" "}
-                      {viewOptions.filter.maxDays} days
+                      {view.filter.minDays} to {view.filter.maxDays} days
                     </Trans>
                   )
                 ) : (
@@ -962,38 +955,35 @@ function Filters({
                 <RangeSlider
                   w={200}
                   min={1}
-                  max={DEFAULT_VIEW_OPTIONS.filter.maxDays}
+                  max={DEFAULT_FILTER_OPTIONS.maxDays}
                   minRange={0}
-                  value={[
-                    viewOptions.filter.minDays,
-                    viewOptions.filter.maxDays,
-                  ]}
+                  value={[view.filter.minDays, view.filter.maxDays]}
                   onChange={([minDays, maxDays]) => {
-                    setViewOptions({
-                      ...viewOptions,
+                    setView((v) => ({
+                      ...v,
                       filter: {
-                        ...viewOptions.filter,
+                        ...v.filter,
                         minDays,
                         maxDays,
                       },
-                    });
+                    }));
                   }}
                   label={(value) =>
-                    value < DEFAULT_VIEW_OPTIONS.filter.maxDays ? (
+                    value < DEFAULT_FILTER_OPTIONS.maxDays ? (
                       <Plural value={[value][0]} one="# day" other="# days" />
                     ) : (
                       <Plural
-                        value={DEFAULT_VIEW_OPTIONS.filter.maxDays}
+                        value={DEFAULT_FILTER_OPTIONS.maxDays}
                         one="# day or more"
                         other="# days or more"
                       />
                     )
                   }
-                  marks={[
-                    ...Array(DEFAULT_VIEW_OPTIONS.filter.maxDays).keys(),
-                  ].map((v) => ({
-                    value: v + 1,
-                  }))}
+                  marks={[...Array(DEFAULT_FILTER_OPTIONS.maxDays).keys()].map(
+                    (v) => ({
+                      value: v + 1,
+                    })
+                  )}
                 />
               </Box>
             </Menu.Dropdown>
@@ -1005,13 +995,13 @@ function Filters({
               style={{ flexShrink: 0 }}
               loading={followedConAttendees == null}
               onClick={() => {
-                setViewOptions({
-                  ...viewOptions,
+                setView((v) => ({
+                  ...v,
                   filter: {
-                    ...viewOptions.filter,
-                    followed: !viewOptions.filter.followed,
+                    ...v.filter,
+                    followed: !view.filter.followed,
                   },
-                });
+                }));
               }}
               {...(followedFiltered
                 ? {
@@ -1028,7 +1018,7 @@ function Filters({
           ) : null}
         </Group>
         <Group gap="xs">
-          {viewOptions.layout.type == "list" ? (
+          {view.layout.type == "list" ? (
             <Menu
               position="bottom-end"
               withArrow
@@ -1045,8 +1035,8 @@ function Filters({
                   style={{ zIndex: 4, flexShrink: 0 }}
                   leftSection={(() => {
                     const currentSortByDisplay =
-                      SORT_BY_DISPLAYS[viewOptions.layout.sort];
-                    return viewOptions.layout.desc ? (
+                      SORT_BY_DISPLAYS[view.layout.options.sort];
+                    return view.layout.options.desc ? (
                       <currentSortByDisplay.DescIcon
                         title={t(currentSortByDisplay.desc)}
                         size={14}
@@ -1060,7 +1050,7 @@ function Filters({
                   })()}
                   rightSection={<IconChevronDown size={14} />}
                 >
-                  {t(SORT_BY_DISPLAYS[viewOptions.layout.sort].name)}
+                  {t(SORT_BY_DISPLAYS[view.layout.options.sort].name)}
                 </Button>
               </Menu.Target>
 
@@ -1068,14 +1058,14 @@ function Filters({
                 <Menu.Label>
                   <Trans>Sort by</Trans>
                 </Menu.Label>
-                {Object.values(SortBy.def.entries).map((sortBy) => {
+                {SORT_BY.map((sortBy) => {
                   if (!isLoggedIn && sortBy == "followed") {
                     return null;
                   }
 
                   const selected =
-                    viewOptions.layout.type == "list" &&
-                    viewOptions.layout.sort == sortBy;
+                    view.layout.type == "list" &&
+                    view.layout.options.sort == sortBy;
 
                   return (
                     <Menu.Item
@@ -1084,12 +1074,14 @@ function Filters({
                       }
                       aria-selected={selected}
                       onClick={() => {
-                        setViewOptions((vo) => ({
-                          ...vo,
+                        setView((v) => ({
+                          ...v,
                           layout: {
                             type: "list",
-                            sort: sortBy,
-                            desc: DEFAULT_SORT_DESC_OPTIONS[sortBy],
+                            options: {
+                              sort: sortBy,
+                              desc: DEFAULT_SORT_DESC_OPTIONS[sortBy],
+                            } satisfies ListLayoutOptions,
                           },
                         }));
                       }}
@@ -1114,64 +1106,70 @@ function Filters({
                   <Trans>Order</Trans>
                 </Menu.Label>
                 <Menu.Item
-                  aria-selected={!viewOptions.layout.desc}
+                  aria-selected={!view.layout.options.desc}
                   onClick={() => {
-                    setViewOptions((vo) => ({
-                      ...vo,
+                    setView((v) => ({
+                      ...v,
                       layout: {
-                        ...vo.layout,
-                        desc: false,
+                        type: "list",
+                        options: {
+                          ...(v.layout.options as ListLayoutOptions),
+                          desc: false,
+                        } satisfies ListLayoutOptions,
                       },
                     }));
                   }}
                   leftSection={
                     <Group gap={6}>
-                      {!viewOptions.layout.desc ? (
+                      {!view.layout.options.desc ? (
                         <IconCheck size={14} />
                       ) : (
                         <EmptyIcon size={14} />
                       )}
                       {(() => {
                         const Icon =
-                          SORT_BY_DISPLAYS[viewOptions.layout.sort].AscIcon;
+                          SORT_BY_DISPLAYS[view.layout.options.sort].AscIcon;
                         return <Icon size={14} />;
                       })()}
                     </Group>
                   }
                 >
-                  {t(SORT_BY_DISPLAYS[viewOptions.layout.sort].asc)}
+                  {t(SORT_BY_DISPLAYS[view.layout.options.sort].asc)}
                 </Menu.Item>
                 <Menu.Item
-                  aria-selected={viewOptions.layout.desc}
+                  aria-selected={view.layout.options.desc}
                   onClick={() => {
-                    setViewOptions((vo) => ({
-                      ...vo,
+                    setView((v) => ({
+                      ...v,
                       layout: {
-                        ...vo.layout,
-                        desc: true,
+                        type: "list",
+                        options: {
+                          ...(v.layout.options as ListLayoutOptions),
+                          desc: true,
+                        } satisfies ListLayoutOptions,
                       },
                     }));
                   }}
                   leftSection={
                     <Group gap={6}>
-                      {viewOptions.layout.desc ? (
+                      {view.layout.options.desc ? (
                         <IconCheck size={14} />
                       ) : (
                         <EmptyIcon size={14} />
                       )}
                       {(() => {
                         const Icon =
-                          SORT_BY_DISPLAYS[viewOptions.layout.sort].DescIcon;
+                          SORT_BY_DISPLAYS[view.layout.options.sort].DescIcon;
                         return <Icon size={14} />;
                       })()}
                     </Group>
                   }
                 >
-                  {t(SORT_BY_DISPLAYS[viewOptions.layout.sort].desc)}
+                  {t(SORT_BY_DISPLAYS[view.layout.options.sort].desc)}
                 </Menu.Item>
               </Menu.Dropdown>
             </Menu>
-          ) : viewOptions.layout.type == "calendar" ? (
+          ) : view.layout.type == "calendar" ? (
             <Menu
               position="bottom-end"
               withArrow
@@ -1220,18 +1218,21 @@ function Filters({
                 </Menu.Label>
                 <Menu.Item
                   leftSection={
-                    !viewOptions.layout.inYourTimeZone ? (
+                    !view.layout.options.inYourTimeZone ? (
                       <IconCheck size={14} />
                     ) : (
                       <EmptyIcon size={14} />
                     )
                   }
                   onClick={() => {
-                    setViewOptions((vo) => ({
-                      ...vo,
+                    setView((v) => ({
+                      ...v,
                       layout: {
-                        ...vo.layout,
-                        inYourTimeZone: false,
+                        type: "calendar",
+                        options: {
+                          ...(v.layout.options as CalendarLayoutOptions),
+                          inYourTimeZone: false,
+                        } satisfies CalendarLayoutOptions,
                       },
                     }));
                   }}
@@ -1240,18 +1241,21 @@ function Filters({
                 </Menu.Item>
                 <Menu.Item
                   leftSection={
-                    viewOptions.layout.inYourTimeZone ? (
+                    view.layout.options.inYourTimeZone ? (
                       <IconCheck size={14} />
                     ) : (
                       <EmptyIcon size={14} />
                     )
                   }
                   onClick={() => {
-                    setViewOptions((vo) => ({
-                      ...vo,
+                    setView((v) => ({
+                      ...v,
                       layout: {
-                        ...vo.layout,
-                        inYourTimeZone: true,
+                        type: "calendar",
+                        options: {
+                          ...(v.layout.options as CalendarLayoutOptions),
+                          inYourTimeZone: true,
+                        } satisfies CalendarLayoutOptions,
                       },
                     }));
                   }}
@@ -1264,20 +1268,28 @@ function Filters({
 
           <SegmentedControl
             onChange={(value) => {
-              setViewOptions((vo) => ({
-                ...vo,
-                layout:
-                  value == "calendar"
-                    ? CalendarLayoutOptions.parse({})
-                    : value == "map"
-                    ? MapLayoutOptions.parse({})
-                    : ListLayoutOptions.parse({}),
+              setView((v) => ({
+                ...v,
+                layout: (value == "calendar"
+                  ? {
+                      type: "calendar",
+                      options: qp.defaults(CalendarLayoutOptions),
+                    }
+                  : value == "map"
+                  ? {
+                      type: "map",
+                      options: qp.defaults(MapLayoutOptions),
+                    }
+                  : {
+                      type: "list",
+                      options: qp.defaults(ListLayoutOptions),
+                    }) satisfies LayoutOptions,
               }));
             }}
             value={
-              viewOptions.layout.type == "calendar"
+              view.layout.type == "calendar"
                 ? "calendar"
-                : viewOptions.layout.type == "map"
+                : view.layout.type == "map"
                 ? "map"
                 : "list"
             }
@@ -1339,13 +1351,13 @@ function Filters({
               icon={(props) => <IconHeartFilled {...props} />}
               label={<Trans>Going only</Trans>}
               onChange={(e) => {
-                setViewOptions({
-                  ...viewOptions,
+                setView((v) => ({
+                  ...v,
                   filter: {
-                    ...viewOptions.filter,
+                    ...v.filter,
                     attending: e.target.checked,
                   },
-                });
+                }));
               }}
             />
             <Checkbox
@@ -1354,13 +1366,13 @@ function Filters({
               checked={followedFiltered}
               label={<Trans>With followed only</Trans>}
               onChange={(e) => {
-                setViewOptions({
-                  ...viewOptions,
+                setView((v) => ({
+                  ...v,
                   filter: {
-                    ...viewOptions.filter,
+                    ...v.filter,
                     followed: e.target.checked,
                   },
-                });
+                }));
               }}
             />
 
@@ -1372,25 +1384,25 @@ function Filters({
         </Title>
         <Checkbox
           mb="sm"
-          checked={viewOptions.filter.continents.length > 0}
+          checked={view.filter.continent.length > 0}
           indeterminate={
-            viewOptions.filter.continents.length != 0 && continentsFiltered
+            view.filter.continent.length != 0 && continentsFiltered
           }
           onChange={(e) => {
-            setViewOptions({
-              ...viewOptions,
+            setView((v) => ({
+              ...v,
               filter: {
-                ...viewOptions.filter,
-                continents: e.target.checked
-                  ? DEFAULT_VIEW_OPTIONS.filter.continents
+                ...v.filter,
+                continent: e.target.checked
+                  ? DEFAULT_FILTER_OPTIONS.continent
                   : [],
               },
-            });
+            }));
           }}
           fw={500}
           label={
             <Plural
-              value={viewOptions.filter.continents.length}
+              value={view.filter.continent.length}
               one="# selected"
               other="# selected"
             />
@@ -1401,17 +1413,17 @@ function Filters({
             <Checkbox
               key={code}
               mb="sm"
-              checked={viewOptions.filter.continents.includes(code)}
+              checked={view.filter.continent.includes(code)}
               onChange={(e) => {
-                setViewOptions({
-                  ...viewOptions,
+                setView((v) => ({
+                  ...v,
                   filter: {
-                    ...viewOptions.filter,
-                    continents: e.target.checked
-                      ? sorted([...viewOptions.filter.continents, code])
-                      : viewOptions.filter.continents.filter((c) => c != code),
+                    ...v.filter,
+                    continent: e.target.checked
+                      ? sorted([...view.filter.continent, code])
+                      : view.filter.continent.filter((c) => c != code),
                   },
-                });
+                }));
               }}
               label={
                 <>
@@ -1432,21 +1444,21 @@ function Filters({
           w="100%"
           min={1}
           mb="sm"
-          max={DEFAULT_VIEW_OPTIONS.filter.maxDays}
+          max={DEFAULT_FILTER_OPTIONS.maxDays}
           minRange={0}
-          value={[viewOptions.filter.minDays, viewOptions.filter.maxDays]}
+          value={[view.filter.minDays, view.filter.maxDays]}
           onChange={([minDays, maxDays]) => {
-            setViewOptions({
-              ...viewOptions,
-              filter: { ...viewOptions.filter, minDays, maxDays },
-            });
+            setView((v) => ({
+              ...v,
+              filter: { ...v.filter, minDays, maxDays },
+            }));
           }}
           label={(value) =>
-            value < DEFAULT_VIEW_OPTIONS.filter.maxDays ? (
+            value < DEFAULT_FILTER_OPTIONS.maxDays ? (
               <Plural value={[value][0]} one="# day" other="# days" />
             ) : (
               <Plural
-                value={DEFAULT_VIEW_OPTIONS.filter.maxDays}
+                value={DEFAULT_FILTER_OPTIONS.maxDays}
                 one="# day or more"
                 other="# days or more"
               />
@@ -1454,8 +1466,8 @@ function Filters({
           }
           marks={toArray(
             map(
-              Range.from(DEFAULT_VIEW_OPTIONS.filter.minDays).toInclusive(
-                DEFAULT_VIEW_OPTIONS.filter.maxDays
+              Range.from(DEFAULT_FILTER_OPTIONS.minDays).toInclusive(
+                DEFAULT_FILTER_OPTIONS.maxDays
               ),
               (value) => ({ value })
             )
@@ -1582,14 +1594,12 @@ type FirstDayOfWeek = z.infer<typeof FirstDayOfWeek>;
 
 export default function ConsList({
   cons,
-  viewOptions,
-  setViewOptions,
+  view,
+  setView,
 }: {
   cons: ConWithPost[];
-  viewOptions: ViewOptions;
-  setViewOptions: (
-    val: ViewOptions | ((prevState: ViewOptions) => ViewOptions)
-  ) => void;
+  view: ViewOptions;
+  setView(f: (view: ViewOptions) => ViewOptions): void;
 }) {
   const { i18n } = useLingui();
   const { data: followedConAttendees } = useFollowedConAttendeesDLE();
@@ -1597,18 +1607,16 @@ export default function ConsList({
   const queryRe = new RegExp(
     `^${Array.prototype.map
       .call(
-        removeDiacritics(
-          viewOptions.filter.query.toLocaleLowerCase(i18n.locale)
-        ),
+        removeDiacritics(view.filter.q.toLocaleLowerCase(i18n.locale)),
         (c) => `${regexpEscape(c)}.*`
       )
       .join("")}`
   );
 
   const maxDays =
-    viewOptions.filter.maxDays >= DEFAULT_VIEW_OPTIONS.filter.maxDays
+    view.filter.maxDays >= FilterOptions.maxDays.default
       ? Infinity
-      : viewOptions.filter.maxDays;
+      : view.filter.maxDays;
 
   const defaultFirstDayOfWeek = useMemo(() => {
     // Use the locale of the browser rather than the set locale.
@@ -1648,23 +1656,20 @@ export default function ConsList({
         queryRe
       ) != null &&
       // Attending filter
-      (!viewOptions.filter.attending || con.post.viewer?.like != null) &&
+      (!view.filter.attending || con.post.viewer?.like != null) &&
       // Continents filter
-      viewOptions.filter.continents.includes(
-        getContinentForCountry(con.country)
-      ) &&
+      view.filter.continent.includes(getContinentForCountry(con.country)) &&
       // Duration filter
-      days >= viewOptions.filter.minDays &&
+      days >= view.filter.minDays &&
       days <= maxDays &&
       // Followed filter
-      (!viewOptions.filter.followed ||
+      (!view.filter.followed ||
         followedConAttendees == null ||
         (followedConAttendees[con.identifier] ?? []).length > 0)
     );
   });
 
-  const compact =
-    viewOptions.filter.attending || viewOptions.filter.query != "";
+  const compact = view.filter.attending || view.filter.q != "";
 
   return (
     <Box style={{ position: "relative" }}>
@@ -1672,7 +1677,7 @@ export default function ConsList({
         size="lg"
         px={0}
         style={
-          viewOptions.layout.type == "map"
+          view.layout.type == "map"
             ? {
                 left: 0,
                 right: 0,
@@ -1685,8 +1690,8 @@ export default function ConsList({
       >
         <Filters
           cons={cons}
-          viewOptions={viewOptions}
-          setViewOptions={setViewOptions}
+          view={view}
+          setView={setView}
           firstDayOfWeek={firstDayOfWeek}
           setFirstDayOfWeek={setFirstDayOfWeek}
         />
@@ -1699,30 +1704,48 @@ export default function ConsList({
           </Center>
         }
       >
-        {filteredCons.length > 0 || viewOptions.layout.type == "map" ? (
-          viewOptions.layout.type == "calendar" ? (
+        {filteredCons.length > 0 || view.layout.type == "map" ? (
+          view.layout.type == "calendar" ? (
             <CalendarLayout
               cons={filteredCons}
-              inYourTimeZone={viewOptions.layout.inYourTimeZone}
+              inYourTimeZone={view.layout.options.inYourTimeZone}
               firstDayOfWeek={firstDayOfWeek}
               includeToday={!compact}
             />
-          ) : viewOptions.layout.type == "map" ? (
+          ) : view.layout.type == "map" ? (
             <MapLayout
               cons={filteredCons}
-              initialLatLngZoom={viewOptions.layout.center}
-              setLatLngZoom={(latLngZoom) => {
-                setViewOptions((vo) => ({
-                  ...vo,
-                  layout: { ...vo.layout, center: latLngZoom },
+              initialLatLngZoom={
+                view.layout.options.lat !== undefined &&
+                view.layout.options.lng !== undefined &&
+                view.layout.options.zoom !== undefined
+                  ? [
+                      view.layout.options.lat,
+                      view.layout.options.lng,
+                      view.layout.options.zoom,
+                    ]
+                  : null
+              }
+              setLatLngZoom={([lat, lng, zoom]) => {
+                setView((v) => ({
+                  ...v,
+                  layout: {
+                    ...v.layout,
+                    type: "map",
+                    options: {
+                      lat,
+                      lng,
+                      zoom,
+                    } satisfies MapLayoutOptions,
+                  },
                 }));
               }}
             />
           ) : (
             <ListLayout
               cons={filteredCons}
-              sort={viewOptions.layout.sort}
-              desc={viewOptions.layout.desc}
+              sort={view.layout.options.sort}
+              desc={view.layout.options.desc}
               hideEmptyGroups={compact}
             />
           )
@@ -1733,14 +1756,14 @@ export default function ConsList({
                 <Trans>No cons to display.</Trans>
               </Text>
 
-              {!deepEqual(viewOptions.filter, DEFAULT_VIEW_OPTIONS.filter) ? (
+              {!deepEqual(view.filter, DEFAULT_FILTER_OPTIONS) ? (
                 <Box>
                   <Button
                     onClick={() => {
-                      setViewOptions({
-                        ...viewOptions,
-                        filter: DEFAULT_VIEW_OPTIONS.filter,
-                      });
+                      setView((v) => ({
+                        ...v,
+                        filter: DEFAULT_FILTER_OPTIONS,
+                      }));
                     }}
                   >
                     <Trans>Clear all filters</Trans>

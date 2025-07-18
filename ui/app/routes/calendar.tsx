@@ -8,5 +8,5 @@ export const meta: MetaFunction = ({ matches }) => [
 ];
 
 export default function Index() {
-  return <ConsListPage layoutType="list" />;
+  return <ConsListPage layoutType="calendar" />;
 }

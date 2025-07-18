@@ -1,7 +1,5 @@
-import { z } from "zod/v4-mini";
-
-export const Continent = z.enum(["AF", "AS", "EU", "NA", "OC", "SA", "XX"]);
-export type Continent = z.infer<typeof Continent>;
+export const CONTINENTS = ["AF", "AS", "EU", "NA", "OC", "SA", "XX"] as const;
+export type Continent = (typeof CONTINENTS)[number];
 
 const COUNTRIES: Record<string, Continent> = {
   AF: "AS",
