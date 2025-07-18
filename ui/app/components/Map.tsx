@@ -210,7 +210,10 @@ export default function Map({
   );
 
   return (
-    <Box className={`${colorScheme} ${classes.map}`} style={{ height: "100%" }}>
+    <Box
+      className={`${colorScheme} ${classes.map}`}
+      style={{ position: "relative", height: "100%", zIndex: 0 }}
+    >
       <Maplibre
         ref={(ref) => {
           if (ref == null) {
@@ -241,8 +244,10 @@ export default function Map({
         attributionControl={false}
         mapStyle={style}
         style={{
+          position: "absolute",
           height: "100%",
-          zIndex: 0,
+          top: 0,
+          left: 0,
         }}
       >
         <AttributionControl
