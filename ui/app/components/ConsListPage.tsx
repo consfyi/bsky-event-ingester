@@ -3,10 +3,6 @@ import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "react-router";
 import ConsList, {
   CalendarLayoutOptions,
-  DEFAULT_CALENDAR_LAYOUT_OPTIONS,
-  DEFAULT_FILTER_OPTIONS,
-  DEFAULT_LIST_LAYOUT_OPTIONS,
-  DEFAULT_MAP_LAYOUT_OPTIONS,
   FilterOptions,
   ListLayoutOptions,
   MapLayoutOptions,

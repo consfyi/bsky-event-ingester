@@ -576,7 +576,6 @@ export const ListLayoutOptions = qp.schema({
   desc: qp.scalar(qp.boolean, false),
 });
 export type ListLayoutOptions = qp.InferSchema<typeof ListLayoutOptions>;
-export const DEFAULT_LIST_LAYOUT_OPTIONS = qp.defaults(ListLayoutOptions);
 
 export const CalendarLayoutOptions = qp.schema({
   inYourTimeZone: qp.scalar(qp.boolean, false),
@@ -584,9 +583,6 @@ export const CalendarLayoutOptions = qp.schema({
 export type CalendarLayoutOptions = qp.InferSchema<
   typeof CalendarLayoutOptions
 >;
-export const DEFAULT_CALENDAR_LAYOUT_OPTIONS = qp.defaults(
-  CalendarLayoutOptions
-);
 
 export const MapLayoutOptions = qp.schema({
   lat: qp.scalar(qp.number),
@@ -594,7 +590,6 @@ export const MapLayoutOptions = qp.schema({
   zoom: qp.scalar(qp.number),
 });
 export type MapLayoutOptions = qp.InferSchema<typeof MapLayoutOptions>;
-export const DEFAULT_MAP_LAYOUT_OPTIONS = qp.defaults(MapLayoutOptions);
 
 export type LayoutOptions =
   | { type: "list"; options: ListLayoutOptions }
@@ -665,7 +660,7 @@ function Filters({
 }: {
   cons: ConWithPost[];
   view: ViewOptions;
-  setView(f: (view: ViewOptions) => ViewOptions): void;
+  setView(view: ViewOptions): void;
   firstDayOfWeek: Day;
   setFirstDayOfWeek: (day: Day) => void;
 }) {
@@ -724,10 +719,10 @@ function Filters({
           <CloseButton
             icon={<IconX size={16} />}
             onClick={() => {
-              setView((v) => ({
-                ...v,
-                filter: { ...v.filter, q: "" } satisfies FilterOptions,
-              }));
+              setView({
+                ...view,
+                filter: { ...view.filter, q: "" } satisfies FilterOptions,
+              });
             }}
             style={{
               display: view.filter.q != "" ? undefined : "none",
@@ -737,10 +732,13 @@ function Filters({
         placeholder={t`Search`}
         value={view.filter.q}
         onChange={(e) => {
-          setView((v) => ({
-            ...v,
-            filter: { ...v.filter, q: e.target.value } satisfies FilterOptions,
-          }));
+          setView({
+            ...view,
+            filter: {
+              ...view.filter,
+              q: e.target.value,
+            },
+          });
         }}
       />
 
@@ -780,13 +778,13 @@ function Filters({
               size="xs"
               style={{ flexShrink: 0 }}
               onClick={() => {
-                setView((v) => ({
-                  ...v,
+                setView({
+                  ...view,
                   filter: {
-                    ...v.filter,
+                    ...view.filter,
                     attending: !view.filter.attending,
                   },
-                }));
+                });
               }}
               {...(attendingFiltered
                 ? {
@@ -848,15 +846,15 @@ function Filters({
                   )
                 }
                 onClick={() => {
-                  setView((v) => ({
-                    ...v,
+                  setView({
+                    ...view,
                     filter: {
-                      ...v.filter,
+                      ...view.filter,
                       continent: continentsFiltered
                         ? DEFAULT_FILTER_OPTIONS.continent
                         : [],
                     },
-                  }));
+                  });
                 }}
                 fw={500}
               >
@@ -882,15 +880,15 @@ function Filters({
                       )
                     }
                     onClick={() => {
-                      setView((v) => ({
-                        ...v,
+                      setView({
+                        ...view,
                         filter: {
-                          ...v.filter,
+                          ...view.filter,
                           continent: !selected
                             ? sorted([...view.filter.continent, code])
                             : view.filter.continent.filter((c) => c != code),
                         },
-                      }));
+                      });
                     }}
                   >
                     {t(CONTINENT_NAMES[code])}{" "}
@@ -959,14 +957,14 @@ function Filters({
                   minRange={0}
                   value={[view.filter.minDays, view.filter.maxDays]}
                   onChange={([minDays, maxDays]) => {
-                    setView((v) => ({
-                      ...v,
+                    setView({
+                      ...view,
                       filter: {
-                        ...v.filter,
+                        ...view.filter,
                         minDays,
                         maxDays,
                       },
-                    }));
+                    });
                   }}
                   label={(value) =>
                     value < DEFAULT_FILTER_OPTIONS.maxDays ? (
@@ -995,13 +993,13 @@ function Filters({
               style={{ flexShrink: 0 }}
               loading={followedConAttendees == null}
               onClick={() => {
-                setView((v) => ({
-                  ...v,
+                setView({
+                  ...view,
                   filter: {
-                    ...v.filter,
+                    ...view.filter,
                     followed: !view.filter.followed,
                   },
-                }));
+                });
               }}
               {...(followedFiltered
                 ? {
@@ -1074,16 +1072,16 @@ function Filters({
                       }
                       aria-selected={selected}
                       onClick={() => {
-                        setView((v) => ({
-                          ...v,
+                        setView({
+                          ...view,
                           layout: {
                             type: "list",
                             options: {
                               sort: sortBy,
                               desc: DEFAULT_SORT_DESC_OPTIONS[sortBy],
-                            } satisfies ListLayoutOptions,
+                            },
                           },
-                        }));
+                        });
                       }}
                       key={sortBy}
                       leftSection={
@@ -1108,16 +1106,16 @@ function Filters({
                 <Menu.Item
                   aria-selected={!view.layout.options.desc}
                   onClick={() => {
-                    setView((v) => ({
-                      ...v,
+                    setView({
+                      ...view,
                       layout: {
                         type: "list",
                         options: {
-                          ...(v.layout.options as ListLayoutOptions),
+                          ...(view.layout.options as ListLayoutOptions),
                           desc: false,
                         } satisfies ListLayoutOptions,
                       },
-                    }));
+                    });
                   }}
                   leftSection={
                     <Group gap={6}>
@@ -1139,16 +1137,16 @@ function Filters({
                 <Menu.Item
                   aria-selected={view.layout.options.desc}
                   onClick={() => {
-                    setView((v) => ({
-                      ...v,
+                    setView({
+                      ...view,
                       layout: {
                         type: "list",
                         options: {
-                          ...(v.layout.options as ListLayoutOptions),
+                          ...(view.layout.options as ListLayoutOptions),
                           desc: true,
                         } satisfies ListLayoutOptions,
                       },
-                    }));
+                    });
                   }}
                   leftSection={
                     <Group gap={6}>
@@ -1225,16 +1223,16 @@ function Filters({
                     )
                   }
                   onClick={() => {
-                    setView((v) => ({
-                      ...v,
+                    setView({
+                      ...view,
                       layout: {
                         type: "calendar",
                         options: {
-                          ...(v.layout.options as CalendarLayoutOptions),
+                          ...(view.layout.options as CalendarLayoutOptions),
                           inYourTimeZone: false,
                         } satisfies CalendarLayoutOptions,
                       },
-                    }));
+                    });
                   }}
                 >
                   <Trans>Theirs</Trans>
@@ -1248,16 +1246,16 @@ function Filters({
                     )
                   }
                   onClick={() => {
-                    setView((v) => ({
-                      ...v,
+                    setView({
+                      ...view,
                       layout: {
                         type: "calendar",
                         options: {
-                          ...(v.layout.options as CalendarLayoutOptions),
+                          ...(view.layout.options as CalendarLayoutOptions),
                           inYourTimeZone: true,
                         } satisfies CalendarLayoutOptions,
                       },
-                    }));
+                    });
                   }}
                 >
                   <Trans>Yours</Trans>
@@ -1268,8 +1266,8 @@ function Filters({
 
           <SegmentedControl
             onChange={(value) => {
-              setView((v) => ({
-                ...v,
+              setView({
+                ...view,
                 layout: (value == "calendar"
                   ? {
                       type: "calendar",
@@ -1284,7 +1282,7 @@ function Filters({
                       type: "list",
                       options: qp.defaults(ListLayoutOptions),
                     }) satisfies LayoutOptions,
-              }));
+              });
             }}
             value={
               view.layout.type == "calendar"
@@ -1351,13 +1349,13 @@ function Filters({
               icon={(props) => <IconHeartFilled {...props} />}
               label={<Trans>Going only</Trans>}
               onChange={(e) => {
-                setView((v) => ({
-                  ...v,
+                setView({
+                  ...view,
                   filter: {
-                    ...v.filter,
+                    ...view.filter,
                     attending: e.target.checked,
                   },
-                }));
+                });
               }}
             />
             <Checkbox
@@ -1366,13 +1364,13 @@ function Filters({
               checked={followedFiltered}
               label={<Trans>With followed only</Trans>}
               onChange={(e) => {
-                setView((v) => ({
-                  ...v,
+                setView({
+                  ...view,
                   filter: {
-                    ...v.filter,
+                    ...view.filter,
                     followed: e.target.checked,
                   },
-                }));
+                });
               }}
             />
 
@@ -1389,15 +1387,15 @@ function Filters({
             view.filter.continent.length != 0 && continentsFiltered
           }
           onChange={(e) => {
-            setView((v) => ({
-              ...v,
+            setView({
+              ...view,
               filter: {
-                ...v.filter,
+                ...view.filter,
                 continent: e.target.checked
                   ? DEFAULT_FILTER_OPTIONS.continent
                   : [],
               },
-            }));
+            });
           }}
           fw={500}
           label={
@@ -1415,15 +1413,15 @@ function Filters({
               mb="sm"
               checked={view.filter.continent.includes(code)}
               onChange={(e) => {
-                setView((v) => ({
-                  ...v,
+                setView({
+                  ...view,
                   filter: {
-                    ...v.filter,
+                    ...view.filter,
                     continent: e.target.checked
                       ? sorted([...view.filter.continent, code])
                       : view.filter.continent.filter((c) => c != code),
                   },
-                }));
+                });
               }}
               label={
                 <>
@@ -1448,10 +1446,10 @@ function Filters({
           minRange={0}
           value={[view.filter.minDays, view.filter.maxDays]}
           onChange={([minDays, maxDays]) => {
-            setView((v) => ({
-              ...v,
-              filter: { ...v.filter, minDays, maxDays },
-            }));
+            setView({
+              ...view,
+              filter: { ...view.filter, minDays, maxDays },
+            });
           }}
           label={(value) =>
             value < DEFAULT_FILTER_OPTIONS.maxDays ? (
@@ -1599,7 +1597,7 @@ export default function ConsList({
 }: {
   cons: ConWithPost[];
   view: ViewOptions;
-  setView(f: (view: ViewOptions) => ViewOptions): void;
+  setView(view: ViewOptions): void;
 }) {
   const { i18n } = useLingui();
   const { data: followedConAttendees } = useFollowedConAttendeesDLE();
@@ -1727,10 +1725,10 @@ export default function ConsList({
                   : null
               }
               setLatLngZoom={([lat, lng, zoom]) => {
-                setView((v) => ({
-                  ...v,
+                setView({
+                  ...view,
                   layout: {
-                    ...v.layout,
+                    ...view.layout,
                     type: "map",
                     options: {
                       lat,
@@ -1738,7 +1736,7 @@ export default function ConsList({
                       zoom,
                     } satisfies MapLayoutOptions,
                   },
-                }));
+                });
               }}
             />
           ) : (
@@ -1760,10 +1758,10 @@ export default function ConsList({
                 <Box>
                   <Button
                     onClick={() => {
-                      setView((v) => ({
-                        ...v,
+                      setView({
+                        ...view,
                         filter: DEFAULT_FILTER_OPTIONS,
-                      }));
+                      });
                     }}
                   >
                     <Trans>Clear all filters</Trans>
