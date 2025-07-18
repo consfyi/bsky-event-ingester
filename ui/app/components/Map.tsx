@@ -13,6 +13,7 @@ import {
   Marker,
   MarkerEvent,
   Popup,
+  useMap,
 } from "@vis.gl/react-maplibre";
 import { getDay, isAfter } from "date-fns";
 import maplibregl, { StyleSpecification } from "maplibre-gl";
@@ -57,13 +58,13 @@ function Pin({
   con,
   latLng: [lat, lng],
   showPopup,
-  onClick,
+  setShowPopup,
   zIndex,
 }: {
   con: ConWithPost;
   latLng: [number, number];
   showPopup: boolean;
-  onClick?(e: MarkerEvent<MouseEvent>): void;
+  setShowPopup: (v: boolean) => void;
   zIndex: number;
 }) {
   const theme = useMantineTheme();
@@ -89,6 +90,7 @@ function Pin({
     variant,
   });
 
+  const mapRef = useMap();
   const now = useNow();
   const active = isAfter(now, con.start) && !isAfter(now, con.end);
 
@@ -97,7 +99,13 @@ function Pin({
       <Marker
         latitude={lat}
         longitude={lng}
-        onClick={onClick}
+        onClick={(e) => {
+          e.originalEvent.stopPropagation();
+          if (mapRef.current != null && showPopup) {
+            mapRef.current.flyTo({ center: [lng, lat] });
+          }
+          setShowPopup(true);
+        }}
         style={{ zIndex }}
         subpixelPositioning
       >
@@ -255,9 +263,8 @@ export default function Map({
                   key={con.identifier}
                   con={con}
                   showPopup={con.identifier == selected}
-                  onClick={(e) => {
-                    e.originalEvent.stopPropagation();
-                    setSelected(con.identifier);
+                  setShowPopup={(v) => {
+                    setSelected(v ? con.identifier : null);
                   }}
                   latLng={con.geocoded.latLng}
                   zIndex={
