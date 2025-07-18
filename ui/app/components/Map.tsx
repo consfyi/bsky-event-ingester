@@ -59,13 +59,11 @@ function Pin({
   latLng: [lat, lng],
   showPopup,
   setShowPopup,
-  zIndex,
 }: {
   con: ConWithPost;
   latLng: [number, number];
   showPopup: boolean;
   setShowPopup: (v: boolean) => void;
-  zIndex: number;
 }) {
   const theme = useMantineTheme();
 
@@ -106,7 +104,14 @@ function Pin({
           }
           setShowPopup(true);
         }}
-        style={{ zIndex }}
+        style={{
+          zIndex:
+            con.post.viewer != null && con.post.viewer.like != null
+              ? 2
+              : active
+              ? 1
+              : 0,
+        }}
         subpixelPositioning
       >
         <Box style={{ marginTop: "-100%" }}>
@@ -282,11 +287,6 @@ export default function Map({
                     setSelected(v ? con.identifier : null);
                   }}
                   latLng={con.geocoded.latLng}
-                  zIndex={
-                    con.post.viewer != null && con.post.viewer.like != null
-                      ? 1
-                      : 0
-                  }
                 />,
               ]
             : []
