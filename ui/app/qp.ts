@@ -44,6 +44,26 @@ export const boolean: Type<boolean> = {
   },
 };
 
+export function sepBy<T>(type: Type<T>, sep: string): Type<T[]> {
+  return {
+    parse(v) {
+      if (v === "") {
+        return [];
+      }
+      const parsed = v.split(sep).map((v) => type.parse(v));
+      return !parsed.includes(undefined) ? (parsed as T[]) : undefined;
+    },
+    serialize(vs) {
+      return vs.map((v) => type.serialize(v)).join(sep);
+    },
+    equals(xs, ys) {
+      return (
+        xs.length === ys.length && xs.every((x, i) => type.equals(x, ys[i]))
+      );
+    },
+  };
+}
+
 function literalImpl<T, U extends T>(type: Type<T>, lit: U): Type<U> {
   return {
     parse(v) {
@@ -104,10 +124,9 @@ export function enum_<T extends string | number>(
   throw "unreachable";
 }
 
-export interface MultipleField<T, HasDefault extends boolean> {
+export interface MultipleField<T> {
   type: Type<T>;
   multiple: true;
-  default: HasDefault extends true ? readonly T[] : undefined;
 }
 
 export type ScalarField<T, HasDefault extends boolean> = {
@@ -115,9 +134,7 @@ export type ScalarField<T, HasDefault extends boolean> = {
   default: HasDefault extends true ? T : undefined;
 };
 
-export type Field<T, HasDefault extends boolean> =
-  | ScalarField<T, HasDefault>
-  | MultipleField<T, HasDefault>;
+export type Field<T> = ScalarField<T, any> | MultipleField<T>;
 
 export function scalar<T>(type: Type<T>): ScalarField<T, false>;
 export function scalar<T>(type: Type<T>, defaultValue: T): ScalarField<T, true>;
@@ -131,29 +148,20 @@ export function scalar<T>(
   };
 }
 
-export function multiple<T>(type: Type<T>): MultipleField<T, false>;
-export function multiple<T>(
-  type: Type<T>,
-  defaultValue: readonly T[]
-): MultipleField<T, true>;
-export function multiple<T>(
-  type: Type<T>,
-  defaultValue?: readonly T[]
-): MultipleField<T, boolean> {
+export function multiple<T>(type: Type<T>): MultipleField<T> {
   return {
     type,
     multiple: true,
-    default: defaultValue,
   };
 }
 
-export type Schema = Record<string, Field<any, boolean>>;
+export type Schema = Record<string, Field<any>>;
 
 export function schema<T extends Schema>(schema: T): T {
   return schema;
 }
 
-type InferField<F extends Field<any, boolean>> = F extends {
+type InferField<F extends Field<any>> = F extends {
   multiple: true;
 }
   ? InferType<F["type"]>[]
@@ -167,14 +175,17 @@ export type InferSchema<T extends Schema> = {
   [K in keyof T]: InferField<T[K]>;
 };
 
+function isMultipleField<T>(field: Field<T>): field is MultipleField<T> {
+  return "multiple" in field && field.multiple;
+}
+
 export function defaults<T extends Schema>(schema: T): InferSchema<T> {
   const result = {} as InferSchema<T>;
 
   for (const key in schema) {
     const field = schema[key];
 
-    result[key] = (field.default ??
-      ("multiple" in field && field.multiple ? [] : undefined)) as InferType<
+    result[key] = (isMultipleField(field) ? [] : field.default) as InferType<
       typeof field.type
     >;
   }
@@ -191,13 +202,10 @@ export function parse<T extends Schema>(
   for (const key in schema) {
     const field = schema[key];
 
-    if ("multiple" in field && field.multiple) {
-      const defaultValue = field.default ?? [];
+    if (isMultipleField(field)) {
       const parsed = searchParams.getAll(key).map((v) => field.type.parse(v));
       result[key] = (
-        parsed.every((v) => v !== undefined) && parsed.length > 0
-          ? parsed
-          : defaultValue
+        parsed.every((v) => v !== undefined) && parsed.length > 0 ? parsed : []
       ) as InferType<typeof field.type>;
     } else {
       const defaultValue = field.default ?? undefined;
@@ -227,24 +235,16 @@ export function serialize<T extends Schema>(
       continue;
     }
 
-    if ("multiple" in field && field.multiple) {
+    if (isMultipleField(field)) {
       const values = value as any[];
-      if (
-        field.default === undefined ||
-        values.length !== field.default.length ||
-        !field.default.every((v, i) => field.type.equals(values[i], v))
-      ) {
-        for (const item of values) {
-          searchParams.append(key, field.type.serialize(item));
-        }
+      for (const item of values) {
+        searchParams.append(key, field.type.serialize(item));
       }
-    } else {
-      if (
-        field.default === undefined ||
-        !field.type.equals(value, field.default)
-      ) {
-        searchParams.set(key, field.type.serialize(value));
-      }
+    } else if (
+      field.default === undefined ||
+      !field.type.equals(value, field.default)
+    ) {
+      searchParams.set(key, field.type.serialize(value));
     }
   }
 }

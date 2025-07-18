@@ -566,7 +566,7 @@ export const FilterOptions = qp.schema({
   q: qp.scalar(qp.string, ""),
   attending: qp.scalar(qp.boolean, false),
   followed: qp.scalar(qp.boolean, false),
-  continent: qp.multiple(Continent, Continent.values),
+  continents: qp.scalar(qp.sepBy(Continent, " "), [...Continent.values]),
   minDays: qp.scalar(qp.number, 1),
   maxDays: qp.scalar(qp.number, 7),
 });
@@ -690,15 +690,15 @@ function Filters({
   const sortedContinents = useMemo(
     () =>
       sorted(
-        [...FilterOptions.continent.default],
+        [...FilterOptions.continents.default],
         compareDesc(comparing((code) => continentCount[code] ?? 0))
       ),
     [continentCount]
   );
 
   const continentsFiltered = !deepEqual(
-    view.filter.continent,
-    DEFAULT_FILTER_OPTIONS.continent
+    view.filter.continents,
+    DEFAULT_FILTER_OPTIONS.continents
   );
   const durationFiltered =
     view.filter.minDays != DEFAULT_FILTER_OPTIONS.minDays ||
@@ -820,11 +820,11 @@ function Filters({
                     })}
               >
                 {continentsFiltered ? (
-                  view.filter.continent.length == 1 ? (
-                    t(CONTINENT_NAMES[view.filter.continent[0]])
+                  view.filter.continents.length == 1 ? (
+                    t(CONTINENT_NAMES[view.filter.continents[0]])
                   ) : (
                     <Plural
-                      value={view.filter.continent.length}
+                      value={view.filter.continents.length}
                       one="# region"
                       other="# regions"
                     />
@@ -837,7 +837,7 @@ function Filters({
             <Menu.Dropdown visibleFrom="lg">
               <Menu.Item
                 leftSection={
-                  view.filter.continent.length > 0 ? (
+                  view.filter.continents.length > 0 ? (
                     continentsFiltered ? (
                       <IconMinus size={14} />
                     ) : (
@@ -852,8 +852,8 @@ function Filters({
                     ...view,
                     filter: {
                       ...view.filter,
-                      continent: continentsFiltered
-                        ? DEFAULT_FILTER_OPTIONS.continent
+                      continents: continentsFiltered
+                        ? DEFAULT_FILTER_OPTIONS.continents
                         : [],
                     },
                   });
@@ -861,14 +861,14 @@ function Filters({
                 fw={500}
               >
                 <Plural
-                  value={view.filter.continent.length}
+                  value={view.filter.continents.length}
                   one="# selected"
                   other="# selected"
                 />
               </Menu.Item>
               <Menu.Divider />
               {sortedContinents.map((code) => {
-                const selected = view.filter.continent.includes(code);
+                const selected = view.filter.continents.includes(code);
 
                 return (
                   <Menu.Item
@@ -886,9 +886,9 @@ function Filters({
                         ...view,
                         filter: {
                           ...view.filter,
-                          continent: !selected
-                            ? sorted([...view.filter.continent, code])
-                            : view.filter.continent.filter((c) => c != code),
+                          continents: !selected
+                            ? sorted([...view.filter.continents, code])
+                            : view.filter.continents.filter((c) => c != code),
                         },
                       });
                     }}
@@ -1384,17 +1384,17 @@ function Filters({
         </Title>
         <Checkbox
           mb="sm"
-          checked={view.filter.continent.length > 0}
+          checked={view.filter.continents.length > 0}
           indeterminate={
-            view.filter.continent.length != 0 && continentsFiltered
+            view.filter.continents.length != 0 && continentsFiltered
           }
           onChange={(e) => {
             setView({
               ...view,
               filter: {
                 ...view.filter,
-                continent: e.target.checked
-                  ? DEFAULT_FILTER_OPTIONS.continent
+                continents: e.target.checked
+                  ? DEFAULT_FILTER_OPTIONS.continents
                   : [],
               },
             });
@@ -1402,7 +1402,7 @@ function Filters({
           fw={500}
           label={
             <Plural
-              value={view.filter.continent.length}
+              value={view.filter.continents.length}
               one="# selected"
               other="# selected"
             />
@@ -1413,15 +1413,15 @@ function Filters({
             <Checkbox
               key={code}
               mb="sm"
-              checked={view.filter.continent.includes(code)}
+              checked={view.filter.continents.includes(code)}
               onChange={(e) => {
                 setView({
                   ...view,
                   filter: {
                     ...view.filter,
-                    continent: e.target.checked
-                      ? sorted([...view.filter.continent, code])
-                      : view.filter.continent.filter((c) => c != code),
+                    continents: e.target.checked
+                      ? sorted([...view.filter.continents, code])
+                      : view.filter.continents.filter((c) => c != code),
                   },
                 });
               }}
@@ -1658,7 +1658,7 @@ export default function ConsList({
       // Attending filter
       (!view.filter.attending || con.post.viewer?.like != null) &&
       // Continents filter
-      view.filter.continent.includes(getContinentForCountry(con.country)) &&
+      view.filter.continents.includes(getContinentForCountry(con.country)) &&
       // Duration filter
       days >= view.filter.minDays &&
       days <= maxDays &&
