@@ -1299,7 +1299,7 @@ function Filters({
                 label: (
                   <Center style={{ gap: 6 }}>
                     <IconList size={14} />
-                    <Text span size="xs" visibleFrom="lg">
+                    <Text span size="xs" visibleFrom="sm">
                       <Trans>List</Trans>
                     </Text>
                   </Center>
@@ -1310,7 +1310,7 @@ function Filters({
                 label: (
                   <Center style={{ gap: 6 }}>
                     <IconCalendar size={14} />
-                    <Text span size="xs" visibleFrom="lg">
+                    <Text span size="xs" visibleFrom="sm">
                       <Trans>Calendar</Trans>
                     </Text>
                   </Center>
@@ -1321,7 +1321,7 @@ function Filters({
                 label: (
                   <Center style={{ gap: 6 }}>
                     <IconMap size={14} />
-                    <Text span size="xs" visibleFrom="lg">
+                    <Text span size="xs" visibleFrom="sm">
                       <Trans>Map</Trans>
                     </Text>
                   </Center>
