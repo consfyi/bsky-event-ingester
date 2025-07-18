@@ -51,6 +51,7 @@ function makeStyle({
     layers: layers("protomaps", namedFlavor(colorScheme), {
       lang: loc.language,
     }),
+    transition: { duration: 0, delay: 0 },
   };
 }
 
