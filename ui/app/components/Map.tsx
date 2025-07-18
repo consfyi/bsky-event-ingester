@@ -55,22 +55,18 @@ function makeStyle({
 
 function Pin({
   con,
+  latLng: [lat, lng],
   showPopup,
   onClick,
   zIndex,
 }: {
   con: ConWithPost;
+  latLng: [number, number];
   showPopup: boolean;
   onClick?(e: MarkerEvent<MouseEvent>): void;
   zIndex: number;
 }) {
   const theme = useMantineTheme();
-
-  const latLng = con.geocoded?.latLng;
-  if (latLng == null) {
-    return null;
-  }
-  const [lat, lng] = latLng;
 
   const color = [
     "red",
@@ -103,6 +99,7 @@ function Pin({
         longitude={lng}
         onClick={onClick}
         style={{ zIndex }}
+        subpixelPositioning
       >
         <Box style={{ marginTop: "-100%" }}>
           <Indicator
@@ -251,20 +248,27 @@ export default function Map({
             WebkitTextStrokeColor: "var(--mantine-color-default)",
           }}
         />
-        {cons.map((con) => (
-          <Pin
-            key={con.identifier}
-            con={con}
-            showPopup={con.identifier == selected}
-            onClick={(e) => {
-              e.originalEvent.stopPropagation();
-              setSelected(con.identifier);
-            }}
-            zIndex={
-              con.post.viewer != null && con.post.viewer.like != null ? 1 : 0
-            }
-          />
-        ))}
+        {cons.flatMap((con) =>
+          con.geocoded != null && con.geocoded.latLng != null
+            ? [
+                <Pin
+                  key={con.identifier}
+                  con={con}
+                  showPopup={con.identifier == selected}
+                  onClick={(e) => {
+                    e.originalEvent.stopPropagation();
+                    setSelected(con.identifier);
+                  }}
+                  latLng={con.geocoded.latLng}
+                  zIndex={
+                    con.post.viewer != null && con.post.viewer.like != null
+                      ? 1
+                      : 0
+                  }
+                />,
+              ]
+            : []
+        )}
       </Maplibre>
     </Box>
   );
