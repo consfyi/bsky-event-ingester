@@ -399,8 +399,7 @@ function ConsByDate({
       <Fragment key={groupKey}>
         <Title
           mb="sm"
-          mx={{ base: 0, lg: "xs" }}
-          px={0}
+          px={{ base: 0, lg: "xs" }}
           mt={{ base: -4, lg: -8 }}
           order={2}
           size="h5"
@@ -409,8 +408,8 @@ function ConsByDate({
           top={50}
           style={{
             zIndex: 3,
-            borderBottom:
-              "calc(0.0625rem * var(--mantine-scale)) solid var(--mantine-color-default-border)",
+            background:
+              "color-mix(in srgb, var(--mantine-color-body), transparent 15%)",
             backdropFilter: "blur(5px)",
           }}
         >
@@ -420,8 +419,8 @@ function ConsByDate({
             pt={{ base: 4, lg: 8 }}
             pb={4}
             style={{
-              background:
-                "color-mix(in srgb, var(--mantine-color-body), transparent 15%)",
+              borderBottom:
+                "calc(0.0625rem * var(--mantine-scale)) solid var(--mantine-color-default-border)",
             }}
           >
             {i18n.date(date, {
