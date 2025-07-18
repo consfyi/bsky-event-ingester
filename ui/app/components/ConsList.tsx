@@ -1496,7 +1496,7 @@ function CalendarLayout({
         inYourTimeZone={inYourTimeZone}
         includeToday={includeToday}
         events={cons.map((con) => ({
-          id: con.slug,
+          id: con.identifier,
           label: (
             <>
               <Flag country={con.country} size={8} me={4} />

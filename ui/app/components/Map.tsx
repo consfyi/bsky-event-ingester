@@ -253,12 +253,12 @@ export default function Map({
         />
         {cons.map((con) => (
           <Pin
-            key={con.slug}
+            key={con.identifier}
             con={con}
-            showPopup={con.slug == selected}
+            showPopup={con.identifier == selected}
             onClick={(e) => {
               e.originalEvent.stopPropagation();
-              setSelected(con.slug);
+              setSelected(con.identifier);
             }}
             zIndex={
               con.post.viewer != null && con.post.viewer.like != null ? 1 : 0
