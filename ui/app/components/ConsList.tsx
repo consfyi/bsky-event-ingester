@@ -316,7 +316,9 @@ export function ConRow({
             <Text span visibleFrom="xs">
               <IconMapPin title={t`Location`} size={12} />{" "}
               <Anchor
-                href={`https://www.google.com/maps?q=${con.address}`}
+                href={`https://www.google.com/maps?q=${encodeURIComponent(
+                  con.address
+                )}`}
                 target="_blank"
                 rel="noreferrer"
                 c="var(--mantine-color-text)"

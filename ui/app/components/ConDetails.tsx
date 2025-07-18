@@ -269,7 +269,9 @@ export function Body({ con }: { con: ConWithPost }) {
             </Box>
             <Text size="sm" mb={5}>
               <Anchor
-                href={`https://www.google.com/maps?q=${con.address}`}
+                href={`https://www.google.com/maps?q=${encodeURIComponent(
+                  con.address
+                )}`}
                 target="_blank"
                 rel="noreferrer"
                 c="var(--mantine-color-text)"
