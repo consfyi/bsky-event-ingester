@@ -71,6 +71,7 @@ import { LABELER_DID } from "./config";
 import { useGetPreferences, usePutPreferences } from "./endpoints";
 import { useClient, useHydrated, useIsLoggedIn, useSelf } from "./hooks";
 import "./styles.css";
+import { useLocation } from "react-router";
 
 const theme = createTheme({});
 
@@ -559,6 +560,7 @@ function Alerts() {
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const hydrated = useHydrated();
+
   useEffect(() => {
     if (navigator.userAgent.indexOf("iPhone") > -1) {
       document
@@ -569,6 +571,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
         );
     }
   }, []);
+
+  const location = useLocation();
+  const showAlerts = location.pathname != "/map";
 
   return (
     // lang is set by LinguiProvider.
@@ -602,9 +607,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
                   >
                     <LinguiProvider>
                       <Header />
-                      <Container size="lg" px={0}>
-                        <Alerts />
-                      </Container>
+                      {showAlerts ? (
+                        <Container size="lg" px={0}>
+                          <Alerts />
+                        </Container>
+                      ) : null}
                       <Suspense
                         fallback={
                           <Center p="lg">
