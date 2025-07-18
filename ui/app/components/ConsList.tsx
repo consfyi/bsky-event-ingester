@@ -750,7 +750,7 @@ function Filters({
           c="dimmed"
           color="var(--mantine-color-dimmed)"
           style={{ zIndex: 4, flexShrink: 0 }}
-          variant="subtle"
+          variant={view.layout.type != "map" ? "subtle" : "default"}
           leftSection={<IconAdjustmentsHorizontal size={14} />}
           hiddenFrom="lg"
           onClick={() => {
