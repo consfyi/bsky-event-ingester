@@ -1,6 +1,14 @@
 import { Center, Loader } from "@mantine/core";
-import { Suspense, useEffect, useState } from "react";
-import { useSearchParams } from "react-router";
+import deepEqual from "deep-equal";
+import {
+  Fragment,
+  Suspense,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
+import { useNavigate, useSearchParams } from "react-router";
 import ConsList, {
   CalendarLayoutOptions,
   FilterOptions,
@@ -12,18 +20,11 @@ import SimpleErrorBoundary from "~/components/SimpleErrorBoundary";
 import { useConsWithPosts, useIsLoggedIn } from "~/hooks";
 import * as qp from "~/qp";
 
-export default function ConsListPage({
-  layoutType,
-}: {
-  layoutType: "calendar" | "map" | "list";
-}) {
-  const cons = useConsWithPosts();
-
-  const [searchParams] = useSearchParams();
-
-  const isLoggedIn = useIsLoggedIn();
-
-  const [view, setView] = useState<ViewOptions>(() => ({
+function parseSearchParams(
+  layoutType: "calendar" | "map" | "list",
+  searchParams: URLSearchParams
+): ViewOptions {
+  return {
     filter: qp.parse(FilterOptions, searchParams),
     layout:
       layoutType == "calendar"
@@ -42,10 +43,40 @@ export default function ConsListPage({
             options: qp.parse(ListLayoutOptions, searchParams),
           }
         : (null as never),
-  }));
+  };
+}
+
+export default function ConsListPage({
+  layoutType,
+}: {
+  layoutType: "calendar" | "map" | "list";
+}) {
+  const cons = useConsWithPosts();
+
+  const isLoggedIn = useIsLoggedIn();
+
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [view, setView] = useState<ViewOptions>(() =>
+    parseSearchParams(layoutType, searchParams)
+  );
+
+  const navigate = useNavigate();
+
+  const updatingFromSearchParams = useRef(false);
 
   useEffect(() => {
+    updatingFromSearchParams.current = true;
+    setView(parseSearchParams(view.layout.type, searchParams));
+    updatingFromSearchParams.current = false;
+  }, [searchParams, parseSearchParams]);
+
+  useEffect(() => {
+    if (updatingFromSearchParams.current) {
+      return;
+    }
+
     const searchParams = new URLSearchParams();
+
     qp.serialize(FilterOptions, view.filter, searchParams);
     switch (view.layout.type) {
       case "calendar":
@@ -59,21 +90,22 @@ export default function ConsListPage({
         break;
     }
 
-    let url =
+    const pathname =
       view.layout.type == "calendar"
         ? "/calendar"
         : view.layout.type == "map"
         ? "/map"
         : "/";
-    if (searchParams.size > 0) {
-      url += `?${searchParams.toString()}`;
-    }
 
-    window.history.pushState({}, "", url);
-  }, [view]);
+    if (window.location.pathname == pathname) {
+      setSearchParams(searchParams, { replace: true });
+    } else {
+      navigate({ pathname, search: searchParams.toString() });
+    }
+  }, [searchParams, view]);
 
   return (
-    <>
+    <Fragment key={view.layout.type}>
       <SimpleErrorBoundary>
         <Suspense
           fallback={
@@ -96,6 +128,6 @@ export default function ConsListPage({
           />
         </Suspense>
       </SimpleErrorBoundary>
-    </>
+    </Fragment>
   );
 }
