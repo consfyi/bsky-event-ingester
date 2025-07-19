@@ -74,14 +74,14 @@ export function tuple<Ts extends any[]>(
   };
 }
 
-export function object<T extends Record<string, Type<any>>>(
-  types: T,
+export function object<T>(
+  types: { [K in keyof T]: Type<T[K]> },
   sep: string
-): Type<{ [K in keyof T]: T[K] extends Type<infer U> ? U : never }> {
+): Type<T> {
   return {
     parse(v) {
       const parts = v.split(sep);
-      const keys = Object.keys(types);
+      const keys = Object.keys(types) as (keyof T)[];
       if (parts.length !== keys.length) {
         return undefined;
       }
@@ -97,15 +97,15 @@ export function object<T extends Record<string, Type<any>>>(
       }
       return parsed;
     },
-
     serialize(vs) {
-      return Object.entries(types)
+      return (Object.entries(types) as [keyof T, Type<T[keyof T]>][])
         .map(([k, t]) => t.serialize(vs[k]))
         .join(sep);
     },
-
     equals(xs, ys) {
-      return Object.entries(types).every(([k, t]) => t.equals(xs[k], ys[k]));
+      return (Object.entries(types) as [keyof T, Type<T[keyof T]>][]).every(
+        ([k, t]) => t.equals(xs[k], ys[k])
+      );
     },
   };
 }
