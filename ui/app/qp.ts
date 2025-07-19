@@ -74,7 +74,7 @@ export function tuple<Ts extends any[]>(
   };
 }
 
-export function namedTuple<T extends Record<string, Type<any>>>(
+export function object<T extends Record<string, Type<any>>>(
   types: T,
   sep: string
 ): Type<{ [K in keyof T]: T[K] extends Type<infer U> ? U : never }> {

@@ -584,7 +584,7 @@ export type CalendarLayoutOptions = qp.InferSchema<
 
 export const MapLayoutOptions = qp.schema({
   center: qp.scalar(
-    qp.namedTuple({ lat: qp.number, lng: qp.number, zoom: qp.number }, " ")
+    qp.object({ lat: qp.number, lng: qp.number, zoom: qp.number }, " ")
   ),
 });
 export type MapLayoutOptions = qp.InferSchema<typeof MapLayoutOptions>;
