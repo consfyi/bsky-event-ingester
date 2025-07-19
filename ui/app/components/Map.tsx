@@ -56,12 +56,14 @@ function makeStyle({
 
 function Pin({
   con,
-  latLng: [lat, lng],
+  lat,
+  lng,
   showPopup,
   setShowPopup,
 }: {
   con: ConWithPost;
-  latLng: [number, number];
+  lat: number;
+  lng: number;
   showPopup: boolean;
   setShowPopup: (v: boolean) => void;
 }) {
@@ -163,7 +165,9 @@ function Pin({
   );
 }
 
-async function getMyLocation(signal?: AbortSignal): Promise<[number, number]> {
+async function getMyLocation(
+  signal?: AbortSignal
+): Promise<{ lat: number; lng: number }> {
   const resp = await fetch("https://free.freeipapi.com/api/json", {
     signal,
   });
@@ -171,7 +175,7 @@ async function getMyLocation(signal?: AbortSignal): Promise<[number, number]> {
     throw resp;
   }
   const { latitude, longitude } = await resp.json();
-  return [latitude, longitude];
+  return { lat: latitude, lng: longitude };
 }
 
 const useMyLocation = hookifyPromise(
@@ -190,12 +194,12 @@ const useMyLocation = hookifyPromise(
 
 export default function Map({
   cons,
-  initialOptions,
-  setOptions,
+  initialCenter,
+  setCenter,
 }: {
   cons: ConWithPost[];
-  initialOptions: { latLng: [number, number] | null; zoom: number | null };
-  setOptions(options: { latLng: [number, number]; zoom: number }): void;
+  initialCenter: { lat: number; lng: number; zoom: number } | null;
+  setCenter(center: { lat: number; lng: number; zoom: number }): void;
 }) {
   const colorScheme = useComputedColorScheme();
   const { i18n, t } = useLingui();
@@ -203,22 +207,12 @@ export default function Map({
 
   const myLatLng = useMyLocation();
 
-  let { latLng, zoom } = initialOptions;
-  if (latLng == null) {
-    if (myLatLng != null) {
-      latLng = myLatLng;
-    } else {
-      latLng = [0, 0];
-      if (zoom == null) {
-        zoom = 0;
-      }
-    }
-  }
-  if (zoom == null) {
-    zoom = 3;
-  }
-
-  const [lat, lng] = latLng;
+  const center =
+    initialCenter != null
+      ? initialCenter
+      : myLatLng != null
+      ? { ...myLatLng, zoom: 3 }
+      : { lat: 0, lng: 0, zoom: 0 };
 
   const style = useMemo(
     () => makeStyle({ colorScheme, locale: i18n.locale }),
@@ -243,8 +237,9 @@ export default function Map({
         }}
         mapLib={maplibregl}
         onMoveEnd={(e) => {
-          setOptions({
-            latLng: [e.viewState.latitude, e.viewState.longitude],
+          setCenter({
+            lat: e.viewState.latitude,
+            lng: e.viewState.longitude,
             zoom: e.viewState.zoom,
           });
         }}
@@ -252,9 +247,9 @@ export default function Map({
           setSelected(null);
         }}
         initialViewState={{
-          latitude: lat,
-          longitude: lng,
-          zoom,
+          latitude: center.lat,
+          longitude: center.lng,
+          zoom: center.zoom,
         }}
         attributionControl={false}
         mapStyle={style}
@@ -286,7 +281,8 @@ export default function Map({
                   setShowPopup={(v) => {
                     setSelected(v ? con.identifier : null);
                   }}
-                  latLng={con.geocoded.latLng}
+                  lat={con.geocoded.latLng[0]}
+                  lng={con.geocoded.latLng[1]}
                 />,
               ]
             : []

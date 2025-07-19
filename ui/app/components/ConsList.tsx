@@ -583,8 +583,9 @@ export type CalendarLayoutOptions = qp.InferSchema<
 >;
 
 export const MapLayoutOptions = qp.schema({
-  latLng: qp.scalar(qp.tuple([qp.number, qp.number], ",")),
-  zoom: qp.scalar(qp.number),
+  center: qp.scalar(
+    qp.namedTuple({ lat: qp.number, lng: qp.number, zoom: qp.number }, " ")
+  ),
 });
 export type MapLayoutOptions = qp.InferSchema<typeof MapLayoutOptions>;
 
@@ -1557,19 +1558,14 @@ const Map = lazy(() => import("./Map"));
 
 function MapLayout({
   cons,
-  initialLatLng,
-  initialZoom,
-  setOptions,
+  initialCenter,
+  setCenter,
 }: {
   cons: ConWithPost[];
-  initialLatLng: [number, number] | null;
-  initialZoom: number | null;
-  setOptions(options: { latLng: [number, number]; zoom: number }): void;
+  initialCenter: { lat: number; lng: number; zoom: number } | null;
+  setCenter(center: { lat: number; lng: number; zoom: number }): void;
 }) {
-  const [options] = useState({
-    latLng: initialLatLng,
-    zoom: initialZoom,
-  });
+  const [center] = useState(initialCenter);
   return (
     <Box h="100dvh" mt={-50}>
       <Suspense
@@ -1579,7 +1575,7 @@ function MapLayout({
           </Center>
         }
       >
-        <Map cons={cons} initialOptions={options} setOptions={setOptions} />
+        <Map cons={cons} initialCenter={center} setCenter={setCenter} />
       </Suspense>
     </Box>
   );
@@ -1711,17 +1707,15 @@ export default function ConsList({
           ) : view.layout.type == "map" ? (
             <MapLayout
               cons={filteredCons}
-              initialLatLng={view.layout.options.latLng ?? null}
-              initialZoom={view.layout.options.zoom ?? null}
-              setOptions={({ latLng, zoom }) => {
+              initialCenter={view.layout.options.center ?? null}
+              setCenter={(center) => {
                 setView({
                   ...view,
                   layout: {
                     ...view.layout,
                     type: "map",
                     options: {
-                      latLng,
-                      zoom,
+                      center,
                     } satisfies MapLayoutOptions,
                   },
                 });

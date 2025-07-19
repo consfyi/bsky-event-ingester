@@ -74,6 +74,44 @@ export function tuple<Ts extends any[]>(
   };
 }
 
+export function namedTuple<T extends Record<string, Type<any>>>(
+  types: T,
+  sep: string
+): Type<{ [K in keyof T]: T[K] extends Type<infer U> ? U : never }> {
+  return {
+    parse(v) {
+      const parts = v.split(sep);
+      const keys = Object.keys(types);
+      if (parts.length !== keys.length) {
+        return undefined;
+      }
+
+      const parsed: any = {};
+      for (let i = 0; i < keys.length; i++) {
+        const key = keys[i];
+        const result = types[key].parse(parts[i]);
+        if (result === undefined) {
+          return undefined;
+        }
+        parsed[key] = result;
+      }
+      return parsed;
+    },
+
+    serialize(v) {
+      return Object.keys(types)
+        .map((key) => types[key].serialize(v[key]))
+        .join(sep);
+    },
+
+    equals(a, b) {
+      return Object.keys(types).every((key) =>
+        types[key].equals(a[key], b[key])
+      );
+    },
+  };
+}
+
 export function sepBy<T>(type: Type<T>, sep: string): Type<T[]> {
   return {
     parse(v) {
