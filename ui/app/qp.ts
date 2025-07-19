@@ -87,7 +87,7 @@ export function object<T extends Record<string, Type<any>>>(
       }
 
       const parsed: any = {};
-      for (let i = 0; i < keys.length; i++) {
+      for (let i = 0; i < keys.length; ++i) {
         const key = keys[i];
         const result = types[key].parse(parts[i]);
         if (result === undefined) {
@@ -98,16 +98,14 @@ export function object<T extends Record<string, Type<any>>>(
       return parsed;
     },
 
-    serialize(v) {
-      return Object.keys(types)
-        .map((key) => types[key].serialize(v[key]))
+    serialize(vs) {
+      return Object.entries(types)
+        .map(([k, t]) => t.serialize(vs[k]))
         .join(sep);
     },
 
-    equals(a, b) {
-      return Object.keys(types).every((key) =>
-        types[key].equals(a[key], b[key])
-      );
+    equals(xs, ys) {
+      return Object.entries(types).every(([k, t]) => t.equals(xs[k], ys[k]));
     },
   };
 }
