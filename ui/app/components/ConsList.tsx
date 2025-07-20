@@ -1124,6 +1124,165 @@ function Filters({
   );
 }
 
+function ListLayout({
+  cons,
+  sort,
+  desc,
+  hideEmptyGroups,
+}: {
+  cons: ConWithPost[];
+  sort: SortBy;
+  desc: boolean;
+  hideEmptyGroups: boolean;
+}) {
+  return (
+    <Container size="lg" px={0}>
+      {sort == "attendees" ? (
+        <ConsByAttendees cons={cons} sortDesc={desc} />
+      ) : sort == "followed" ? (
+        <ConsByFollowed cons={cons} sortDesc={desc} />
+      ) : sort == "name" ? (
+        <ConsByName cons={cons} sortDesc={desc} />
+      ) : sort == "date" ? (
+        <ConsByDate
+          cons={cons}
+          sortDesc={desc}
+          hideEmptyGroups={hideEmptyGroups}
+        />
+      ) : null}
+    </Container>
+  );
+}
+
+function ListSettingsMenu({
+  layout,
+  setLayout,
+}: {
+  layout: ListLayoutOptions;
+  setLayout(options: ListLayoutOptions): void;
+}) {
+  const { t } = useLingui();
+
+  const isLoggedIn = useIsLoggedIn();
+  const [open, setOpen] = useState(false);
+
+  const { data: followedConAttendees } = useFollowedConAttendeesDLE();
+
+  return (
+    <Menu position="bottom-end" withArrow opened={open} onChange={setOpen}>
+      <Menu.Target>
+        <Button
+          aria-label={t`Settings`}
+          variant="subtle"
+          size="xs"
+          c="dimmed"
+          color="var(--mantine-color-dimmed)"
+          style={{ zIndex: 4, flexShrink: 0 }}
+          leftSection={(() => {
+            const currentSortByDisplay = SORT_BY_DISPLAYS[layout.sort];
+            return layout.desc ? (
+              <currentSortByDisplay.DescIcon
+                title={t(currentSortByDisplay.desc)}
+                size={14}
+              />
+            ) : (
+              <currentSortByDisplay.AscIcon
+                title={t(currentSortByDisplay.asc)}
+                size={14}
+              />
+            );
+          })()}
+          rightSection={<IconChevronDown size={14} />}
+        >
+          {t(SORT_BY_DISPLAYS[layout.sort].name)}
+        </Button>
+      </Menu.Target>
+
+      <Menu.Dropdown>
+        <Menu.Label>
+          <Trans>Sort by</Trans>
+        </Menu.Label>
+        {SORT_BY.map((sortBy) => {
+          if (!isLoggedIn && sortBy == "followed") {
+            return null;
+          }
+
+          const selected = layout.sort == sortBy;
+
+          return (
+            <Menu.Item
+              disabled={sortBy == "followed" && followedConAttendees == null}
+              aria-selected={selected}
+              onClick={() => {
+                setLayout({
+                  sort: sortBy,
+                  desc: DEFAULT_SORT_DESC_OPTIONS[sortBy],
+                });
+              }}
+              key={sortBy}
+              leftSection={
+                sortBy != "followed" || followedConAttendees != null ? (
+                  selected ? (
+                    <IconCheck size={14} />
+                  ) : (
+                    <EmptyIcon size={14} />
+                  )
+                ) : (
+                  <Loader color="dimmed" size={14} />
+                )
+              }
+            >
+              {t(SORT_BY_DISPLAYS[sortBy].name)}
+            </Menu.Item>
+          );
+        })}
+        <Menu.Label>
+          <Trans>Order</Trans>
+        </Menu.Label>
+        <Menu.Item
+          aria-selected={!layout.desc}
+          onClick={() => {
+            setLayout({
+              ...layout,
+              desc: false,
+            });
+          }}
+          leftSection={
+            <Group gap={6}>
+              {!layout.desc ? <IconCheck size={14} /> : <EmptyIcon size={14} />}
+              {(() => {
+                const Icon = SORT_BY_DISPLAYS[layout.sort].AscIcon;
+                return <Icon size={14} />;
+              })()}
+            </Group>
+          }
+        >
+          {t(SORT_BY_DISPLAYS[layout.sort].asc)}
+        </Menu.Item>
+        <Menu.Item
+          aria-selected={layout.desc}
+          onClick={() => {
+            setLayout({
+              ...layout,
+              desc: true,
+            });
+          }}
+          leftSection={
+            <Group gap={6}>
+              {layout.desc ? <IconCheck size={14} /> : <EmptyIcon size={14} />}
+              {(() => {
+                const Icon = SORT_BY_DISPLAYS[layout.sort].DescIcon;
+                return <Icon size={14} />;
+              })()}
+            </Group>
+          }
+        >
+          {t(SORT_BY_DISPLAYS[layout.sort].desc)}
+        </Menu.Item>
+      </Menu.Dropdown>
+    </Menu>
+  );
+}
 const Calendar = lazy(() => import("./Calendar"));
 
 function CalendarLayout({
@@ -1174,33 +1333,124 @@ function CalendarLayout({
   );
 }
 
-function ListLayout({
-  cons,
-  sort,
-  desc,
-  hideEmptyGroups,
+function CalendarSettingsMenu({
+  layout,
+  setLayout,
 }: {
-  cons: ConWithPost[];
-  sort: SortBy;
-  desc: boolean;
-  hideEmptyGroups: boolean;
+  layout: CalendarLayoutOptions;
+  setLayout(options: CalendarLayoutOptions): void;
 }) {
+  const { i18n, t } = useLingui();
+
+  const [open, setOpen] = useState(false);
+
+  const defaultFirstDayOfWeek = useMemo(() => {
+    // Use the locale of the browser rather than the set locale.
+    const locale = new Intl.Locale(navigator.language);
+    const weekInfo = (
+      locale as {
+        getWeekInfo?(): { firstDay: number };
+      }
+    ).getWeekInfo?.() ?? { firstDay: 7 };
+
+    return (weekInfo.firstDay % 7) as Day;
+  }, [navigator.language]);
+
+  const [firstDayOfWeek, setFirstDayOfWeek] = useLocalStorage({
+    key: "fbl:firstDayOfWeek",
+    defaultValue: defaultFirstDayOfWeek,
+    getInitialValueInEffect: false,
+    deserialize(value) {
+      if (value == undefined) {
+        return defaultFirstDayOfWeek;
+      }
+
+      try {
+        return FirstDayOfWeek.parse(JSON.parse(value));
+      } catch (e) {
+        return defaultFirstDayOfWeek;
+      }
+    },
+  });
+
   return (
-    <Container size="lg" px={0}>
-      {sort == "attendees" ? (
-        <ConsByAttendees cons={cons} sortDesc={desc} />
-      ) : sort == "followed" ? (
-        <ConsByFollowed cons={cons} sortDesc={desc} />
-      ) : sort == "name" ? (
-        <ConsByName cons={cons} sortDesc={desc} />
-      ) : sort == "date" ? (
-        <ConsByDate
-          cons={cons}
-          sortDesc={desc}
-          hideEmptyGroups={hideEmptyGroups}
-        />
-      ) : null}
-    </Container>
+    <Menu position="bottom-end" withArrow opened={open} onChange={setOpen}>
+      <Menu.Target>
+        <Button
+          aria-label={t`Settings`}
+          variant="subtle"
+          size="xs"
+          c="dimmed"
+          color="var(--mantine-color-dimmed)"
+          style={{ zIndex: 4, flexShrink: 0 }}
+          rightSection={<IconChevronDown size={14} />}
+        >
+          <IconSettings size={14} />
+        </Button>
+      </Menu.Target>
+
+      <Menu.Dropdown>
+        <Menu.Label>
+          <Trans>Week starts on</Trans>
+        </Menu.Label>
+        {FirstDayOfWeek.def.values.map((day) => (
+          <Menu.Item
+            key={day as Day}
+            leftSection={
+              firstDayOfWeek == day ? (
+                <IconCheck size={14} />
+              ) : (
+                <EmptyIcon size={14} />
+              )
+            }
+            onClick={() => {
+              setFirstDayOfWeek(day as Day);
+            }}
+          >
+            {i18n.date(new Date(2006, 0, (day as number) + 1), {
+              weekday: "long",
+            })}
+          </Menu.Item>
+        ))}
+        <Menu.Label>
+          <Trans>Use time zone</Trans>
+        </Menu.Label>
+        <Menu.Item
+          leftSection={
+            !layout.inYourTimeZone ? (
+              <IconCheck size={14} />
+            ) : (
+              <EmptyIcon size={14} />
+            )
+          }
+          onClick={() => {
+            setLayout({
+              ...layout,
+              inYourTimeZone: false,
+            });
+          }}
+        >
+          <Trans>Theirs</Trans>
+        </Menu.Item>
+        <Menu.Item
+          leftSection={
+            layout.inYourTimeZone ? (
+              <IconCheck size={14} />
+            ) : (
+              <EmptyIcon size={14} />
+            )
+          }
+          onClick={() => {
+            setLayout({
+              ...layout,
+              inYourTimeZone: true,
+            });
+          }}
+        >
+          <Trans>Yours</Trans>
+        </Menu.Item>
+      </Menu.Dropdown>
+    </Menu>
   );
 }
 
@@ -1245,7 +1495,6 @@ export default function ConsList({
 }) {
   const { i18n, t } = useLingui();
   const { data: followedConAttendees } = useFollowedConAttendeesDLE();
-  const isLoggedIn = useIsLoggedIn();
 
   const queryRe = new RegExp(
     `^${Array.prototype.map
@@ -1313,7 +1562,6 @@ export default function ConsList({
   });
 
   const compact = view.filter.attending || view.filter.q != "";
-  const [sortMenuOpen, setSortMenuOpen] = useState(false);
 
   return (
     <Box style={{ position: "relative" }}>
@@ -1340,254 +1588,31 @@ export default function ConsList({
           rightSection={
             <>
               {view.layout.type == "list" ? (
-                <Menu
-                  position="bottom-end"
-                  withArrow
-                  opened={sortMenuOpen}
-                  onChange={setSortMenuOpen}
-                >
-                  <Menu.Target>
-                    <Button
-                      aria-label={t`Settings`}
-                      variant="subtle"
-                      size="xs"
-                      c="dimmed"
-                      color="var(--mantine-color-dimmed)"
-                      style={{ zIndex: 4, flexShrink: 0 }}
-                      leftSection={(() => {
-                        const currentSortByDisplay =
-                          SORT_BY_DISPLAYS[view.layout.options.sort];
-                        return view.layout.options.desc ? (
-                          <currentSortByDisplay.DescIcon
-                            title={t(currentSortByDisplay.desc)}
-                            size={14}
-                          />
-                        ) : (
-                          <currentSortByDisplay.AscIcon
-                            title={t(currentSortByDisplay.asc)}
-                            size={14}
-                          />
-                        );
-                      })()}
-                      rightSection={<IconChevronDown size={14} />}
-                    >
-                      {t(SORT_BY_DISPLAYS[view.layout.options.sort].name)}
-                    </Button>
-                  </Menu.Target>
-
-                  <Menu.Dropdown>
-                    <Menu.Label>
-                      <Trans>Sort by</Trans>
-                    </Menu.Label>
-                    {SORT_BY.map((sortBy) => {
-                      if (!isLoggedIn && sortBy == "followed") {
-                        return null;
-                      }
-
-                      const selected =
-                        view.layout.type == "list" &&
-                        view.layout.options.sort == sortBy;
-
-                      return (
-                        <Menu.Item
-                          disabled={
-                            sortBy == "followed" && followedConAttendees == null
-                          }
-                          aria-selected={selected}
-                          onClick={() => {
-                            setView({
-                              ...view,
-                              layout: {
-                                type: "list",
-                                options: {
-                                  sort: sortBy,
-                                  desc: DEFAULT_SORT_DESC_OPTIONS[sortBy],
-                                },
-                              },
-                            });
-                          }}
-                          key={sortBy}
-                          leftSection={
-                            sortBy != "followed" ||
-                            followedConAttendees != null ? (
-                              selected ? (
-                                <IconCheck size={14} />
-                              ) : (
-                                <EmptyIcon size={14} />
-                              )
-                            ) : (
-                              <Loader color="dimmed" size={14} />
-                            )
-                          }
-                        >
-                          {t(SORT_BY_DISPLAYS[sortBy].name)}
-                        </Menu.Item>
-                      );
-                    })}
-                    <Menu.Label>
-                      <Trans>Order</Trans>
-                    </Menu.Label>
-                    <Menu.Item
-                      aria-selected={!view.layout.options.desc}
-                      onClick={() => {
-                        setView({
-                          ...view,
-                          layout: {
-                            type: "list",
-                            options: {
-                              ...(view.layout.options as ListLayoutOptions),
-                              desc: false,
-                            } satisfies ListLayoutOptions,
-                          },
-                        });
-                      }}
-                      leftSection={
-                        <Group gap={6}>
-                          {!view.layout.options.desc ? (
-                            <IconCheck size={14} />
-                          ) : (
-                            <EmptyIcon size={14} />
-                          )}
-                          {(() => {
-                            const Icon =
-                              SORT_BY_DISPLAYS[view.layout.options.sort]
-                                .AscIcon;
-                            return <Icon size={14} />;
-                          })()}
-                        </Group>
-                      }
-                    >
-                      {t(SORT_BY_DISPLAYS[view.layout.options.sort].asc)}
-                    </Menu.Item>
-                    <Menu.Item
-                      aria-selected={view.layout.options.desc}
-                      onClick={() => {
-                        setView({
-                          ...view,
-                          layout: {
-                            type: "list",
-                            options: {
-                              ...(view.layout.options as ListLayoutOptions),
-                              desc: true,
-                            } satisfies ListLayoutOptions,
-                          },
-                        });
-                      }}
-                      leftSection={
-                        <Group gap={6}>
-                          {view.layout.options.desc ? (
-                            <IconCheck size={14} />
-                          ) : (
-                            <EmptyIcon size={14} />
-                          )}
-                          {(() => {
-                            const Icon =
-                              SORT_BY_DISPLAYS[view.layout.options.sort]
-                                .DescIcon;
-                            return <Icon size={14} />;
-                          })()}
-                        </Group>
-                      }
-                    >
-                      {t(SORT_BY_DISPLAYS[view.layout.options.sort].desc)}
-                    </Menu.Item>
-                  </Menu.Dropdown>
-                </Menu>
+                <ListSettingsMenu
+                  layout={view.layout.options}
+                  setLayout={(layout) => {
+                    setView({
+                      ...view,
+                      layout: {
+                        type: "list",
+                        options: layout,
+                      },
+                    });
+                  }}
+                />
               ) : view.layout.type == "calendar" ? (
-                <Menu
-                  position="bottom-end"
-                  withArrow
-                  opened={sortMenuOpen}
-                  onChange={setSortMenuOpen}
-                >
-                  <Menu.Target>
-                    <Button
-                      aria-label={t`Settings`}
-                      variant="subtle"
-                      size="xs"
-                      c="dimmed"
-                      color="var(--mantine-color-dimmed)"
-                      style={{ zIndex: 4, flexShrink: 0 }}
-                      rightSection={<IconChevronDown size={14} />}
-                    >
-                      <IconSettings size={14} />
-                    </Button>
-                  </Menu.Target>
-
-                  <Menu.Dropdown>
-                    <Menu.Label>
-                      <Trans>Week starts on</Trans>
-                    </Menu.Label>
-                    {FirstDayOfWeek.def.values.map((day) => (
-                      <Menu.Item
-                        key={day as Day}
-                        leftSection={
-                          firstDayOfWeek == day ? (
-                            <IconCheck size={14} />
-                          ) : (
-                            <EmptyIcon size={14} />
-                          )
-                        }
-                        onClick={() => {
-                          setFirstDayOfWeek(day as Day);
-                        }}
-                      >
-                        {i18n.date(new Date(2006, 0, (day as number) + 1), {
-                          weekday: "long",
-                        })}
-                      </Menu.Item>
-                    ))}
-                    <Menu.Label>
-                      <Trans>Use time zone</Trans>
-                    </Menu.Label>
-                    <Menu.Item
-                      leftSection={
-                        !view.layout.options.inYourTimeZone ? (
-                          <IconCheck size={14} />
-                        ) : (
-                          <EmptyIcon size={14} />
-                        )
-                      }
-                      onClick={() => {
-                        setView({
-                          ...view,
-                          layout: {
-                            type: "calendar",
-                            options: {
-                              ...(view.layout.options as CalendarLayoutOptions),
-                              inYourTimeZone: false,
-                            } satisfies CalendarLayoutOptions,
-                          },
-                        });
-                      }}
-                    >
-                      <Trans>Theirs</Trans>
-                    </Menu.Item>
-                    <Menu.Item
-                      leftSection={
-                        view.layout.options.inYourTimeZone ? (
-                          <IconCheck size={14} />
-                        ) : (
-                          <EmptyIcon size={14} />
-                        )
-                      }
-                      onClick={() => {
-                        setView({
-                          ...view,
-                          layout: {
-                            type: "calendar",
-                            options: {
-                              ...(view.layout.options as CalendarLayoutOptions),
-                              inYourTimeZone: true,
-                            } satisfies CalendarLayoutOptions,
-                          },
-                        });
-                      }}
-                    >
-                      <Trans>Yours</Trans>
-                    </Menu.Item>
-                  </Menu.Dropdown>
-                </Menu>
+                <CalendarSettingsMenu
+                  layout={view.layout.options}
+                  setLayout={(layout) => {
+                    setView({
+                      ...view,
+                      layout: {
+                        type: "calendar",
+                        options: layout,
+                      },
+                    });
+                  }}
+                />
               ) : null}
               <SegmentedControl
                 onChange={(value) => {
