@@ -48,7 +48,6 @@ import {
   IconX,
 } from "@tabler/icons-react";
 import {
-  addDays,
   addMonths,
   Day,
   differenceInDays,
@@ -56,7 +55,6 @@ import {
   getMonth,
   getYear,
   isAfter,
-  parse as parseDate,
   setDate,
   subDays,
 } from "date-fns";
@@ -1495,7 +1493,7 @@ export default function ConsList({
   view: ViewOptions;
   setView(view: ViewOptions): void;
 }) {
-  const { i18n, t } = useLingui();
+  const { i18n } = useLingui();
   const { data: followedConAttendees } = useFollowedConAttendeesDLE();
 
   const queryRe = new RegExp(
