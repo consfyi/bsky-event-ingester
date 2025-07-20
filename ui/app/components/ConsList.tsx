@@ -563,8 +563,8 @@ export const FilterOptions = qp.schema({
   attending: qp.scalar(qp.boolean, false),
   followed: qp.scalar(qp.boolean, false),
   continents: qp.scalar(qp.sepBy(qp.enum_(CONTINENTS), " "), [...CONTINENTS]),
-  minDays: qp.scalar(qp.number, 1),
-  maxDays: qp.scalar(qp.number, 7),
+  minDays: qp.scalar(qp.int, 1),
+  maxDays: qp.scalar(qp.int, 7),
 });
 export type FilterOptions = qp.InferSchema<typeof FilterOptions>;
 export const DEFAULT_FILTER_OPTIONS = qp.defaults(FilterOptions);
@@ -584,7 +584,7 @@ export type CalendarLayoutOptions = qp.InferSchema<
 
 export const MapLayoutOptions = qp.schema({
   center: qp.scalar(
-    qp.object({ lat: qp.number, lng: qp.number, zoom: qp.number }, " ")
+    qp.object({ lat: qp.float, lng: qp.float, zoom: qp.float }, " ")
   ),
 });
 export type MapLayoutOptions = qp.InferSchema<typeof MapLayoutOptions>;

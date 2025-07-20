@@ -16,7 +16,20 @@ export const string: Type<string> = {
   },
 };
 
-export const number: Type<number> = {
+export const int: Type<number> = {
+  parse(v) {
+    const r = parseInt(v);
+    return !isNaN(r) ? r : undefined;
+  },
+  serialize(v) {
+    return v.toString();
+  },
+  equals(x, y) {
+    return x === y;
+  },
+};
+
+export const float: Type<number> = {
   parse(v) {
     const r = parseFloat(v);
     return !isNaN(r) ? r : undefined;
@@ -152,7 +165,7 @@ export function literal<T extends string | number>(lit: T): Type<T> {
     return literalImpl(string, lit);
   }
   if (typeof lit === "number") {
-    return literalImpl(number, lit);
+    return literalImpl(float, lit);
   }
   throw "unreachable";
 }
@@ -186,7 +199,7 @@ export function enum_<T extends string | number>(
     return enumImpl(string, values);
   }
   if (values.every((v) => typeof v === "number")) {
-    return enumImpl(number, values);
+    return enumImpl(float, values);
   }
   throw "unreachable";
 }
