@@ -5,12 +5,12 @@
   --ml-c-bg-3: var(--mantine-color-default-hover);
   --ml-c-icon-1: var(--mantine-color-gray-7);
   --ml-c-icon-2: var(--mantine-color-gray-7);
-  --ml-c-active: var(--mantine-color-blue-filled);
+  --ml-c-active: var(--mantine-primary-color-filled);
   --ml-c-error: var(--mantine-color-red-filled);
   --ml-shadow: none;
   --ml-c-link-1: var(--mantine-color-dimmed);
   --ml-c-link-2: var(--mantine-color-dimmed);
-  --ml-c-geoloc: var(--mantine-color-blue-filled);
+  --ml-c-geoloc: var(--mantine-primary-color-filled);
 
   --popover-border-color: var(--mantine-color-gray-2);
 }
