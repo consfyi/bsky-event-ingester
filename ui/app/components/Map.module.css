@@ -40,6 +40,10 @@
   text-decoration: underline;
 }
 
+.map :global(.maplibregl-popup) {
+  padding-bottom: 37px;
+}
+
 .map :global(.maplibregl-popup-content) {
   border: 1px solid var(--popover-border-color);
 }
@@ -48,12 +52,33 @@
   border: 1px solid var(--popover-border-color);
   width: 7px;
   height: 7px;
-  bottom: -2px;
   background-color: var(--mantine-color-default);
-  transform: rotate(225deg);
   position: absolute;
   border-top-left-radius: 0px;
   border-bottom-color: transparent;
   border-right-color: transparent;
   clip-path: polygon(0px 100%, 0px 0px, 100% 0px);
+}
+
+.map :global(.maplibregl-popup):global(.maplibregl-popup-anchor-left) {
+  padding-left: 17px;
+}
+
+.map :global(.maplibregl-popup):global(.maplibregl-popup-anchor-right) {
+  padding-right: 17px;
+}
+
+.map :global(.maplibregl-popup-anchor-bottom) :global(.maplibregl-popup-tip) {
+  transform: rotate(225deg);
+  bottom: 34.5px;
+}
+
+.map :global(.maplibregl-popup-anchor-left) :global(.maplibregl-popup-tip) {
+  transform: rotate(-45deg);
+  left: 14.5px;
+}
+
+.map :global(.maplibregl-popup-anchor-right) :global(.maplibregl-popup-tip) {
+  transform: rotate(135deg);
+  right: 14.5px;
 }

@@ -156,7 +156,6 @@ function Pin({
           maxWidth="none"
           latitude={lat}
           longitude={lng}
-          offset={[0, -36]}
           style={{ zIndex: 100 }}
         >
           <Flex gap="xs">
