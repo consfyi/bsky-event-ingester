@@ -71,7 +71,7 @@ import {
   sorted,
   toArray,
 } from "iter-fns";
-import { Fragment, lazy, Suspense, useMemo, useState } from "react";
+import { Fragment, lazy, ReactNode, Suspense, useMemo, useState } from "react";
 import { Link } from "react-router";
 import regexpEscape from "regexp.escape";
 import { z } from "zod/v4-mini";
@@ -651,28 +651,26 @@ const CONTINENT_NAMES: Record<Continent, MessageDescriptor> = {
 
 function Filters({
   cons,
-  view,
-  setView,
-  firstDayOfWeek,
-  setFirstDayOfWeek,
+  filter,
+  setFilter,
+  rightSection,
+  filledButton,
 }: {
   cons: ConWithPost[];
-  view: ViewOptions;
-  setView(view: ViewOptions): void;
-  firstDayOfWeek: Day;
-  setFirstDayOfWeek: (day: Day) => void;
+  filter: FilterOptions;
+  setFilter(filter: FilterOptions): void;
+  rightSection: ReactNode;
+  filledButton: boolean;
 }) {
-  const { i18n, t } = useLingui();
+  const { t } = useLingui();
   const { data: followedConAttendees } = useFollowedConAttendeesDLE();
-  const refStartDate = parseDate("2006-01-01", "yyyy-MM-dd", new Date());
 
   const isLoggedIn = useIsLoggedIn();
 
-  const [sortMenuOpen, setSortMenuOpen] = useState(false);
   const [filterDrawerOpen, setFilterDrawerOpen] = useState(false);
 
-  const attendingFiltered = isLoggedIn && view.filter.attending;
-  const followedFiltered = isLoggedIn && view.filter.followed;
+  const attendingFiltered = isLoggedIn && filter.attending;
+  const followedFiltered = isLoggedIn && filter.followed;
 
   const continentCount = useMemo(() => {
     const counts: Partial<Record<Continent, number>> = {};
@@ -693,12 +691,12 @@ function Filters({
   );
 
   const continentsFiltered = !deepEqual(
-    view.filter.continents,
+    filter.continents,
     DEFAULT_FILTER_OPTIONS.continents
   );
   const durationFiltered =
-    view.filter.minDays != DEFAULT_FILTER_OPTIONS.minDays ||
-    view.filter.maxDays != DEFAULT_FILTER_OPTIONS.maxDays;
+    filter.minDays != DEFAULT_FILTER_OPTIONS.minDays ||
+    filter.maxDays != DEFAULT_FILTER_OPTIONS.maxDays;
 
   const numFilters = [
     followedFiltered,
@@ -717,25 +715,22 @@ function Filters({
           <CloseButton
             icon={<IconX size={16} />}
             onClick={() => {
-              setView({
-                ...view,
-                filter: { ...view.filter, q: "" } satisfies FilterOptions,
+              setFilter({
+                ...filter,
+                q: "",
               });
             }}
             style={{
-              display: view.filter.q != "" ? undefined : "none",
+              display: filter.q != "" ? undefined : "none",
             }}
           />
         }
         placeholder={t`Search`}
-        value={view.filter.q}
+        value={filter.q}
         onChange={(e) => {
-          setView({
-            ...view,
-            filter: {
-              ...view.filter,
-              q: e.target.value,
-            },
+          setFilter({
+            ...filter,
+            q: e.target.value,
           });
         }}
       />
@@ -746,7 +741,7 @@ function Filters({
           c="dimmed"
           color="var(--mantine-color-dimmed)"
           style={{ zIndex: 4, flexShrink: 0 }}
-          variant={view.layout.type != "map" ? "subtle" : "default"}
+          variant={filledButton ? "default" : "subtle"}
           leftSection={<IconAdjustmentsHorizontal size={14} />}
           hiddenFrom="lg"
           onClick={() => {
@@ -776,12 +771,9 @@ function Filters({
               size="xs"
               style={{ flexShrink: 0 }}
               onClick={() => {
-                setView({
-                  ...view,
-                  filter: {
-                    ...view.filter,
-                    attending: !view.filter.attending,
-                  },
+                setFilter({
+                  ...filter,
+                  attending: !filter.attending,
                 });
               }}
               {...(attendingFiltered
@@ -816,11 +808,11 @@ function Filters({
                     })}
               >
                 {continentsFiltered ? (
-                  view.filter.continents.length == 1 ? (
-                    t(CONTINENT_NAMES[view.filter.continents[0]])
+                  filter.continents.length == 1 ? (
+                    t(CONTINENT_NAMES[filter.continents[0]])
                   ) : (
                     <Plural
-                      value={view.filter.continents.length}
+                      value={filter.continents.length}
                       one="# region"
                       other="# regions"
                     />
@@ -833,7 +825,7 @@ function Filters({
             <Menu.Dropdown visibleFrom="lg">
               <Menu.Item
                 leftSection={
-                  view.filter.continents.length > 0 ? (
+                  filter.continents.length > 0 ? (
                     continentsFiltered ? (
                       <IconMinus size={14} />
                     ) : (
@@ -844,27 +836,24 @@ function Filters({
                   )
                 }
                 onClick={() => {
-                  setView({
-                    ...view,
-                    filter: {
-                      ...view.filter,
-                      continents: continentsFiltered
-                        ? DEFAULT_FILTER_OPTIONS.continents
-                        : [],
-                    },
+                  setFilter({
+                    ...filter,
+                    continents: continentsFiltered
+                      ? DEFAULT_FILTER_OPTIONS.continents
+                      : [],
                   });
                 }}
                 fw="bold"
               >
                 <Plural
-                  value={view.filter.continents.length}
+                  value={filter.continents.length}
                   one="# selected"
                   other="# selected"
                 />
               </Menu.Item>
               <Menu.Divider />
               {sortedContinents.map((code) => {
-                const selected = view.filter.continents.includes(code);
+                const selected = filter.continents.includes(code);
 
                 return (
                   <Menu.Item
@@ -878,14 +867,11 @@ function Filters({
                       )
                     }
                     onClick={() => {
-                      setView({
-                        ...view,
-                        filter: {
-                          ...view.filter,
-                          continents: !selected
-                            ? sorted([...view.filter.continents, code])
-                            : view.filter.continents.filter((c) => c != code),
-                        },
+                      setFilter({
+                        ...filter,
+                        continents: !selected
+                          ? sorted([...filter.continents, code])
+                          : filter.continents.filter((c) => c != code),
                       });
                     }}
                   >
@@ -916,8 +902,8 @@ function Filters({
                     })}
               >
                 {durationFiltered ? (
-                  view.filter.minDays == view.filter.maxDays ? (
-                    view.filter.minDays >= DEFAULT_FILTER_OPTIONS.maxDays ? (
+                  filter.minDays == filter.maxDays ? (
+                    filter.minDays >= DEFAULT_FILTER_OPTIONS.maxDays ? (
                       <Plural
                         value={DEFAULT_FILTER_OPTIONS.maxDays}
                         one="# day or more"
@@ -925,20 +911,20 @@ function Filters({
                       />
                     ) : (
                       <Plural
-                        value={view.filter.minDays}
+                        value={filter.minDays}
                         one="# day"
                         other="# days"
                       />
                     )
-                  ) : view.filter.maxDays >= DEFAULT_FILTER_OPTIONS.maxDays ? (
+                  ) : filter.maxDays >= DEFAULT_FILTER_OPTIONS.maxDays ? (
                     <Plural
-                      value={view.filter.minDays}
+                      value={filter.minDays}
                       one="# day or more"
                       other="# days or more"
                     />
                   ) : (
                     <Trans>
-                      {view.filter.minDays} to {view.filter.maxDays} days
+                      {filter.minDays} to {filter.maxDays} days
                     </Trans>
                   )
                 ) : (
@@ -953,15 +939,12 @@ function Filters({
                   min={1}
                   max={DEFAULT_FILTER_OPTIONS.maxDays}
                   minRange={0}
-                  value={[view.filter.minDays, view.filter.maxDays]}
+                  value={[filter.minDays, filter.maxDays]}
                   onChange={([minDays, maxDays]) => {
-                    setView({
-                      ...view,
-                      filter: {
-                        ...view.filter,
-                        minDays,
-                        maxDays,
-                      },
+                    setFilter({
+                      ...filter,
+                      minDays,
+                      maxDays,
                     });
                   }}
                   label={(value) =>
@@ -991,12 +974,9 @@ function Filters({
               style={{ flexShrink: 0 }}
               loading={followedConAttendees == null}
               onClick={() => {
-                setView({
-                  ...view,
-                  filter: {
-                    ...view.filter,
-                    followed: !view.filter.followed,
-                  },
+                setFilter({
+                  ...filter,
+                  followed: !filter.followed,
                 });
               }}
               {...(followedFiltered
@@ -1013,320 +993,7 @@ function Filters({
             </Button>
           ) : null}
         </Group>
-        <Group gap="xs">
-          {view.layout.type == "list" ? (
-            <Menu
-              position="bottom-end"
-              withArrow
-              opened={sortMenuOpen}
-              onChange={setSortMenuOpen}
-            >
-              <Menu.Target>
-                <Button
-                  aria-label={t`Settings`}
-                  variant="subtle"
-                  size="xs"
-                  c="dimmed"
-                  color="var(--mantine-color-dimmed)"
-                  style={{ zIndex: 4, flexShrink: 0 }}
-                  leftSection={(() => {
-                    const currentSortByDisplay =
-                      SORT_BY_DISPLAYS[view.layout.options.sort];
-                    return view.layout.options.desc ? (
-                      <currentSortByDisplay.DescIcon
-                        title={t(currentSortByDisplay.desc)}
-                        size={14}
-                      />
-                    ) : (
-                      <currentSortByDisplay.AscIcon
-                        title={t(currentSortByDisplay.asc)}
-                        size={14}
-                      />
-                    );
-                  })()}
-                  rightSection={<IconChevronDown size={14} />}
-                >
-                  {t(SORT_BY_DISPLAYS[view.layout.options.sort].name)}
-                </Button>
-              </Menu.Target>
-
-              <Menu.Dropdown>
-                <Menu.Label>
-                  <Trans>Sort by</Trans>
-                </Menu.Label>
-                {SORT_BY.map((sortBy) => {
-                  if (!isLoggedIn && sortBy == "followed") {
-                    return null;
-                  }
-
-                  const selected =
-                    view.layout.type == "list" &&
-                    view.layout.options.sort == sortBy;
-
-                  return (
-                    <Menu.Item
-                      disabled={
-                        sortBy == "followed" && followedConAttendees == null
-                      }
-                      aria-selected={selected}
-                      onClick={() => {
-                        setView({
-                          ...view,
-                          layout: {
-                            type: "list",
-                            options: {
-                              sort: sortBy,
-                              desc: DEFAULT_SORT_DESC_OPTIONS[sortBy],
-                            },
-                          },
-                        });
-                      }}
-                      key={sortBy}
-                      leftSection={
-                        sortBy != "followed" || followedConAttendees != null ? (
-                          selected ? (
-                            <IconCheck size={14} />
-                          ) : (
-                            <EmptyIcon size={14} />
-                          )
-                        ) : (
-                          <Loader color="dimmed" size={14} />
-                        )
-                      }
-                    >
-                      {t(SORT_BY_DISPLAYS[sortBy].name)}
-                    </Menu.Item>
-                  );
-                })}
-                <Menu.Label>
-                  <Trans>Order</Trans>
-                </Menu.Label>
-                <Menu.Item
-                  aria-selected={!view.layout.options.desc}
-                  onClick={() => {
-                    setView({
-                      ...view,
-                      layout: {
-                        type: "list",
-                        options: {
-                          ...(view.layout.options as ListLayoutOptions),
-                          desc: false,
-                        } satisfies ListLayoutOptions,
-                      },
-                    });
-                  }}
-                  leftSection={
-                    <Group gap={6}>
-                      {!view.layout.options.desc ? (
-                        <IconCheck size={14} />
-                      ) : (
-                        <EmptyIcon size={14} />
-                      )}
-                      {(() => {
-                        const Icon =
-                          SORT_BY_DISPLAYS[view.layout.options.sort].AscIcon;
-                        return <Icon size={14} />;
-                      })()}
-                    </Group>
-                  }
-                >
-                  {t(SORT_BY_DISPLAYS[view.layout.options.sort].asc)}
-                </Menu.Item>
-                <Menu.Item
-                  aria-selected={view.layout.options.desc}
-                  onClick={() => {
-                    setView({
-                      ...view,
-                      layout: {
-                        type: "list",
-                        options: {
-                          ...(view.layout.options as ListLayoutOptions),
-                          desc: true,
-                        } satisfies ListLayoutOptions,
-                      },
-                    });
-                  }}
-                  leftSection={
-                    <Group gap={6}>
-                      {view.layout.options.desc ? (
-                        <IconCheck size={14} />
-                      ) : (
-                        <EmptyIcon size={14} />
-                      )}
-                      {(() => {
-                        const Icon =
-                          SORT_BY_DISPLAYS[view.layout.options.sort].DescIcon;
-                        return <Icon size={14} />;
-                      })()}
-                    </Group>
-                  }
-                >
-                  {t(SORT_BY_DISPLAYS[view.layout.options.sort].desc)}
-                </Menu.Item>
-              </Menu.Dropdown>
-            </Menu>
-          ) : view.layout.type == "calendar" ? (
-            <Menu
-              position="bottom-end"
-              withArrow
-              opened={sortMenuOpen}
-              onChange={setSortMenuOpen}
-            >
-              <Menu.Target>
-                <Button
-                  aria-label={t`Settings`}
-                  variant="subtle"
-                  size="xs"
-                  c="dimmed"
-                  color="var(--mantine-color-dimmed)"
-                  style={{ zIndex: 4, flexShrink: 0 }}
-                  rightSection={<IconChevronDown size={14} />}
-                >
-                  <IconSettings size={14} />
-                </Button>
-              </Menu.Target>
-
-              <Menu.Dropdown>
-                <Menu.Label>
-                  <Trans>Week starts on</Trans>
-                </Menu.Label>
-                {FirstDayOfWeek.def.values.map((day) => (
-                  <Menu.Item
-                    key={day as Day}
-                    leftSection={
-                      firstDayOfWeek == day ? (
-                        <IconCheck size={14} />
-                      ) : (
-                        <EmptyIcon size={14} />
-                      )
-                    }
-                    onClick={() => {
-                      setFirstDayOfWeek(day as Day);
-                    }}
-                  >
-                    {i18n.date(addDays(refStartDate, day as Day), {
-                      weekday: "long",
-                    })}
-                  </Menu.Item>
-                ))}
-                <Menu.Label>
-                  <Trans>Use time zone</Trans>
-                </Menu.Label>
-                <Menu.Item
-                  leftSection={
-                    !view.layout.options.inYourTimeZone ? (
-                      <IconCheck size={14} />
-                    ) : (
-                      <EmptyIcon size={14} />
-                    )
-                  }
-                  onClick={() => {
-                    setView({
-                      ...view,
-                      layout: {
-                        type: "calendar",
-                        options: {
-                          ...(view.layout.options as CalendarLayoutOptions),
-                          inYourTimeZone: false,
-                        } satisfies CalendarLayoutOptions,
-                      },
-                    });
-                  }}
-                >
-                  <Trans>Theirs</Trans>
-                </Menu.Item>
-                <Menu.Item
-                  leftSection={
-                    view.layout.options.inYourTimeZone ? (
-                      <IconCheck size={14} />
-                    ) : (
-                      <EmptyIcon size={14} />
-                    )
-                  }
-                  onClick={() => {
-                    setView({
-                      ...view,
-                      layout: {
-                        type: "calendar",
-                        options: {
-                          ...(view.layout.options as CalendarLayoutOptions),
-                          inYourTimeZone: true,
-                        } satisfies CalendarLayoutOptions,
-                      },
-                    });
-                  }}
-                >
-                  <Trans>Yours</Trans>
-                </Menu.Item>
-              </Menu.Dropdown>
-            </Menu>
-          ) : null}
-
-          <SegmentedControl
-            onChange={(value) => {
-              setView({
-                ...view,
-                layout: (value == "calendar"
-                  ? {
-                      type: "calendar",
-                      options: qp.defaults(CalendarLayoutOptions),
-                    }
-                  : value == "map"
-                  ? {
-                      type: "map",
-                      options: qp.defaults(MapLayoutOptions),
-                    }
-                  : {
-                      type: "list",
-                      options: qp.defaults(ListLayoutOptions),
-                    }) satisfies LayoutOptions,
-              });
-            }}
-            value={
-              view.layout.type == "calendar"
-                ? "calendar"
-                : view.layout.type == "map"
-                ? "map"
-                : "list"
-            }
-            data={[
-              {
-                value: "list",
-                label: (
-                  <Center style={{ gap: 6 }}>
-                    <IconList size={14} />
-                    <Text span size="xs" visibleFrom="sm">
-                      <Trans>List</Trans>
-                    </Text>
-                  </Center>
-                ),
-              },
-              {
-                value: "calendar",
-                label: (
-                  <Center style={{ gap: 6 }}>
-                    <IconCalendar size={14} />
-                    <Text span size="xs" visibleFrom="sm">
-                      <Trans>Calendar</Trans>
-                    </Text>
-                  </Center>
-                ),
-              },
-              {
-                value: "map",
-                label: (
-                  <Center style={{ gap: 6 }}>
-                    <IconMap size={14} />
-                    <Text span size="xs" visibleFrom="sm">
-                      <Trans>Map</Trans>
-                    </Text>
-                  </Center>
-                ),
-              },
-            ]}
-            size="xs"
-          />
-        </Group>
+        <Group gap="xs">{rightSection}</Group>
       </Group>
 
       <Drawer
@@ -1347,12 +1014,9 @@ function Filters({
               icon={(props) => <IconHeartFilled {...props} />}
               label={<Trans>Going only</Trans>}
               onChange={(e) => {
-                setView({
-                  ...view,
-                  filter: {
-                    ...view.filter,
-                    attending: e.target.checked,
-                  },
+                setFilter({
+                  ...filter,
+                  attending: e.target.checked,
                 });
               }}
             />
@@ -1362,12 +1026,9 @@ function Filters({
               checked={followedFiltered}
               label={<Trans>With followed only</Trans>}
               onChange={(e) => {
-                setView({
-                  ...view,
-                  filter: {
-                    ...view.filter,
-                    followed: e.target.checked,
-                  },
+                setFilter({
+                  ...filter,
+                  followed: e.target.checked,
                 });
               }}
             />
@@ -1380,25 +1041,20 @@ function Filters({
         </Title>
         <Checkbox
           mb="sm"
-          checked={view.filter.continents.length > 0}
-          indeterminate={
-            view.filter.continents.length != 0 && continentsFiltered
-          }
+          checked={filter.continents.length > 0}
+          indeterminate={filter.continents.length != 0 && continentsFiltered}
           onChange={(e) => {
-            setView({
-              ...view,
-              filter: {
-                ...view.filter,
-                continents: e.target.checked
-                  ? DEFAULT_FILTER_OPTIONS.continents
-                  : [],
-              },
+            setFilter({
+              ...filter,
+              continents: e.target.checked
+                ? DEFAULT_FILTER_OPTIONS.continents
+                : [],
             });
           }}
           fw="bold"
           label={
             <Plural
-              value={view.filter.continents.length}
+              value={filter.continents.length}
               one="# selected"
               other="# selected"
             />
@@ -1409,16 +1065,13 @@ function Filters({
             <Checkbox
               key={code}
               mb="sm"
-              checked={view.filter.continents.includes(code)}
+              checked={filter.continents.includes(code)}
               onChange={(e) => {
-                setView({
-                  ...view,
-                  filter: {
-                    ...view.filter,
-                    continents: e.target.checked
-                      ? sorted([...view.filter.continents, code])
-                      : view.filter.continents.filter((c) => c != code),
-                  },
+                setFilter({
+                  ...filter,
+                  continents: e.target.checked
+                    ? sorted([...filter.continents, code])
+                    : filter.continents.filter((c) => c != code),
                 });
               }}
               label={
@@ -1442,12 +1095,9 @@ function Filters({
           mb="sm"
           max={DEFAULT_FILTER_OPTIONS.maxDays}
           minRange={0}
-          value={[view.filter.minDays, view.filter.maxDays]}
+          value={[filter.minDays, filter.maxDays]}
           onChange={([minDays, maxDays]) => {
-            setView({
-              ...view,
-              filter: { ...view.filter, minDays, maxDays },
-            });
+            setFilter({ ...filter, minDays, maxDays });
           }}
           label={(value) =>
             value < DEFAULT_FILTER_OPTIONS.maxDays ? (
@@ -1593,8 +1243,9 @@ export default function ConsList({
   view: ViewOptions;
   setView(view: ViewOptions): void;
 }) {
-  const { i18n } = useLingui();
+  const { i18n, t } = useLingui();
   const { data: followedConAttendees } = useFollowedConAttendeesDLE();
+  const isLoggedIn = useIsLoggedIn();
 
   const queryRe = new RegExp(
     `^${Array.prototype.map
@@ -1662,6 +1313,7 @@ export default function ConsList({
   });
 
   const compact = view.filter.attending || view.filter.q != "";
+  const [sortMenuOpen, setSortMenuOpen] = useState(false);
 
   return (
     <Box style={{ position: "relative" }}>
@@ -1682,10 +1334,327 @@ export default function ConsList({
       >
         <Filters
           cons={cons}
-          view={view}
-          setView={setView}
-          firstDayOfWeek={firstDayOfWeek}
-          setFirstDayOfWeek={setFirstDayOfWeek}
+          filledButton={view.layout.type == "map"}
+          filter={view.filter}
+          setFilter={(filter) => ({ ...view, filter })}
+          rightSection={
+            <>
+              {view.layout.type == "list" ? (
+                <Menu
+                  position="bottom-end"
+                  withArrow
+                  opened={sortMenuOpen}
+                  onChange={setSortMenuOpen}
+                >
+                  <Menu.Target>
+                    <Button
+                      aria-label={t`Settings`}
+                      variant="subtle"
+                      size="xs"
+                      c="dimmed"
+                      color="var(--mantine-color-dimmed)"
+                      style={{ zIndex: 4, flexShrink: 0 }}
+                      leftSection={(() => {
+                        const currentSortByDisplay =
+                          SORT_BY_DISPLAYS[view.layout.options.sort];
+                        return view.layout.options.desc ? (
+                          <currentSortByDisplay.DescIcon
+                            title={t(currentSortByDisplay.desc)}
+                            size={14}
+                          />
+                        ) : (
+                          <currentSortByDisplay.AscIcon
+                            title={t(currentSortByDisplay.asc)}
+                            size={14}
+                          />
+                        );
+                      })()}
+                      rightSection={<IconChevronDown size={14} />}
+                    >
+                      {t(SORT_BY_DISPLAYS[view.layout.options.sort].name)}
+                    </Button>
+                  </Menu.Target>
+
+                  <Menu.Dropdown>
+                    <Menu.Label>
+                      <Trans>Sort by</Trans>
+                    </Menu.Label>
+                    {SORT_BY.map((sortBy) => {
+                      if (!isLoggedIn && sortBy == "followed") {
+                        return null;
+                      }
+
+                      const selected =
+                        view.layout.type == "list" &&
+                        view.layout.options.sort == sortBy;
+
+                      return (
+                        <Menu.Item
+                          disabled={
+                            sortBy == "followed" && followedConAttendees == null
+                          }
+                          aria-selected={selected}
+                          onClick={() => {
+                            setView({
+                              ...view,
+                              layout: {
+                                type: "list",
+                                options: {
+                                  sort: sortBy,
+                                  desc: DEFAULT_SORT_DESC_OPTIONS[sortBy],
+                                },
+                              },
+                            });
+                          }}
+                          key={sortBy}
+                          leftSection={
+                            sortBy != "followed" ||
+                            followedConAttendees != null ? (
+                              selected ? (
+                                <IconCheck size={14} />
+                              ) : (
+                                <EmptyIcon size={14} />
+                              )
+                            ) : (
+                              <Loader color="dimmed" size={14} />
+                            )
+                          }
+                        >
+                          {t(SORT_BY_DISPLAYS[sortBy].name)}
+                        </Menu.Item>
+                      );
+                    })}
+                    <Menu.Label>
+                      <Trans>Order</Trans>
+                    </Menu.Label>
+                    <Menu.Item
+                      aria-selected={!view.layout.options.desc}
+                      onClick={() => {
+                        setView({
+                          ...view,
+                          layout: {
+                            type: "list",
+                            options: {
+                              ...(view.layout.options as ListLayoutOptions),
+                              desc: false,
+                            } satisfies ListLayoutOptions,
+                          },
+                        });
+                      }}
+                      leftSection={
+                        <Group gap={6}>
+                          {!view.layout.options.desc ? (
+                            <IconCheck size={14} />
+                          ) : (
+                            <EmptyIcon size={14} />
+                          )}
+                          {(() => {
+                            const Icon =
+                              SORT_BY_DISPLAYS[view.layout.options.sort]
+                                .AscIcon;
+                            return <Icon size={14} />;
+                          })()}
+                        </Group>
+                      }
+                    >
+                      {t(SORT_BY_DISPLAYS[view.layout.options.sort].asc)}
+                    </Menu.Item>
+                    <Menu.Item
+                      aria-selected={view.layout.options.desc}
+                      onClick={() => {
+                        setView({
+                          ...view,
+                          layout: {
+                            type: "list",
+                            options: {
+                              ...(view.layout.options as ListLayoutOptions),
+                              desc: true,
+                            } satisfies ListLayoutOptions,
+                          },
+                        });
+                      }}
+                      leftSection={
+                        <Group gap={6}>
+                          {view.layout.options.desc ? (
+                            <IconCheck size={14} />
+                          ) : (
+                            <EmptyIcon size={14} />
+                          )}
+                          {(() => {
+                            const Icon =
+                              SORT_BY_DISPLAYS[view.layout.options.sort]
+                                .DescIcon;
+                            return <Icon size={14} />;
+                          })()}
+                        </Group>
+                      }
+                    >
+                      {t(SORT_BY_DISPLAYS[view.layout.options.sort].desc)}
+                    </Menu.Item>
+                  </Menu.Dropdown>
+                </Menu>
+              ) : view.layout.type == "calendar" ? (
+                <Menu
+                  position="bottom-end"
+                  withArrow
+                  opened={sortMenuOpen}
+                  onChange={setSortMenuOpen}
+                >
+                  <Menu.Target>
+                    <Button
+                      aria-label={t`Settings`}
+                      variant="subtle"
+                      size="xs"
+                      c="dimmed"
+                      color="var(--mantine-color-dimmed)"
+                      style={{ zIndex: 4, flexShrink: 0 }}
+                      rightSection={<IconChevronDown size={14} />}
+                    >
+                      <IconSettings size={14} />
+                    </Button>
+                  </Menu.Target>
+
+                  <Menu.Dropdown>
+                    <Menu.Label>
+                      <Trans>Week starts on</Trans>
+                    </Menu.Label>
+                    {FirstDayOfWeek.def.values.map((day) => (
+                      <Menu.Item
+                        key={day as Day}
+                        leftSection={
+                          firstDayOfWeek == day ? (
+                            <IconCheck size={14} />
+                          ) : (
+                            <EmptyIcon size={14} />
+                          )
+                        }
+                        onClick={() => {
+                          setFirstDayOfWeek(day as Day);
+                        }}
+                      >
+                        {i18n.date(new Date(2006, 0, (day as number) + 1), {
+                          weekday: "long",
+                        })}
+                      </Menu.Item>
+                    ))}
+                    <Menu.Label>
+                      <Trans>Use time zone</Trans>
+                    </Menu.Label>
+                    <Menu.Item
+                      leftSection={
+                        !view.layout.options.inYourTimeZone ? (
+                          <IconCheck size={14} />
+                        ) : (
+                          <EmptyIcon size={14} />
+                        )
+                      }
+                      onClick={() => {
+                        setView({
+                          ...view,
+                          layout: {
+                            type: "calendar",
+                            options: {
+                              ...(view.layout.options as CalendarLayoutOptions),
+                              inYourTimeZone: false,
+                            } satisfies CalendarLayoutOptions,
+                          },
+                        });
+                      }}
+                    >
+                      <Trans>Theirs</Trans>
+                    </Menu.Item>
+                    <Menu.Item
+                      leftSection={
+                        view.layout.options.inYourTimeZone ? (
+                          <IconCheck size={14} />
+                        ) : (
+                          <EmptyIcon size={14} />
+                        )
+                      }
+                      onClick={() => {
+                        setView({
+                          ...view,
+                          layout: {
+                            type: "calendar",
+                            options: {
+                              ...(view.layout.options as CalendarLayoutOptions),
+                              inYourTimeZone: true,
+                            } satisfies CalendarLayoutOptions,
+                          },
+                        });
+                      }}
+                    >
+                      <Trans>Yours</Trans>
+                    </Menu.Item>
+                  </Menu.Dropdown>
+                </Menu>
+              ) : null}
+              <SegmentedControl
+                onChange={(value) => {
+                  setView({
+                    ...view,
+                    layout: (value == "calendar"
+                      ? {
+                          type: "calendar",
+                          options: qp.defaults(CalendarLayoutOptions),
+                        }
+                      : value == "map"
+                      ? {
+                          type: "map",
+                          options: qp.defaults(MapLayoutOptions),
+                        }
+                      : {
+                          type: "list",
+                          options: qp.defaults(ListLayoutOptions),
+                        }) satisfies LayoutOptions,
+                  });
+                }}
+                value={
+                  view.layout.type == "calendar"
+                    ? "calendar"
+                    : view.layout.type == "map"
+                    ? "map"
+                    : "list"
+                }
+                data={[
+                  {
+                    value: "list",
+                    label: (
+                      <Center style={{ gap: 6 }}>
+                        <IconList size={14} />
+                        <Text span size="xs" visibleFrom="sm">
+                          <Trans>List</Trans>
+                        </Text>
+                      </Center>
+                    ),
+                  },
+                  {
+                    value: "calendar",
+                    label: (
+                      <Center style={{ gap: 6 }}>
+                        <IconCalendar size={14} />
+                        <Text span size="xs" visibleFrom="sm">
+                          <Trans>Calendar</Trans>
+                        </Text>
+                      </Center>
+                    ),
+                  },
+                  {
+                    value: "map",
+                    label: (
+                      <Center style={{ gap: 6 }}>
+                        <IconMap size={14} />
+                        <Text span size="xs" visibleFrom="sm">
+                          <Trans>Map</Trans>
+                        </Text>
+                      </Center>
+                    ),
+                  },
+                ]}
+                size="xs"
+              />
+            </>
+          }
         />
       </Container>
 
