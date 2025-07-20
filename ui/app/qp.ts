@@ -241,13 +241,13 @@ export function schema<T extends Schema>(schema: T): T {
   return schema;
 }
 
-type InferField<F extends Field<any>> = F extends MultipleField<any>
-  ? InferType<F["type"]>[]
-  : F extends ScalarField<any, true>
-  ? InferType<F["type"]>
-  : InferType<F["type"]> | undefined;
-
-export type InferType<T> = T extends Type<infer U> ? U : never;
+type InferField<F extends Field<any>> = F["type"] extends Type<infer T>
+  ? F extends MultipleField<any>
+    ? T[]
+    : F extends ScalarField<any, true>
+    ? T
+    : T | undefined
+  : never;
 
 export type InferSchema<T extends Schema> = {
   [K in keyof T]: InferField<T[K]>;
@@ -263,8 +263,8 @@ export function defaults<T extends Schema>(schema: T): InferSchema<T> {
   for (const key in schema) {
     const field = schema[key];
 
-    result[key] = (isMultipleField(field) ? [] : field.default) as InferType<
-      typeof field.type
+    result[key] = (isMultipleField(field) ? [] : field.default) as InferField<
+      typeof field
     >;
   }
 
@@ -284,7 +284,7 @@ export function parse<T extends Schema>(
       const parsed = searchParams.getAll(key).map((v) => field.type.parse(v));
       result[key] = (
         parsed.every((v) => v !== undefined) && parsed.length > 0 ? parsed : []
-      ) as InferType<typeof field.type>;
+      ) as InferField<typeof field>;
     } else {
       const defaultValue = field.default ?? undefined;
       const param = searchParams.get(key);
