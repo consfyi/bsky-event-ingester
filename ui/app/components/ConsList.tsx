@@ -1126,27 +1126,25 @@ function Filters({
 
 function ListLayout({
   cons,
-  sort,
-  desc,
+  options,
   hideEmptyGroups,
 }: {
   cons: ConWithPost[];
-  sort: SortBy;
-  desc: boolean;
+  options: ListLayoutOptions;
   hideEmptyGroups: boolean;
 }) {
   return (
     <Container size="lg" px={0}>
-      {sort == "attendees" ? (
-        <ConsByAttendees cons={cons} sortDesc={desc} />
-      ) : sort == "followed" ? (
-        <ConsByFollowed cons={cons} sortDesc={desc} />
-      ) : sort == "name" ? (
-        <ConsByName cons={cons} sortDesc={desc} />
-      ) : sort == "date" ? (
+      {options.sort == "attendees" ? (
+        <ConsByAttendees cons={cons} sortDesc={options.desc} />
+      ) : options.sort == "followed" ? (
+        <ConsByFollowed cons={cons} sortDesc={options.desc} />
+      ) : options.sort == "name" ? (
+        <ConsByName cons={cons} sortDesc={options.desc} />
+      ) : options.sort == "date" ? (
         <ConsByDate
           cons={cons}
-          sortDesc={desc}
+          sortDesc={options.desc}
           hideEmptyGroups={hideEmptyGroups}
         />
       ) : null}
@@ -1287,12 +1285,12 @@ const Calendar = lazy(() => import("./Calendar"));
 
 function CalendarLayout({
   cons,
-  inYourTimeZone,
+  options,
   firstDayOfWeek,
   includeToday,
 }: {
   cons: ConWithPost[];
-  inYourTimeZone: boolean;
+  options: CalendarLayoutOptions;
   firstDayOfWeek: Day;
   includeToday: boolean;
 }) {
@@ -1300,7 +1298,7 @@ function CalendarLayout({
     <Container size="lg" px={0}>
       <Calendar
         firstDay={firstDayOfWeek}
-        inYourTimeZone={inYourTimeZone}
+        inYourTimeZone={options.inYourTimeZone}
         includeToday={includeToday}
         events={cons.map((con) => ({
           id: con.identifier,
@@ -1458,14 +1456,14 @@ const Map = lazy(() => import("./Map"));
 
 function MapLayout({
   cons,
-  initialCenter,
+  options,
   setCenter,
 }: {
   cons: ConWithPost[];
-  initialCenter: { lat: number; lng: number; zoom: number } | null;
+  options: MapLayoutOptions;
   setCenter(center: { lat: number; lng: number; zoom: number }): void;
 }) {
-  const [center] = useState(initialCenter);
+  const [center] = useState(options.center ?? null);
   return (
     <Box h="100dvh" mt={-50}>
       <Suspense
@@ -1522,7 +1520,7 @@ export default function ConsList({
     return (weekInfo.firstDay % 7) as Day;
   }, [navigator.language]);
 
-  const [firstDayOfWeek, setFirstDayOfWeek] = useLocalStorage({
+  const [firstDayOfWeek] = useLocalStorage({
     key: "fbl:firstDayOfWeek",
     defaultValue: defaultFirstDayOfWeek,
     getInitialValueInEffect: false,
@@ -1694,14 +1692,14 @@ export default function ConsList({
           view.layout.type == "calendar" ? (
             <CalendarLayout
               cons={filteredCons}
-              inYourTimeZone={view.layout.options.inYourTimeZone}
+              options={view.layout.options}
               firstDayOfWeek={firstDayOfWeek}
               includeToday={!compact}
             />
           ) : view.layout.type == "map" ? (
             <MapLayout
               cons={filteredCons}
-              initialCenter={view.layout.options.center ?? null}
+              options={view.layout.options}
               setCenter={(center) => {
                 setView({
                   ...view,
@@ -1718,8 +1716,7 @@ export default function ConsList({
           ) : (
             <ListLayout
               cons={filteredCons}
-              sort={view.layout.options.sort}
-              desc={view.layout.options.desc}
+              options={view.layout.options}
               hideEmptyGroups={compact}
             />
           )
