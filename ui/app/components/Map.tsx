@@ -264,17 +264,7 @@ export default function Map({
           left: 0,
         }}
       >
-        <AttributionControl
-          compact={false}
-          style={{
-            background: "none",
-            fontSize: "var(--mantine-font-size-xs)",
-            borderTopLeftRadius: "var(--mantine-radius-default)",
-            fontWeight: 500,
-            WebkitTextStroke: "0.1px",
-            WebkitTextStrokeColor: "var(--mantine-color-default)",
-          }}
-        />
+        <AttributionControl compact={false} />
         {cons.flatMap((con) =>
           con.geocoded != null && con.geocoded.latLng != null
             ? [
