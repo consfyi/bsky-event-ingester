@@ -684,7 +684,7 @@ function Filters({
   const sortedContinents = useMemo(
     () =>
       sorted(
-        [...FilterOptions.continents.default],
+        [...DEFAULT_FILTER_OPTIONS.continents],
         compareDesc(comparing((code) => continentCount[code] ?? 0))
       ),
     [continentCount]
@@ -1520,7 +1520,7 @@ export default function ConsList({
   );
 
   const maxDays =
-    view.filter.maxDays >= FilterOptions.maxDays.default
+    view.filter.maxDays >= DEFAULT_FILTER_OPTIONS.maxDays
       ? Infinity
       : view.filter.maxDays;
 
