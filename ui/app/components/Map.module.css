@@ -7,6 +7,7 @@
   --ml-c-icon-2: var(--mantine-color-gray-7);
   --ml-c-active: var(--mantine-primary-color-filled);
   --ml-c-error: var(--mantine-color-red-filled);
+  --ml-o-disabled: 0.12;
   --ml-shadow: none;
   --ml-c-link-1: var(--mantine-color-dimmed);
   --ml-c-link-2: var(--mantine-color-dimmed);
