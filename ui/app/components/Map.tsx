@@ -2,6 +2,8 @@ import { match } from "@formatjs/intl-localematcher";
 import { useLingui } from "@lingui/react/macro";
 import {
   Box,
+  CloseButton,
+  Flex,
   Indicator,
   useComputedColorScheme,
   useMantineTheme,
@@ -148,22 +150,32 @@ function Pin({
       </Marker>
       {showPopup ? (
         <Popup
+          closeButton={false}
+          closeOnClick={false}
+          focusAfterOpen={false}
           maxWidth="none"
           latitude={lat}
           longitude={lng}
           offset={[0, -36]}
           style={{ zIndex: 100 }}
         >
-          <ConRow
-            con={con}
-            showMonthInIcon
-            showEndDateOnly={false}
-            showLocation={false}
-            showFollowed
-            showLikeButton
-            showBigIcon={false}
-            showDuration={false}
-          />
+          <Flex gap="xs">
+            <ConRow
+              con={con}
+              showMonthInIcon
+              showEndDateOnly={false}
+              showLocation={false}
+              showFollowed
+              showLikeButton
+              showBigIcon={false}
+              showDuration={false}
+            />
+            <CloseButton
+              onClick={() => {
+                setShowPopup(false);
+              }}
+            />
+          </Flex>
         </Popup>
       ) : null}
     </>
