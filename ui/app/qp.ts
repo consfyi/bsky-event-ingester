@@ -18,7 +18,8 @@ export const string: Type<string> = {
 
 export const number: Type<number> = {
   parse(v) {
-    return parseFloat(v);
+    const r = parseFloat(v);
+    return !isNaN(r) ? r : undefined;
   },
   serialize(v) {
     return v.toString();
@@ -102,6 +103,7 @@ export function object<T>(
         .map(([k, t]) => t.serialize(vs[k]))
         .join(sep);
     },
+
     equals(xs, ys) {
       return (Object.entries(types) as [keyof T, Type<T[keyof T]>][]).every(
         ([k, t]) => t.equals(xs[k], ys[k])
