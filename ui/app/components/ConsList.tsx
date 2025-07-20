@@ -1632,13 +1632,7 @@ export default function ConsList({
                         }) satisfies LayoutOptions,
                   });
                 }}
-                value={
-                  view.layout.type == "calendar"
-                    ? "calendar"
-                    : view.layout.type == "map"
-                    ? "map"
-                    : "list"
-                }
+                value={view.layout.type}
                 data={[
                   {
                     value: "list",
