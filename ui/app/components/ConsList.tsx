@@ -854,7 +854,7 @@ function Filters({
                     },
                   });
                 }}
-                fw={500}
+                fw="bold"
               >
                 <Plural
                   value={view.filter.continents.length}
@@ -1395,7 +1395,7 @@ function Filters({
               },
             });
           }}
-          fw={500}
+          fw="bold"
           label={
             <Plural
               value={view.filter.continents.length}
