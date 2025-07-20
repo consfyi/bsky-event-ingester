@@ -17,10 +17,10 @@ import {
   Map as Maplibre,
   Marker,
   Popup,
+  StyleSpecification,
   useMap,
 } from "@vis.gl/react-maplibre";
 import { getDay, isAfter } from "date-fns";
-import maplibregl, { type StyleSpecification } from "maplibre-gl";
 import "maplibre-theme/icons.default.css";
 import "maplibre-theme/modern.css";
 import { useMemo, useState } from "react";
@@ -240,7 +240,6 @@ export default function Map({
           map.touchZoomRotate.disableRotation();
           map.keyboard.disableRotation();
         }}
-        mapLib={maplibregl}
         onMoveEnd={(e) => {
           setCenter({
             lat: e.viewState.latitude,
