@@ -1,7 +1,9 @@
 import { useLingui } from "@lingui/react/macro";
 import { BoxProps, Image, Box, Tooltip } from "@mantine/core";
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import classes from "./Flag.module.css";
+
+let cache: Record<string, string | undefined> = {};
 
 export default function Flag({
   country,
@@ -13,15 +15,15 @@ export default function Flag({
   "w" | "h"
 >) {
   const { i18n, t } = useLingui();
-  const countryNames = useMemo(
-    () => new Intl.DisplayNames(i18n.locale, { type: "region" }),
-    [t]
-  );
 
-  const countryName = useMemo(
-    () => countryNames.of(country),
-    [country, countryNames]
-  );
+  useEffect(() => {
+    cache = {};
+  }, [t]);
+
+  const cacheKey = `${i18n.locale}:${country}`;
+  const countryName = (cache[cacheKey] ??= new Intl.DisplayNames(i18n.locale, {
+    type: "region",
+  }).of(country));
 
   return (
     <Tooltip label={countryName}>
