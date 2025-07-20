@@ -1524,18 +1524,6 @@ export default function ConsList({
       ? Infinity
       : view.filter.maxDays;
 
-  const defaultFirstDayOfWeek = useMemo(() => {
-    // Use the locale of the browser rather than the set locale.
-    const locale = new Intl.Locale(navigator.language);
-    const weekInfo = (
-      locale as {
-        getWeekInfo?(): { firstDay: number };
-      }
-    ).getWeekInfo?.() ?? { firstDay: 7 };
-
-    return (weekInfo.firstDay % 7) as Day;
-  }, [navigator.language]);
-
   const [firstDayOfWeek] = useFirstDayOfWeek();
 
   const filteredCons = cons.filter((con) => {
