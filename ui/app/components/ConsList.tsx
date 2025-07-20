@@ -1331,32 +1331,32 @@ function CalendarLayout({
   );
 }
 
+const DEFAULT_FIRST_DAY_OF_WEEK = (() => {
+  // Use the locale of the browser rather than the set locale.
+  const locale = new Intl.Locale(navigator.language);
+  const weekInfo = (
+    locale as {
+      getWeekInfo?(): { firstDay: number };
+    }
+  ).getWeekInfo?.() ?? { firstDay: 7 };
+
+  return (weekInfo.firstDay % 7) as Day;
+})();
+
 function useFirstDayOfWeek() {
-  const defaultFirstDayOfWeek = useMemo(() => {
-    // Use the locale of the browser rather than the set locale.
-    const locale = new Intl.Locale(navigator.language);
-    const weekInfo = (
-      locale as {
-        getWeekInfo?(): { firstDay: number };
-      }
-    ).getWeekInfo?.() ?? { firstDay: 7 };
-
-    return (weekInfo.firstDay % 7) as Day;
-  }, [navigator.language]);
-
   return useLocalStorage({
     key: "fbl:firstDayOfWeek",
-    defaultValue: defaultFirstDayOfWeek,
+    defaultValue: DEFAULT_FIRST_DAY_OF_WEEK,
     getInitialValueInEffect: false,
     deserialize(value) {
       if (value == undefined) {
-        return defaultFirstDayOfWeek;
+        return DEFAULT_FIRST_DAY_OF_WEEK;
       }
 
       try {
         return FirstDayOfWeek.parse(JSON.parse(value));
       } catch (e) {
-        return defaultFirstDayOfWeek;
+        return DEFAULT_FIRST_DAY_OF_WEEK;
       }
     },
   });
@@ -1372,18 +1372,6 @@ function CalendarSettingsMenu({
   const { i18n, t } = useLingui();
 
   const [open, setOpen] = useState(false);
-
-  const defaultFirstDayOfWeek = useMemo(() => {
-    // Use the locale of the browser rather than the set locale.
-    const locale = new Intl.Locale(navigator.language);
-    const weekInfo = (
-      locale as {
-        getWeekInfo?(): { firstDay: number };
-      }
-    ).getWeekInfo?.() ?? { firstDay: 7 };
-
-    return (weekInfo.firstDay % 7) as Day;
-  }, [navigator.language]);
 
   const [firstDayOfWeek, setFirstDayOfWeek] = useFirstDayOfWeek();
 
