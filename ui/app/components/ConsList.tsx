@@ -1331,6 +1331,37 @@ function CalendarLayout({
   );
 }
 
+function useFirstDayOfWeek() {
+  const defaultFirstDayOfWeek = useMemo(() => {
+    // Use the locale of the browser rather than the set locale.
+    const locale = new Intl.Locale(navigator.language);
+    const weekInfo = (
+      locale as {
+        getWeekInfo?(): { firstDay: number };
+      }
+    ).getWeekInfo?.() ?? { firstDay: 7 };
+
+    return (weekInfo.firstDay % 7) as Day;
+  }, [navigator.language]);
+
+  return useLocalStorage({
+    key: "fbl:firstDayOfWeek",
+    defaultValue: defaultFirstDayOfWeek,
+    getInitialValueInEffect: false,
+    deserialize(value) {
+      if (value == undefined) {
+        return defaultFirstDayOfWeek;
+      }
+
+      try {
+        return FirstDayOfWeek.parse(JSON.parse(value));
+      } catch (e) {
+        return defaultFirstDayOfWeek;
+      }
+    },
+  });
+}
+
 function CalendarSettingsMenu({
   layout,
   setLayout,
@@ -1354,22 +1385,7 @@ function CalendarSettingsMenu({
     return (weekInfo.firstDay % 7) as Day;
   }, [navigator.language]);
 
-  const [firstDayOfWeek, setFirstDayOfWeek] = useLocalStorage({
-    key: "fbl:firstDayOfWeek",
-    defaultValue: defaultFirstDayOfWeek,
-    getInitialValueInEffect: false,
-    deserialize(value) {
-      if (value == undefined) {
-        return defaultFirstDayOfWeek;
-      }
-
-      try {
-        return FirstDayOfWeek.parse(JSON.parse(value));
-      } catch (e) {
-        return defaultFirstDayOfWeek;
-      }
-    },
-  });
+  const [firstDayOfWeek, setFirstDayOfWeek] = useFirstDayOfWeek();
 
   return (
     <Menu position="bottom-end" withArrow opened={open} onChange={setOpen}>
@@ -1520,22 +1536,7 @@ export default function ConsList({
     return (weekInfo.firstDay % 7) as Day;
   }, [navigator.language]);
 
-  const [firstDayOfWeek] = useLocalStorage({
-    key: "fbl:firstDayOfWeek",
-    defaultValue: defaultFirstDayOfWeek,
-    getInitialValueInEffect: false,
-    deserialize(value) {
-      if (value == undefined) {
-        return defaultFirstDayOfWeek;
-      }
-
-      try {
-        return FirstDayOfWeek.parse(JSON.parse(value));
-      } catch (e) {
-        return defaultFirstDayOfWeek;
-      }
-    },
-  });
+  const [firstDayOfWeek] = useFirstDayOfWeek();
 
   const filteredCons = cons.filter((con) => {
     const days = differenceInDays(con.end, con.start);
