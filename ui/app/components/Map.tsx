@@ -1,3 +1,4 @@
+import { match } from "@formatjs/intl-localematcher";
 import { useLingui } from "@lingui/react/macro";
 import {
   Box,
@@ -5,7 +6,11 @@ import {
   useComputedColorScheme,
   useMantineTheme,
 } from "@mantine/core";
-import { layers, namedFlavor } from "@protomaps/basemaps";
+import {
+  language_script_pairs,
+  layers,
+  namedFlavor,
+} from "@protomaps/basemaps";
 import { IconMapPinFilled } from "@tabler/icons-react";
 import {
   AttributionControl,
@@ -25,6 +30,8 @@ import classes from "./Map.module.css";
 
 const API_KEY = "a4d6fb59d9d6e179";
 
+const SUPPORTED_LANGUAGES = language_script_pairs.map((v) => v.lang);
+
 function makeStyle({
   colorScheme,
   locale,
@@ -32,8 +39,6 @@ function makeStyle({
   colorScheme: "light" | "dark";
   locale: string;
 }): StyleSpecification {
-  const loc = new Intl.Locale(locale);
-
   return {
     version: 8,
     sources: {
@@ -48,7 +53,7 @@ function makeStyle({
       "https://protomaps.github.io/basemaps-assets/fonts/{fontstack}/{range}.pbf",
     sprite: `https://protomaps.github.io/basemaps-assets/sprites/v4/${colorScheme}`,
     layers: layers("protomaps", namedFlavor(colorScheme), {
-      lang: loc.language,
+      lang: match([locale], SUPPORTED_LANGUAGES, "en"),
     }),
     transition: { duration: 0, delay: 0 },
   };
