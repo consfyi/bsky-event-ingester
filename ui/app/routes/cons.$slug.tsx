@@ -2,7 +2,7 @@ import { Container } from "@mantine/core";
 import { useEffect } from "react";
 import ConDetails from "~/components/ConDetails";
 import { useConsWithPosts } from "~/hooks";
-import { Route } from "./+types/cons.$slug";
+import type { Route } from "./+types/cons.$slug";
 
 export default function Index({ params: { slug } }: Route.ComponentProps) {
   const cons = useConsWithPosts();

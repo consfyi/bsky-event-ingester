@@ -3,7 +3,7 @@ import { Container } from "@mantine/core";
 import { useEffect } from "react";
 import UserDetails from "~/components/UserDetails";
 import { useProfile } from "~/hooks";
-import { Route } from "./+types/users.$actor";
+import type { Route } from "./+types/users.$actor";
 
 export default function Index({ params: { actor } }: Route.ComponentProps) {
   const profile = useProfile(actor as ActorIdentifier);
