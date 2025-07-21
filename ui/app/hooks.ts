@@ -2,13 +2,7 @@ import type { ActorIdentifier, Did, ResourceUri } from "@atcute/lexicons";
 import { useDLE, useSuspense } from "@data-client/react";
 import type { TZDate } from "@date-fns/tz";
 import { TZDateMini } from "@date-fns/tz";
-import {
-  addDays,
-  isAfter,
-  isSameDay,
-  parse as parseDate,
-  set as setDate,
-} from "date-fns";
+import { addDays, isAfter, parse as parseDate, set as setDate } from "date-fns";
 import { comparing, sorted } from "iter-fns";
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { LABELER_DID } from "~/config";
@@ -144,7 +138,7 @@ export function useCons() {
             fullDef.fbl_eventInfo.geocoded?.timezone ?? "UTC"
           );
 
-          let endDate = addDays(
+          const endDate = addDays(
             setDate<TZDate, TZDate>(
               parseDate<TZDate, TZDate>(end, "yyyy-MM-dd", refDate),
               {

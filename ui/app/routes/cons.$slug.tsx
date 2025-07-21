@@ -20,7 +20,7 @@ export default function Index({ params: { slug } }: Route.ComponentProps) {
     if (slug != con.slug) {
       window.history.replaceState(null, "", `/cons/${con.slug}`);
     }
-  }, [con]);
+  }, [con, slug]);
 
   if (con == null) {
     throw new Response(null, {

@@ -1,13 +1,5 @@
 import { Center, Loader } from "@mantine/core";
-import deepEqual from "deep-equal";
-import {
-  Fragment,
-  Suspense,
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
+import { Fragment, Suspense, useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 import ConsList, {
   CalendarLayoutOptions,
@@ -68,7 +60,7 @@ export default function ConsListPage({
     updatingFromSearchParams.current = true;
     setView(parseSearchParams(view.layout.type, searchParams));
     updatingFromSearchParams.current = false;
-  }, [searchParams, parseSearchParams]);
+  }, [searchParams, view.layout.type]);
 
   useEffect(() => {
     if (updatingFromSearchParams.current) {
@@ -102,7 +94,7 @@ export default function ConsListPage({
     } else {
       navigate({ pathname, search: searchParams.toString() });
     }
-  }, [searchParams, view]);
+  }, [searchParams, view, navigate, setSearchParams]);
 
   return (
     <Fragment key={view.layout.type}>

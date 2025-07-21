@@ -60,7 +60,7 @@ import {
   ScrollRestoration,
   useNavigation,
   useRouteError,
-} from "react-router";
+ useLocation } from "react-router";
 import Avatar from "~/components/Avatar";
 import clientMetadata from "../public/client-metadata.json";
 import { DEFAULT_PDS_HOST, startLogin } from "./bluesky";
@@ -71,7 +71,6 @@ import { LABELER_DID } from "./config";
 import { useGetPreferences, usePutPreferences } from "./endpoints";
 import { useClient, useHydrated, useIsLoggedIn, useSelf } from "./hooks";
 import "./styles.css";
-import { useLocation } from "react-router";
 
 const theme = createTheme({});
 

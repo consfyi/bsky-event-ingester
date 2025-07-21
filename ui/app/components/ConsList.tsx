@@ -136,6 +136,7 @@ export function ConRow({
         month: "short",
         year: "numeric",
       }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [t]
   );
 
@@ -145,6 +146,7 @@ export function ConRow({
         type: "conjunction",
         style: "long",
       }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [t]
   );
 
@@ -1496,6 +1498,33 @@ function MapLayout({
 const FirstDayOfWeek = z.literal([0, 1, 6]);
 type FirstDayOfWeek = z.infer<typeof FirstDayOfWeek>;
 
+const LAYOUTS: { Icon: Icon; label: ReactNode; options: LayoutOptions }[] = [
+  {
+    Icon: IconList,
+    label: <Trans>List</Trans>,
+    options: {
+      type: "list",
+      options: qp.defaults(ListLayoutOptions),
+    },
+  },
+  {
+    Icon: IconCalendarWeek,
+    label: <Trans>Calendar</Trans>,
+    options: {
+      type: "calendar",
+      options: qp.defaults(CalendarLayoutOptions),
+    },
+  },
+  {
+    Icon: IconMap,
+    label: <Trans>Map</Trans>,
+    options: {
+      type: "map",
+      options: qp.defaults(MapLayoutOptions),
+    },
+  },
+];
+
 function LayoutSwitcher({
   layout,
   setLayout,
@@ -1503,35 +1532,9 @@ function LayoutSwitcher({
   layout: LayoutOptions;
   setLayout(options: LayoutOptions): void;
 }) {
-  const LAYOUTS = [
-    {
-      Icon: IconList,
-      label: <Trans>List</Trans>,
-      options: {
-        type: "list",
-        options: qp.defaults(ListLayoutOptions),
-      },
-    },
-    {
-      Icon: IconCalendarWeek,
-      label: <Trans>Calendar</Trans>,
-      options: {
-        type: "calendar",
-        options: qp.defaults(CalendarLayoutOptions),
-      },
-    },
-    {
-      Icon: IconMap,
-      label: <Trans>Map</Trans>,
-      options: {
-        type: "map",
-        options: qp.defaults(MapLayoutOptions),
-      },
-    },
-  ];
-
   const layoutsByName = useMemo(() => {
-    const layoutsByName = {} as any;
+    const layoutsByName: Partial<Record<LayoutOptions["type"], LayoutOptions>> =
+      {};
     for (const layout of LAYOUTS) {
       layoutsByName[layout.options.type] = layout.options;
     }
@@ -1603,7 +1606,7 @@ function useFilterPredicate(filter: FilterOptions) {
           (followedConAttendees[con.identifier] ?? []).length > 0)
       );
     },
-    [t, filter, followedConAttendees]
+    [t, filter, followedConAttendees, maxDays, queryRe]
   );
 }
 

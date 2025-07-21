@@ -112,6 +112,7 @@ function packLanes(
       const length = differenceInCalendarDays(seg.end, seg.start);
 
       let laneIndex = 0;
+      // eslint-disable-next-line no-constant-condition
       findLane: while (true) {
         for (
           let offset = 0;
@@ -232,7 +233,7 @@ export default function Calendar({
       }
     ).getWeekInfo?.() ?? { weekend: [6, 7] };
     return weekInfo.weekend.map((d) => (d % 7) as Day);
-  }, [navigator.language]);
+  }, []);
 
   const checkpointRefs = useRef<Record<number, HTMLDivElement>>({});
   checkpointRefs.current = {};
@@ -283,12 +284,14 @@ export default function Calendar({
 
   const dayFormat = useMemo(
     () => new Intl.DateTimeFormat(i18n.locale, { day: "numeric" }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [t]
   );
 
   const dayMonthFormat = useMemo(
     () =>
       new Intl.DateTimeFormat(i18n.locale, { month: "short", day: "numeric" }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [t]
   );
 
@@ -298,7 +301,7 @@ export default function Calendar({
       d = isBefore(now, d) ? now : d;
     }
     return startOfDay(d);
-  }, [events, now]);
+  }, [includeToday, events, now]);
 
   const firstDayWeekday = getDay(startDate);
   const daysToPad = (firstDayWeekday - firstDay + 7) % 7;
@@ -318,7 +321,7 @@ export default function Calendar({
 
   const packed = useMemo(
     () => packLanes(events, calendarStartDate, numWeeks, firstDay),
-    [events]
+    [calendarStartDate, events, firstDay, numWeeks]
   );
 
   const highlightedMonthIndex =

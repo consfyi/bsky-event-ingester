@@ -54,7 +54,7 @@ export const boolean: Type<boolean> = {
   },
 };
 
-export function tuple<Ts extends any[]>(
+export function tuple<Ts extends unknown[]>(
   types: { [K in keyof Ts]: Type<Ts[K]> },
   sep: string
 ): Type<Ts> {
@@ -66,7 +66,7 @@ export function tuple<Ts extends any[]>(
         return undefined;
       }
 
-      const parsed: any[] = [];
+      const parsed: unknown[] = [];
       for (let i = 0; i < types.length; i++) {
         const result = types[i].parse(parts[i]);
         if (result === undefined) {
@@ -100,7 +100,7 @@ export function object<T>(
         return undefined;
       }
 
-      const parsed: any = {};
+      const parsed: Partial<T> = {};
       for (let i = 0; i < keys.length; ++i) {
         const key = keys[i];
         const result = types[key].parse(parts[i]);
@@ -109,7 +109,7 @@ export function object<T>(
         }
         parsed[key] = result;
       }
-      return parsed;
+      return parsed as T;
     },
     serialize(vs) {
       return (Object.entries(types) as [keyof T, Type<T[keyof T]>][])
@@ -151,6 +151,7 @@ function literalImpl<T, U extends T>(type: Type<T>, lit: U): Type<U> {
       const parsed = type.parse(v);
       return parsed !== undefined && type.equals(parsed, lit) ? lit : undefined;
     },
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     serialize(v) {
       return type.serialize(lit);
     },
@@ -214,7 +215,7 @@ export type ScalarField<T, HasDefault extends boolean> = {
   default: HasDefault extends true ? T : undefined;
 };
 
-export type Field<T> = ScalarField<T, any> | MultipleField<T>;
+export type Field<T> = ScalarField<T, boolean> | MultipleField<T>;
 
 export function scalar<T>(type: Type<T>): ScalarField<T, false>;
 export function scalar<T>(type: Type<T>, defaultValue: T): ScalarField<T, true>;
@@ -235,16 +236,16 @@ export function multiple<T>(type: Type<T>): MultipleField<T> {
   };
 }
 
-export type Schema = Record<string, Field<any>>;
+export type Schema = Record<string, Field<unknown>>;
 
 export function schema<T extends Schema>(schema: T): T {
   return schema;
 }
 
-type InferField<F extends Field<any>> = F["type"] extends Type<infer T>
-  ? F extends MultipleField<any>
+type InferField<F extends Field<unknown>> = F["type"] extends Type<infer T>
+  ? F extends MultipleField<unknown>
     ? T[]
-    : F extends ScalarField<any, true>
+    : F extends ScalarField<unknown, true>
     ? T
     : T | undefined
   : never;
@@ -290,9 +291,11 @@ export function parse<T extends Schema>(
       const param = searchParams.get(key);
       if (param !== null) {
         const parsed = field.type.parse(param);
-        result[key] = parsed !== undefined ? parsed : defaultValue;
+        result[key] = (
+          parsed !== undefined ? parsed : defaultValue
+        ) as InferField<typeof field>;
       } else {
-        result[key] = defaultValue;
+        result[key] = defaultValue as InferField<typeof field>;
       }
     }
   }
@@ -314,7 +317,7 @@ export function serialize<T extends Schema>(
     }
 
     if (isMultipleField(field)) {
-      const values = value as any[];
+      const values = value as unknown[];
       for (const item of values) {
         searchParams.append(key, field.type.serialize(item));
       }

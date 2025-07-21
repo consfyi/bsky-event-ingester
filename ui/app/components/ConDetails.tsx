@@ -203,6 +203,7 @@ export function Body({ con }: { con: ConWithPost }) {
         month: "short",
         year: "numeric",
       }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [t]
   );
 
