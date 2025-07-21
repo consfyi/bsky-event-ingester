@@ -192,7 +192,7 @@ export function enumImpl<T, U extends T>(
   };
 }
 
-export function enum_<T extends string | number>(
+export function enum_<const T extends string | number>(
   values: readonly T[]
 ): Type<T> {
   if (values.every((v) => typeof v === "string")) {

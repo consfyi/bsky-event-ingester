@@ -582,7 +582,7 @@ export const ListLayoutOptions = qp.schema({
 export type ListLayoutOptions = qp.InferSchema<typeof ListLayoutOptions>;
 
 export const CalendarLayoutOptions = qp.schema({
-  inYourTimeZone: qp.scalar(qp.boolean, false),
+  timezone: qp.scalar(qp.enum_(["theirs", "yours"]), "theirs"),
 });
 export type CalendarLayoutOptions = qp.InferSchema<
   typeof CalendarLayoutOptions
@@ -1339,7 +1339,7 @@ function CalendarLayout({
     <Container size="lg" px={0}>
       <Calendar
         firstDay={firstDayOfWeek}
-        inYourTimeZone={options.inYourTimeZone}
+        inYourTimeZone={options.timezone == "yours"}
         includeToday={includeToday}
         events={cons.map((con) => ({
           id: con.identifier,
@@ -1429,7 +1429,7 @@ function CalendarSettingsMenu({
         </Menu.Label>
         <Menu.Item
           leftSection={
-            !options.inYourTimeZone ? (
+            options.timezone == "theirs" ? (
               <IconCheck size={14} />
             ) : (
               <EmptyIcon size={14} />
@@ -1438,7 +1438,7 @@ function CalendarSettingsMenu({
           onClick={() => {
             setOptions({
               ...options,
-              inYourTimeZone: false,
+              timezone: "theirs",
             });
           }}
         >
@@ -1446,7 +1446,7 @@ function CalendarSettingsMenu({
         </Menu.Item>
         <Menu.Item
           leftSection={
-            options.inYourTimeZone ? (
+            options.timezone == "yours" ? (
               <IconCheck size={14} />
             ) : (
               <EmptyIcon size={14} />
@@ -1455,7 +1455,7 @@ function CalendarSettingsMenu({
           onClick={() => {
             setOptions({
               ...options,
-              inYourTimeZone: true,
+              timezone: "yours",
             });
           }}
         >
