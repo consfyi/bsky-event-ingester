@@ -88,6 +88,7 @@ import {
 import * as qp from "~/qp";
 import removeDiacritics from "~/removeDiacritics";
 import classes from "./ConsList.module.css";
+import { View } from "@atcute/bluesky/types/app/embed/record";
 
 const MAX_AVATARS_IN_STACK = 3;
 
@@ -1151,11 +1152,11 @@ function ListLayout({
 }
 
 function ListSettingsMenu({
-  layout,
-  setLayout,
+  options,
+  setOptions,
 }: {
-  layout: ListLayoutOptions;
-  setLayout(options: ListLayoutOptions): void;
+  options: ListLayoutOptions;
+  setOptions(options: ListLayoutOptions): void;
 }) {
   const { t } = useLingui();
 
@@ -1175,8 +1176,8 @@ function ListSettingsMenu({
           color="var(--mantine-color-dimmed)"
           style={{ zIndex: 4, flexShrink: 0 }}
           leftSection={(() => {
-            const currentSortByDisplay = SORT_BY_DISPLAYS[layout.sort];
-            return layout.desc ? (
+            const currentSortByDisplay = SORT_BY_DISPLAYS[options.sort];
+            return options.desc ? (
               <currentSortByDisplay.DescIcon
                 title={t(currentSortByDisplay.desc)}
                 size={14}
@@ -1190,7 +1191,7 @@ function ListSettingsMenu({
           })()}
           rightSection={<IconChevronDown size={14} />}
         >
-          {t(SORT_BY_DISPLAYS[layout.sort].name)}
+          {t(SORT_BY_DISPLAYS[options.sort].name)}
         </Button>
       </Menu.Target>
 
@@ -1203,14 +1204,14 @@ function ListSettingsMenu({
             return null;
           }
 
-          const selected = layout.sort == sortBy;
+          const selected = options.sort == sortBy;
 
           return (
             <Menu.Item
               disabled={sortBy == "followed" && followedConAttendees == null}
               aria-selected={selected}
               onClick={() => {
-                setLayout({
+                setOptions({
                   sort: sortBy,
                   desc: DEFAULT_SORT_DESC_OPTIONS[sortBy],
                 });
@@ -1236,44 +1237,48 @@ function ListSettingsMenu({
           <Trans>Order</Trans>
         </Menu.Label>
         <Menu.Item
-          aria-selected={!layout.desc}
+          aria-selected={!options.desc}
           onClick={() => {
-            setLayout({
-              ...layout,
+            setOptions({
+              ...options,
               desc: false,
             });
           }}
           leftSection={
             <Group gap={6}>
-              {!layout.desc ? <IconCheck size={14} /> : <EmptyIcon size={14} />}
+              {!options.desc ? (
+                <IconCheck size={14} />
+              ) : (
+                <EmptyIcon size={14} />
+              )}
               {(() => {
-                const Icon = SORT_BY_DISPLAYS[layout.sort].AscIcon;
+                const Icon = SORT_BY_DISPLAYS[options.sort].AscIcon;
                 return <Icon size={14} />;
               })()}
             </Group>
           }
         >
-          {t(SORT_BY_DISPLAYS[layout.sort].asc)}
+          {t(SORT_BY_DISPLAYS[options.sort].asc)}
         </Menu.Item>
         <Menu.Item
-          aria-selected={layout.desc}
+          aria-selected={options.desc}
           onClick={() => {
-            setLayout({
-              ...layout,
+            setOptions({
+              ...options,
               desc: true,
             });
           }}
           leftSection={
             <Group gap={6}>
-              {layout.desc ? <IconCheck size={14} /> : <EmptyIcon size={14} />}
+              {options.desc ? <IconCheck size={14} /> : <EmptyIcon size={14} />}
               {(() => {
-                const Icon = SORT_BY_DISPLAYS[layout.sort].DescIcon;
+                const Icon = SORT_BY_DISPLAYS[options.sort].DescIcon;
                 return <Icon size={14} />;
               })()}
             </Group>
           }
         >
-          {t(SORT_BY_DISPLAYS[layout.sort].desc)}
+          {t(SORT_BY_DISPLAYS[options.sort].desc)}
         </Menu.Item>
       </Menu.Dropdown>
     </Menu>
@@ -1361,11 +1366,11 @@ function useFirstDayOfWeek() {
 }
 
 function CalendarSettingsMenu({
-  layout,
-  setLayout,
+  options,
+  setOptions,
 }: {
-  layout: CalendarLayoutOptions;
-  setLayout(options: CalendarLayoutOptions): void;
+  options: CalendarLayoutOptions;
+  setOptions(options: CalendarLayoutOptions): void;
 }) {
   const { i18n, t } = useLingui();
 
@@ -1417,15 +1422,15 @@ function CalendarSettingsMenu({
         </Menu.Label>
         <Menu.Item
           leftSection={
-            !layout.inYourTimeZone ? (
+            !options.inYourTimeZone ? (
               <IconCheck size={14} />
             ) : (
               <EmptyIcon size={14} />
             )
           }
           onClick={() => {
-            setLayout({
-              ...layout,
+            setOptions({
+              ...options,
               inYourTimeZone: false,
             });
           }}
@@ -1434,15 +1439,15 @@ function CalendarSettingsMenu({
         </Menu.Item>
         <Menu.Item
           leftSection={
-            layout.inYourTimeZone ? (
+            options.inYourTimeZone ? (
               <IconCheck size={14} />
             ) : (
               <EmptyIcon size={14} />
             )
           }
           onClick={() => {
-            setLayout({
-              ...layout,
+            setOptions({
+              ...options,
               inYourTimeZone: true,
             });
           }}
@@ -1483,6 +1488,48 @@ function MapLayout({
 
 const FirstDayOfWeek = z.literal([0, 1, 6]);
 type FirstDayOfWeek = z.infer<typeof FirstDayOfWeek>;
+
+function LayoutSwitcher({
+  layout,
+  setLayout,
+  layouts,
+}: {
+  layout: LayoutOptions;
+  setLayout(options: LayoutOptions): void;
+  layouts: {
+    options: LayoutOptions;
+    label: ReactNode;
+    Icon: Icon;
+  }[];
+}) {
+  const layoutsByName = useMemo(() => {
+    const layoutsByName = {} as any;
+    for (const layout of layouts) {
+      layoutsByName[layout.options.type] = layout.options;
+    }
+    return layoutsByName as Record<LayoutOptions["type"], LayoutOptions>;
+  }, [layouts]);
+  return (
+    <SegmentedControl
+      size="xs"
+      value={layout.type}
+      onChange={(value) => {
+        setLayout(layoutsByName[value as LayoutOptions["type"]]);
+      }}
+      data={layouts.map(({ options, label, Icon }) => ({
+        value: options.type,
+        label: (
+          <Center style={{ gap: 6 }}>
+            <Icon size={14} />
+            <Text span size="xs" visibleFrom="sm">
+              {label}
+            </Text>
+          </Center>
+        ),
+      }))}
+    />
+  );
+}
 
 export default function ConsList({
   cons,
@@ -1562,88 +1609,62 @@ export default function ConsList({
             <>
               {view.layout.type == "list" ? (
                 <ListSettingsMenu
-                  layout={view.layout.options}
-                  setLayout={(layout) => {
+                  options={view.layout.options}
+                  setOptions={(options) => {
                     setView({
                       ...view,
                       layout: {
                         type: "list",
-                        options: layout,
+                        options,
                       },
                     });
                   }}
                 />
               ) : view.layout.type == "calendar" ? (
                 <CalendarSettingsMenu
-                  layout={view.layout.options}
-                  setLayout={(layout) => {
+                  options={view.layout.options}
+                  setOptions={(options) => {
                     setView({
                       ...view,
                       layout: {
                         type: "calendar",
-                        options: layout,
+                        options,
                       },
                     });
                   }}
                 />
               ) : null}
-              <SegmentedControl
-                onChange={(value) => {
-                  setView({
-                    ...view,
-                    layout: (value == "calendar"
-                      ? {
-                          type: "calendar",
-                          options: qp.defaults(CalendarLayoutOptions),
-                        }
-                      : value == "map"
-                      ? {
-                          type: "map",
-                          options: qp.defaults(MapLayoutOptions),
-                        }
-                      : {
-                          type: "list",
-                          options: qp.defaults(ListLayoutOptions),
-                        }) satisfies LayoutOptions,
-                  });
+              <LayoutSwitcher
+                layout={view.layout}
+                setLayout={(layout) => {
+                  setView({ ...view, layout });
                 }}
-                value={view.layout.type}
-                data={[
+                layouts={[
                   {
-                    value: "list",
-                    label: (
-                      <Center style={{ gap: 6 }}>
-                        <IconList size={14} />
-                        <Text span size="xs" visibleFrom="sm">
-                          <Trans>List</Trans>
-                        </Text>
-                      </Center>
-                    ),
+                    Icon: IconList,
+                    label: <Trans>List</Trans>,
+                    options: {
+                      type: "list",
+                      options: qp.defaults(ListLayoutOptions),
+                    },
                   },
                   {
-                    value: "calendar",
-                    label: (
-                      <Center style={{ gap: 6 }}>
-                        <IconCalendar size={14} />
-                        <Text span size="xs" visibleFrom="sm">
-                          <Trans>Calendar</Trans>
-                        </Text>
-                      </Center>
-                    ),
+                    Icon: IconCalendar,
+                    label: <Trans>Calendar</Trans>,
+                    options: {
+                      type: "calendar",
+                      options: qp.defaults(CalendarLayoutOptions),
+                    },
                   },
                   {
-                    value: "map",
-                    label: (
-                      <Center style={{ gap: 6 }}>
-                        <IconMap size={14} />
-                        <Text span size="xs" visibleFrom="sm">
-                          <Trans>Map</Trans>
-                        </Text>
-                      </Center>
-                    ),
+                    Icon: IconMap,
+                    label: <Trans>Map</Trans>,
+                    options: {
+                      type: "map",
+                      options: qp.defaults(MapLayoutOptions),
+                    },
                   },
                 ]}
-                size="xs"
               />
             </>
           }
