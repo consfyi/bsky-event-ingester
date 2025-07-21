@@ -1,7 +1,12 @@
 import { useController, useLoading } from "@data-client/react";
 import { Trans, useLingui } from "@lingui/react/macro";
 import { ActionIcon, ActionIconProps, Tooltip } from "@mantine/core";
-import { IconHeart, IconHeartFilled } from "@tabler/icons-react";
+import {
+  IconCircle,
+  IconCircleCheckFilled,
+  IconHeart,
+  IconHeartFilled,
+} from "@tabler/icons-react";
 import { Post, useLikePost, useUnlikePost } from "~/endpoints";
 
 export default function LikeButton({
@@ -30,7 +35,7 @@ export default function LikeButton({
   return (
     <Tooltip label={isLiked ? <Trans>Going</Trans> : <Trans>Not going</Trans>}>
       <ActionIcon
-        color={isLiked ? "var(--mantine-color-red-filled)" : "dimmed"}
+        color={isLiked ? "var(--mantine-color-green-filled)" : "dimmed"}
         aria-pressed={isLiked}
         disabled={loading}
         aria-label={t`Toggle going`}
@@ -42,9 +47,9 @@ export default function LikeButton({
         }}
       >
         {isLiked ? (
-          <IconHeartFilled size={iconSize} />
+          <IconCircleCheckFilled size={iconSize} />
         ) : (
-          <IconHeart size={iconSize} />
+          <IconCircle size={iconSize} />
         )}
       </ActionIcon>
     </Tooltip>
