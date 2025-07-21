@@ -37,7 +37,6 @@ struct EventsState {
 struct LabelerEventInfo {
     slug: String,
     name: String,
-    year: u32,
     date: String,
     address: String,
     country: String,
@@ -96,7 +95,7 @@ struct Event {
     slug: String,
     url: String,
     name: String,
-    year: u32,
+    full_name: String,
     address: String,
     country: String,
     start_date: chrono::NaiveDate,
@@ -230,7 +229,7 @@ async fn fetch_events(
                 .name
                 .rsplit_once(" ")
                 .ok_or(anyhow::anyhow!("could not split year"))?;
-            let year = year.parse()?;
+            let year: u32 = year.parse()?;
 
             let start_date = chrono::NaiveDate::parse_from_str(&event.start_date, "%Y-%m-%d")?;
             let end_date = chrono::NaiveDate::parse_from_str(&event.end_date, "%Y-%m-%d")?;
@@ -282,7 +281,7 @@ async fn fetch_events(
                 Event {
                     url: event.url.to_string(),
                     name: name.to_string(),
-                    year,
+                    full_name: format!("{} {}", name, year),
                     address,
                     country: country.to_string(),
                     start_date,
@@ -588,8 +587,6 @@ async fn sync_labels(
             event.rkey = Some(Some(rkey.clone()));
 
             {
-                let text = format!("{} {}", event.name, event.year);
-
                 let record: atrium_api::app::bsky::feed::post::Record =
                     atrium_api::app::bsky::feed::post::RecordData {
                         created_at: atrium_api::types::string::Datetime::new(
@@ -617,12 +614,12 @@ async fn sync_labels(
                             )],
                             index: atrium_api::app::bsky::richtext::facet::ByteSliceData {
                                 byte_start: 0,
-                                byte_end: text.bytes().len(),
+                                byte_end: event.full_name.bytes().len(),
                             }
                             .into(),
                         }
                         .into()]),
-                        text,
+                        text: event.full_name.clone(),
                     }
                     .into();
 
@@ -696,7 +693,7 @@ async fn sync_labels(
                                             "en".to_string(),
                                         )
                                         .unwrap(),
-                                        name: format!("{} {}", event.name, event.year),
+                                        name: event.full_name.clone(),
                                         description: format!(
                                             "📅 {start_date} – {end_date}\n📍 {location}",
                                             location = event.address,
@@ -728,7 +725,6 @@ async fn sync_labels(
                                     ipld_core::serde::to_ipld(LabelerEventInfo {
                                         slug: event.slug.clone(),
                                         name: event.name.clone(),
-                                        year: event.year,
                                         date: format!(
                                             "{}/{}",
                                             event.start_date.format("%Y-%m-%d"),
