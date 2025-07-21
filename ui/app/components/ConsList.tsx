@@ -88,7 +88,6 @@ import {
 import * as qp from "~/qp";
 import removeDiacritics from "~/removeDiacritics";
 import classes from "./ConsList.module.css";
-import { View } from "@atcute/bluesky/types/app/embed/record";
 
 const MAX_AVATARS_IN_STACK = 3;
 
@@ -1649,7 +1648,7 @@ export default function ConsList({
                     },
                   },
                   {
-                    Icon: IconCalendar,
+                    Icon: IconCalendarWeek,
                     label: <Trans>Calendar</Trans>,
                     options: {
                       type: "calendar",
