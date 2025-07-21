@@ -69,7 +69,15 @@ import {
   sorted,
   toArray,
 } from "iter-fns";
-import { Fragment, lazy, ReactNode, Suspense, useMemo, useState } from "react";
+import {
+  Fragment,
+  lazy,
+  ReactNode,
+  Suspense,
+  useCallback,
+  useMemo,
+  useState,
+} from "react";
 import { Link } from "react-router";
 import regexpEscape from "regexp.escape";
 import { z } from "zod/v4-mini";
@@ -1283,19 +1291,50 @@ function ListSettingsMenu({
     </Menu>
   );
 }
+
+const DEFAULT_FIRST_DAY_OF_WEEK = (() => {
+  // Use the locale of the browser rather than the set locale.
+  const locale = new Intl.Locale(navigator.language);
+  const weekInfo = (
+    locale as {
+      getWeekInfo?(): { firstDay: number };
+    }
+  ).getWeekInfo?.() ?? { firstDay: 7 };
+
+  return (weekInfo.firstDay % 7) as Day;
+})();
+
+function useFirstDayOfWeek() {
+  return useLocalStorage({
+    key: "fbl:firstDayOfWeek",
+    defaultValue: DEFAULT_FIRST_DAY_OF_WEEK,
+    getInitialValueInEffect: false,
+    deserialize(value) {
+      if (value == undefined) {
+        return DEFAULT_FIRST_DAY_OF_WEEK;
+      }
+
+      try {
+        return FirstDayOfWeek.parse(JSON.parse(value));
+      } catch (e) {
+        return DEFAULT_FIRST_DAY_OF_WEEK;
+      }
+    },
+  });
+}
+
 const Calendar = lazy(() => import("./Calendar"));
 
 function CalendarLayout({
   cons,
   options,
-  firstDayOfWeek,
   includeToday,
 }: {
   cons: ConWithPost[];
   options: CalendarLayoutOptions;
-  firstDayOfWeek: Day;
   includeToday: boolean;
 }) {
+  const [firstDayOfWeek] = useFirstDayOfWeek();
   return (
     <Container size="lg" px={0}>
       <Calendar
@@ -1331,37 +1370,6 @@ function CalendarLayout({
       />
     </Container>
   );
-}
-
-const DEFAULT_FIRST_DAY_OF_WEEK = (() => {
-  // Use the locale of the browser rather than the set locale.
-  const locale = new Intl.Locale(navigator.language);
-  const weekInfo = (
-    locale as {
-      getWeekInfo?(): { firstDay: number };
-    }
-  ).getWeekInfo?.() ?? { firstDay: 7 };
-
-  return (weekInfo.firstDay % 7) as Day;
-})();
-
-function useFirstDayOfWeek() {
-  return useLocalStorage({
-    key: "fbl:firstDayOfWeek",
-    defaultValue: DEFAULT_FIRST_DAY_OF_WEEK,
-    getInitialValueInEffect: false,
-    deserialize(value) {
-      if (value == undefined) {
-        return DEFAULT_FIRST_DAY_OF_WEEK;
-      }
-
-      try {
-        return FirstDayOfWeek.parse(JSON.parse(value));
-      } catch (e) {
-        return DEFAULT_FIRST_DAY_OF_WEEK;
-      }
-    },
-  });
 }
 
 function CalendarSettingsMenu({
@@ -1491,23 +1499,44 @@ type FirstDayOfWeek = z.infer<typeof FirstDayOfWeek>;
 function LayoutSwitcher({
   layout,
   setLayout,
-  layouts,
 }: {
   layout: LayoutOptions;
   setLayout(options: LayoutOptions): void;
-  layouts: {
-    options: LayoutOptions;
-    label: ReactNode;
-    Icon: Icon;
-  }[];
 }) {
+  const LAYOUTS = [
+    {
+      Icon: IconList,
+      label: <Trans>List</Trans>,
+      options: {
+        type: "list",
+        options: qp.defaults(ListLayoutOptions),
+      },
+    },
+    {
+      Icon: IconCalendarWeek,
+      label: <Trans>Calendar</Trans>,
+      options: {
+        type: "calendar",
+        options: qp.defaults(CalendarLayoutOptions),
+      },
+    },
+    {
+      Icon: IconMap,
+      label: <Trans>Map</Trans>,
+      options: {
+        type: "map",
+        options: qp.defaults(MapLayoutOptions),
+      },
+    },
+  ];
+
   const layoutsByName = useMemo(() => {
     const layoutsByName = {} as any;
-    for (const layout of layouts) {
+    for (const layout of LAYOUTS) {
       layoutsByName[layout.options.type] = layout.options;
     }
     return layoutsByName as Record<LayoutOptions["type"], LayoutOptions>;
-  }, [layouts]);
+  }, []);
   return (
     <SegmentedControl
       size="xs"
@@ -1515,7 +1544,7 @@ function LayoutSwitcher({
       onChange={(value) => {
         setLayout(layoutsByName[value as LayoutOptions["type"]]);
       }}
-      data={layouts.map(({ options, label, Icon }) => ({
+      data={LAYOUTS.map(({ options, label, Icon }) => ({
         value: options.type,
         label: (
           <Center style={{ gap: 6 }}>
@@ -1530,6 +1559,84 @@ function LayoutSwitcher({
   );
 }
 
+function useFilterPredicate(filter: FilterOptions) {
+  const { i18n, t } = useLingui();
+  const { data: followedConAttendees } = useFollowedConAttendeesDLE();
+
+  const queryRe = useMemo(
+    () =>
+      new RegExp(
+        `^${Array.prototype.map
+          .call(
+            removeDiacritics(filter.q.toLocaleLowerCase(i18n.locale)),
+            (c) => `${regexpEscape(c)}.*`
+          )
+          .join("")}`
+      ),
+    [t, filter]
+  );
+
+  const maxDays =
+    filter.maxDays >= DEFAULT_FILTER_OPTIONS.maxDays
+      ? Infinity
+      : filter.maxDays;
+
+  return useCallback(
+    (con: ConWithPost) => {
+      const days = differenceInDays(con.end, con.start);
+
+      return (
+        // Query
+        removeDiacritics(con.name.toLocaleLowerCase(i18n.locale)).match(
+          queryRe
+        ) != null &&
+        // Attending filter
+        (!filter.attending || con.post.viewer?.like != null) &&
+        // Continents filter
+        filter.continents.includes(getContinentForCountry(con.country)) &&
+        // Duration filter
+        days >= filter.minDays &&
+        days <= maxDays &&
+        // Followed filter
+        (!filter.followed ||
+          followedConAttendees == null ||
+          (followedConAttendees[con.identifier] ?? []).length > 0)
+      );
+    },
+    [t, filter, followedConAttendees]
+  );
+}
+
+function EmptyState({
+  filter,
+  setFilter,
+}: {
+  filter: FilterOptions;
+  setFilter(filter: FilterOptions): void;
+}) {
+  return (
+    <Box px="sm">
+      <Stack ta="center" gap="xs" py="xl">
+        <Text h={38} fw={500}>
+          <Trans>No cons to display.</Trans>
+        </Text>
+
+        {!deepEqual(filter, DEFAULT_FILTER_OPTIONS) ? (
+          <Box>
+            <Button
+              onClick={() => {
+                setFilter(DEFAULT_FILTER_OPTIONS);
+              }}
+            >
+              <Trans>Clear all filters</Trans>
+            </Button>
+          </Box>
+        ) : null}
+      </Stack>
+    </Box>
+  );
+}
+
 export default function ConsList({
   cons,
   view,
@@ -1539,46 +1646,8 @@ export default function ConsList({
   view: ViewOptions;
   setView(view: ViewOptions): void;
 }) {
-  const { i18n } = useLingui();
-  const { data: followedConAttendees } = useFollowedConAttendeesDLE();
-
-  const queryRe = new RegExp(
-    `^${Array.prototype.map
-      .call(
-        removeDiacritics(view.filter.q.toLocaleLowerCase(i18n.locale)),
-        (c) => `${regexpEscape(c)}.*`
-      )
-      .join("")}`
-  );
-
-  const maxDays =
-    view.filter.maxDays >= DEFAULT_FILTER_OPTIONS.maxDays
-      ? Infinity
-      : view.filter.maxDays;
-
-  const [firstDayOfWeek] = useFirstDayOfWeek();
-
-  const filteredCons = cons.filter((con) => {
-    const days = differenceInDays(con.end, con.start);
-
-    return (
-      // Query
-      removeDiacritics(con.name.toLocaleLowerCase(i18n.locale)).match(
-        queryRe
-      ) != null &&
-      // Attending filter
-      (!view.filter.attending || con.post.viewer?.like != null) &&
-      // Continents filter
-      view.filter.continents.includes(getContinentForCountry(con.country)) &&
-      // Duration filter
-      days >= view.filter.minDays &&
-      days <= maxDays &&
-      // Followed filter
-      (!view.filter.followed ||
-        followedConAttendees == null ||
-        (followedConAttendees[con.identifier] ?? []).length > 0)
-    );
-  });
+  const pred = useFilterPredicate(view.filter);
+  const filteredCons = cons.filter(pred);
 
   const compact = view.filter.attending || view.filter.q != "";
 
@@ -1603,7 +1672,9 @@ export default function ConsList({
           cons={cons}
           filledButton={view.layout.type == "map"}
           filter={view.filter}
-          setFilter={(filter) => ({ ...view, filter })}
+          setFilter={(filter) => {
+            setView({ ...view, filter });
+          }}
           rightSection={
             <>
               {view.layout.type == "list" ? (
@@ -1638,32 +1709,6 @@ export default function ConsList({
                 setLayout={(layout) => {
                   setView({ ...view, layout });
                 }}
-                layouts={[
-                  {
-                    Icon: IconList,
-                    label: <Trans>List</Trans>,
-                    options: {
-                      type: "list",
-                      options: qp.defaults(ListLayoutOptions),
-                    },
-                  },
-                  {
-                    Icon: IconCalendarWeek,
-                    label: <Trans>Calendar</Trans>,
-                    options: {
-                      type: "calendar",
-                      options: qp.defaults(CalendarLayoutOptions),
-                    },
-                  },
-                  {
-                    Icon: IconMap,
-                    label: <Trans>Map</Trans>,
-                    options: {
-                      type: "map",
-                      options: qp.defaults(MapLayoutOptions),
-                    },
-                  },
-                ]}
               />
             </>
           }
@@ -1682,7 +1727,6 @@ export default function ConsList({
             <CalendarLayout
               cons={filteredCons}
               options={view.layout.options}
-              firstDayOfWeek={firstDayOfWeek}
               includeToday={!compact}
             />
           ) : view.layout.type == "map" ? (
@@ -1710,28 +1754,12 @@ export default function ConsList({
             />
           )
         ) : (
-          <Box px="sm">
-            <Stack ta="center" gap="xs" py="xl">
-              <Text h={38} fw={500}>
-                <Trans>No cons to display.</Trans>
-              </Text>
-
-              {!deepEqual(view.filter, DEFAULT_FILTER_OPTIONS) ? (
-                <Box>
-                  <Button
-                    onClick={() => {
-                      setView({
-                        ...view,
-                        filter: DEFAULT_FILTER_OPTIONS,
-                      });
-                    }}
-                  >
-                    <Trans>Clear all filters</Trans>
-                  </Button>
-                </Box>
-              ) : null}
-            </Stack>
-          </Box>
+          <EmptyState
+            filter={view.filter}
+            setFilter={(filter) => {
+              setView({ ...view, filter });
+            }}
+          />
         )}
       </Suspense>
     </Box>
