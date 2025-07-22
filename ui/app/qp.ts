@@ -164,13 +164,14 @@ function literalImpl<T, U extends T>(type: Type<T>, lit: U): Type<U> {
 }
 
 export function literal<T extends string | number>(lit: T): Type<T> {
-  if (typeof lit === "string") {
-    return literalImpl(string, lit);
+  switch (typeof lit) {
+    case "string":
+      return literalImpl(string, lit);
+    case "number":
+      return literalImpl(float, lit);
+    default:
+      return absurd(lit);
   }
-  if (typeof lit === "number") {
-    return literalImpl(float, lit);
-  }
-  absurd(lit);
 }
 
 export function enumImpl<T, U extends T>(
