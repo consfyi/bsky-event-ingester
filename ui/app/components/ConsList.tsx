@@ -518,8 +518,12 @@ function ConsByName({
   cons: ConWithPost[];
   sortDesc: boolean;
 }) {
-  const { i18n } = useLingui();
-  const collator = useMemo(() => new Intl.Collator(i18n.locale), [i18n.locale]);
+  const { i18n, t } = useLingui();
+  const collator = useMemo(
+    () => new Intl.Collator(i18n.locale),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [t]
+  );
 
   const sortedCons = useMemo(() => {
     const sorted = cons.slice();
