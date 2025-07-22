@@ -93,7 +93,7 @@ export function tuple<T>(
   };
 }
 
-export function sepBy<T>(type: Type<T>, sep: string): Type<T[]> {
+export function array<T>(type: Type<T>, sep: string): Type<T[]> {
   return {
     parse(v) {
       if (v === "") {
