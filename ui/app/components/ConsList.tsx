@@ -78,9 +78,10 @@ import {
   useMemo,
   useState,
 } from "react";
-import { Link } from "react-router";
+import { Link, useNavigate } from "react-router";
 import regexpEscape from "regexp.escape";
 import { z } from "zod/v4-mini";
+import absurd from "~/absurd";
 import Avatar from "~/components/Avatar";
 import Flag from "~/components/Flag";
 import LikeButton from "~/components/LikeButton";
@@ -96,7 +97,6 @@ import {
 import * as qp from "~/qp";
 import removeDiacritics from "~/removeDiacritics";
 import classes from "./ConsList.module.css";
-import { useNavigate } from "react-router";
 
 const MAX_AVATARS_IN_STACK = 3;
 
@@ -1754,7 +1754,9 @@ export default function ConsList({
                       ? "/calendar"
                       : layout.type == "map"
                       ? "/map"
-                      : "/";
+                      : layout.type == "list"
+                      ? "/"
+                      : absurd(layout);
 
                   navigate({ pathname, search: searchParams.toString() });
                 }}
@@ -1795,12 +1797,14 @@ export default function ConsList({
                 });
               }}
             />
-          ) : (
+          ) : view.layout.type == "list" ? (
             <ListLayout
               cons={filteredCons}
               options={view.layout.options}
               hideEmptyGroups={compact}
             />
+          ) : (
+            absurd(view.layout)
           )
         ) : (
           <EmptyState

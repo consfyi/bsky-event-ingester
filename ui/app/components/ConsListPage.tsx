@@ -1,6 +1,7 @@
 import { Center, Loader } from "@mantine/core";
 import { Fragment, Suspense, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router";
+import absurd from "~/absurd";
 import ConsList, {
   CalendarLayoutOptions,
   FilterOptions,
@@ -34,7 +35,7 @@ function parseSearchParams(
             type: "list",
             options: qp.parse(ListLayoutOptions, searchParams),
           }
-        : (null as never),
+        : absurd(layoutType),
   };
 }
 
@@ -78,6 +79,8 @@ export default function ConsListPage({
       case "map":
         qp.serialize(MapLayoutOptions, view.layout.options, searchParams);
         break;
+      default:
+        absurd(view.layout);
     }
 
     setSearchParams(searchParams, { replace: true });

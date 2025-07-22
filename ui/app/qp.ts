@@ -1,3 +1,5 @@
+import absurd from "./absurd";
+
 export interface Type<T> {
   parse(v: string): T | undefined;
   serialize(v: T): string;
@@ -168,7 +170,7 @@ export function literal<T extends string | number>(lit: T): Type<T> {
   if (typeof lit === "number") {
     return literalImpl(float, lit);
   }
-  throw "unreachable";
+  absurd(lit);
 }
 
 export function enumImpl<T, U extends T>(
