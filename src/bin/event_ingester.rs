@@ -606,7 +606,7 @@ async fn sync_labels(
                                 atrium_api::app::bsky::richtext::facet::MainFeaturesItem::Link(
                                     Box::new(
                                         atrium_api::app::bsky::richtext::facet::LinkData {
-                                            uri: format!("{}/cons/{}", ui_endpoint, event.slug),
+                                            uri: format!("{}/{}", ui_endpoint, event.slug),
                                         }
                                         .into(),
                                     ),

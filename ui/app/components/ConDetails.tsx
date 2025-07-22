@@ -57,7 +57,7 @@ function Actor({ actor }: { actor: Profile }) {
   return (
     <Anchor
       component={Link}
-      to={`/users/${actor.handle}`}
+      to={`/@${actor.handle}`}
       c="var(--mantine-color-text)"
       style={{
         textDecoration: "unset",

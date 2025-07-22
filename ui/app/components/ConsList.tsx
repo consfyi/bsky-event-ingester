@@ -165,7 +165,7 @@ export function ConRow({
   return (
     <Group gap="xs" wrap="nowrap">
       {showBigIcon ? (
-        <Anchor component={Link} to={`/cons/${con.slug}`}>
+        <Anchor component={Link} to={`/${con.slug}`}>
           <Indicator
             position="top-start"
             color="green"
@@ -218,7 +218,7 @@ export function ConRow({
 
           <Text size="sm" truncate>
             <Flag country={con.country} size={10} me={6} />
-            <Anchor fw={500} component={Link} to={`/cons/${con.slug}`}>
+            <Anchor fw={500} component={Link} to={`/${con.slug}`}>
               {con.name}
             </Anchor>
           </Text>
@@ -1365,7 +1365,7 @@ function CalendarLayout({
               ? "filled"
               : "light",
           title: con.name,
-          link: `/cons/${con.slug}`,
+          link: `/${con.slug}`,
           start: con.start,
           end: con.end,
         }))}
