@@ -338,11 +338,10 @@ export async function createClient() {
       // Do nothing.
     }
   } else {
-    const sessions = listStoredSessions();
-    if (sessions.length > 0) {
-      const did = sessions[0];
+    for (const did of listStoredSessions()) {
       try {
         session = await getSession(did, { allowStale: false });
+        break;
       } catch (e) {
         deleteStoredSession(did);
       }
