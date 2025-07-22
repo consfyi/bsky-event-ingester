@@ -58,7 +58,6 @@ import {
   setDate,
   subDays,
 } from "date-fns";
-import deepEqual from "deep-equal";
 import {
   compareDesc,
   compareMany,
@@ -730,7 +729,7 @@ function Filters({
     [continentCount]
   );
 
-  const continentsFiltered = !deepEqual(
+  const continentsFiltered = !qp.equals(
     filter.continents,
     DEFAULT_FILTER_OPTIONS.continents
   );
@@ -1631,7 +1630,7 @@ function EmptyState({
           <Trans>No cons to display.</Trans>
         </Text>
 
-        {!deepEqual(filter, DEFAULT_FILTER_OPTIONS) ? (
+        {!qp.equals(filter, DEFAULT_FILTER_OPTIONS) ? (
           <Box>
             <Button
               onClick={() => {

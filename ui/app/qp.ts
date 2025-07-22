@@ -331,3 +331,17 @@ export function serialize<T extends Schema>(
     }
   }
 }
+
+export function equals<T extends Schema>(
+  schema: T,
+  x: InferSchema<T>,
+  y: InferSchema<T>
+): boolean {
+  for (const key in schema) {
+    const field = schema[key];
+    if (field.type.equals(x[key], y[key])) {
+      return false;
+    }
+  }
+  return true;
+}
