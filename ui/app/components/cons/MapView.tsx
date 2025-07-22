@@ -10,6 +10,7 @@ import FilterBar, {
   useFilterPredicate,
 } from "../FilterBar";
 import Map from "../Map";
+import EmptyState from "../EmptyState";
 
 export const LayoutOptions = qp.schema({
   center: qp.scalar(
@@ -79,6 +80,12 @@ export default function MapView({
             }
           >
             <Map
+              style={{
+                position: "absolute",
+                height: "100%",
+                top: 0,
+                left: 0,
+              }}
               pins={filteredCons.flatMap((con) => {
                 if (con.geocoded == null || con.geocoded.latLng == null) {
                   return [];
@@ -135,6 +142,21 @@ export default function MapView({
               initialCenter={center}
               setCenter={(center) => setLayout({ ...layout, center })}
             />
+            {filteredCons.length == 0 ? (
+              <Center
+                style={{
+                  position: "absolute",
+                  height: "100%",
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  background:
+                    "color-mix(in srgb, var(--mantine-color-body), transparent 50%)",
+                }}
+              >
+                <EmptyState filter={filter} setFilter={setFilter} />
+              </Center>
+            ) : null}
           </Suspense>
         </Box>
       </Suspense>

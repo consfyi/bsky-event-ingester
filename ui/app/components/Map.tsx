@@ -25,7 +25,7 @@ import {
 } from "@vis.gl/react-maplibre";
 import "maplibre-theme/icons.default.css";
 import "maplibre-theme/modern.css";
-import { ReactNode, useMemo, useState } from "react";
+import { CSSProperties, ReactNode, useMemo, useState } from "react";
 import { hookifyPromise } from "~/hooks";
 import classes from "./Map.module.css";
 
@@ -185,10 +185,12 @@ const useMyLocation = hookifyPromise(
 
 export default function Map({
   pins,
+  style,
   initialCenter,
   setCenter,
 }: {
   pins: Pin[];
+  style: CSSProperties;
   initialCenter: { lat: number; lng: number; zoom: number } | null;
   setCenter(center: { lat: number; lng: number; zoom: number }): void;
 }) {
@@ -205,7 +207,7 @@ export default function Map({
       ? { ...myLatLng, zoom: 3 }
       : { lat: 0, lng: 0, zoom: 0 };
 
-  const style = useMemo(
+  const mapStyle = useMemo(
     () => makeStyle({ colorScheme, locale: i18n.locale }),
     [colorScheme, t]
   );
@@ -242,13 +244,8 @@ export default function Map({
           zoom: center.zoom,
         }}
         attributionControl={false}
-        mapStyle={style}
-        style={{
-          position: "absolute",
-          height: "100%",
-          top: 0,
-          left: 0,
-        }}
+        mapStyle={mapStyle}
+        style={style}
       >
         <AttributionControl compact={false} />
         {pins.map((pin, i) => (
