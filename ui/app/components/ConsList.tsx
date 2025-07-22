@@ -730,8 +730,8 @@ function Filters({
   );
 
   const continentsFiltered =
-    filter.continents.length == DEFAULT_FILTER_OPTIONS.continents.length &&
-    filter.continents.every(
+    filter.continents.length != DEFAULT_FILTER_OPTIONS.continents.length ||
+    !filter.continents.every(
       (c, i) => DEFAULT_FILTER_OPTIONS.continents[i] == c
     );
   const durationFiltered =
