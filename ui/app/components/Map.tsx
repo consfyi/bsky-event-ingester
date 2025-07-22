@@ -46,7 +46,7 @@ function makeStyle({
       ? "white"
       : colorScheme == "dark"
       ? "black"
-      : absurd(colorScheme);
+      : absurd<string>(colorScheme);
   return {
     version: 8,
     sources: {
