@@ -96,6 +96,7 @@ import {
 import * as qp from "~/qp";
 import removeDiacritics from "~/removeDiacritics";
 import classes from "./ConsList.module.css";
+import { useNavigate } from "react-router";
 
 const MAX_AVATARS_IN_STACK = 3;
 
@@ -146,7 +147,6 @@ export function ConRow({
         type: "conjunction",
         style: "long",
       }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [t]
   );
 
@@ -1653,6 +1653,7 @@ export default function ConsList({
   const filteredCons = cons.filter(pred);
 
   const compact = view.filter.attending || view.filter.q != "";
+  const navigate = useNavigate();
 
   return (
     <Box style={{ position: "relative" }}>
@@ -1710,7 +1711,41 @@ export default function ConsList({
               <LayoutSwitcher
                 layout={view.layout}
                 setLayout={(layout) => {
-                  setView({ ...view, layout });
+                  const searchParams = new URLSearchParams();
+
+                  qp.serialize(FilterOptions, view.filter, searchParams);
+                  switch (layout.type) {
+                    case "calendar":
+                      qp.serialize(
+                        CalendarLayoutOptions,
+                        layout.options,
+                        searchParams
+                      );
+                      break;
+                    case "list":
+                      qp.serialize(
+                        ListLayoutOptions,
+                        layout.options,
+                        searchParams
+                      );
+                      break;
+                    case "map":
+                      qp.serialize(
+                        MapLayoutOptions,
+                        layout.options,
+                        searchParams
+                      );
+                      break;
+                  }
+
+                  const pathname =
+                    layout.type == "calendar"
+                      ? "/calendar"
+                      : layout.type == "map"
+                      ? "/map"
+                      : "/";
+
+                  navigate({ pathname, search: searchParams.toString() });
                 }}
               />
             </>

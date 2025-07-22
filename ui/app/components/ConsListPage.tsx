@@ -1,6 +1,6 @@
 import { Center, Loader } from "@mantine/core";
 import { Fragment, Suspense, useEffect, useRef, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router";
+import { useSearchParams } from "react-router";
 import ConsList, {
   CalendarLayoutOptions,
   FilterOptions,
@@ -52,8 +52,6 @@ export default function ConsListPage({
     parseSearchParams(layoutType, searchParams)
   );
 
-  const navigate = useNavigate();
-
   const updatingFromSearchParams = useRef(false);
 
   useEffect(() => {
@@ -82,19 +80,8 @@ export default function ConsListPage({
         break;
     }
 
-    const pathname =
-      view.layout.type == "calendar"
-        ? "/calendar"
-        : view.layout.type == "map"
-        ? "/map"
-        : "/";
-
-    if (window.location.pathname == pathname) {
-      setSearchParams(searchParams, { replace: true });
-    } else {
-      navigate({ pathname, search: searchParams.toString() });
-    }
-  }, [searchParams, view, navigate, setSearchParams]);
+    setSearchParams(searchParams, { replace: true });
+  }, [searchParams, view, setSearchParams]);
 
   return (
     <Fragment key={view.layout.type}>
