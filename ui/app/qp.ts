@@ -277,7 +277,7 @@ export function equals<T extends Schema>(
 ): boolean {
   for (const key in schema) {
     const field = schema[key];
-    if (field.type.equals(x[key], y[key])) {
+    if (!field.type.equals(x[key], y[key])) {
       return false;
     }
   }
