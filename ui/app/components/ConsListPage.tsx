@@ -81,6 +81,7 @@ export default function ConsListPage({
         break;
       default:
         absurd(view.layout);
+        break;
     }
 
     setSearchParams(searchParams, { replace: true });
