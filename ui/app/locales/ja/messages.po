@@ -166,7 +166,7 @@ msgstr "不明"
 #: app/components/ConsList.tsx:967
 #: app/components/ConsList.tsx:1119
 msgid "{0, plural, one {# day or more} other {# days or more}}"
-msgstr "{0}日以上"
+msgstr "{0}日間以上"
 
 #. placeholder {0}: [minDays][0]
 #. placeholder {0}: [value][0]
@@ -174,13 +174,13 @@ msgstr "{0}日以上"
 #: app/components/ConsList.tsx:965
 #: app/components/ConsList.tsx:1117
 msgid "{0, plural, one {# day} other {# days}}"
-msgstr "{0}日"
+msgstr "{0}日間"
 
 #. placeholder {0}: [minDays][0]
 #. placeholder {1}: [maxDays][0]
 #: app/components/ConsList.tsx:680
 msgid "{0} to {1} days"
-msgstr "{0}〜{1}日"
+msgstr "{0}〜{1}日間"
 
 #: app/components/ConsList.tsx:764
 msgid "Search"
