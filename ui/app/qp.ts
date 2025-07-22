@@ -1,5 +1,3 @@
-import absurd from "./absurd";
-
 export interface Type<T> {
   parse(v: string): T | undefined;
   serialize(v: T): string;
