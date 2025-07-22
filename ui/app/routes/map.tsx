@@ -1,4 +1,5 @@
 import { type MetaFunction } from "react-router";
+import MapView, { LayoutOptions } from "~/components/cons/MapView";
 import ConsListPage from "~/components/ConsListPage";
 import clientMetadata from "../../public/client-metadata.json";
 
@@ -8,5 +9,5 @@ export const meta: MetaFunction = ({ matches }) => [
 ];
 
 export default function Index() {
-  return <ConsListPage layoutType="map" />;
+  return <ConsListPage LayoutOptions={LayoutOptions} Component={MapView} />;
 }

@@ -27,7 +27,7 @@ import "maplibre-theme/icons.default.css";
 import "maplibre-theme/modern.css";
 import { useMemo, useState } from "react";
 import { ConWithPost, hookifyPromise, useNow } from "~/hooks";
-import { ConRow } from "./ConsList";
+import ConRow from "./ConRow";
 import classes from "./Map.module.css";
 
 const API_KEY = "a4d6fb59d9d6e179";

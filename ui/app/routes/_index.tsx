@@ -1,6 +1,7 @@
 import { type MetaFunction } from "react-router";
 import ConsListPage from "~/components/ConsListPage";
 import clientMetadata from "../../public/client-metadata.json";
+import ListView, { LayoutOptions } from "~/components/cons/ListView";
 
 export const meta: MetaFunction = ({ matches }) => [
   ...matches.flatMap((match) => match.meta ?? []),
@@ -8,5 +9,5 @@ export const meta: MetaFunction = ({ matches }) => [
 ];
 
 export default function Index() {
-  return <ConsListPage layoutType="list" />;
+  return <ConsListPage LayoutOptions={LayoutOptions} Component={ListView} />;
 }

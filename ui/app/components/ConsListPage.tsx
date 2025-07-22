@@ -1,65 +1,47 @@
 import { Center, Loader } from "@mantine/core";
-import { Fragment, Suspense, useEffect, useRef, useState } from "react";
+import { ReactNode, Suspense, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router";
-import absurd from "~/absurd";
-import ConsList, {
-  CalendarLayoutOptions,
-  FilterOptions,
-  ListLayoutOptions,
-  MapLayoutOptions,
-  ViewOptions,
-} from "~/components/ConsList";
 import SimpleErrorBoundary from "~/components/SimpleErrorBoundary";
-import { useConsWithPosts, useIsLoggedIn } from "~/hooks";
+import { ConWithPost, useConsWithPosts, useIsLoggedIn } from "~/hooks";
 import * as qp from "~/qp";
+import { FilterOptions } from "./FilterBar";
 
-function parseSearchParams(
-  layoutType: "calendar" | "map" | "list",
-  searchParams: URLSearchParams
-): ViewOptions {
-  return {
-    filter: qp.parse(FilterOptions, searchParams),
-    layout:
-      layoutType == "calendar"
-        ? {
-            type: "calendar",
-            options: qp.parse(CalendarLayoutOptions, searchParams),
-          }
-        : layoutType == "map"
-        ? {
-            type: "map",
-            options: qp.parse(MapLayoutOptions, searchParams),
-          }
-        : layoutType == "list"
-        ? {
-            type: "list",
-            options: qp.parse(ListLayoutOptions, searchParams),
-          }
-        : absurd(layoutType),
-  };
-}
-
-export default function ConsListPage({
-  layoutType,
+export default function ConsListPage<T extends qp.Schema>({
+  LayoutOptions,
+  Component,
 }: {
-  layoutType: "calendar" | "map" | "list";
+  LayoutOptions: T;
+  Component(props: {
+    cons: ConWithPost[];
+    layout: qp.InferSchema<typeof LayoutOptions>;
+    setLayout(layout: qp.InferSchema<typeof LayoutOptions>): void;
+    filter: FilterOptions;
+    setFilter(filter: FilterOptions): void;
+  }): ReactNode;
 }) {
   const cons = useConsWithPosts();
 
   const isLoggedIn = useIsLoggedIn();
 
   const [searchParams, setSearchParams] = useSearchParams();
-  const [view, setView] = useState<ViewOptions>(() =>
-    parseSearchParams(layoutType, searchParams)
-  );
+  const [view, setView] = useState<{
+    filter: FilterOptions;
+    layout: qp.InferSchema<typeof LayoutOptions>;
+  }>(() => ({
+    filter: qp.parse(FilterOptions, searchParams),
+    layout: qp.parse(LayoutOptions, searchParams),
+  }));
 
   const updatingFromSearchParams = useRef(false);
 
   useEffect(() => {
     updatingFromSearchParams.current = true;
-    setView(parseSearchParams(view.layout.type, searchParams));
+    setView({
+      filter: qp.parse(FilterOptions, searchParams),
+      layout: qp.parse(LayoutOptions, searchParams),
+    });
     updatingFromSearchParams.current = false;
-  }, [searchParams, view.layout.type]);
+  }, [searchParams, LayoutOptions]);
 
   useEffect(() => {
     if (updatingFromSearchParams.current) {
@@ -69,26 +51,13 @@ export default function ConsListPage({
     const searchParams = new URLSearchParams();
 
     qp.serialize(FilterOptions, view.filter, searchParams);
-    switch (view.layout.type) {
-      case "calendar":
-        qp.serialize(CalendarLayoutOptions, view.layout.options, searchParams);
-        break;
-      case "list":
-        qp.serialize(ListLayoutOptions, view.layout.options, searchParams);
-        break;
-      case "map":
-        qp.serialize(MapLayoutOptions, view.layout.options, searchParams);
-        break;
-      default:
-        absurd(view.layout);
-        break;
-    }
+    qp.serialize(LayoutOptions, view.layout, searchParams);
 
     setSearchParams(searchParams, { replace: true });
-  }, [searchParams, view, setSearchParams]);
+  }, [searchParams, view, setSearchParams, LayoutOptions]);
 
   return (
-    <Fragment key={view.layout.type}>
+    <>
       <SimpleErrorBoundary>
         <Suspense
           fallback={
@@ -97,20 +66,23 @@ export default function ConsListPage({
             </Center>
           }
         >
-          <ConsList
+          <Component
             cons={cons}
-            view={{
-              ...view,
-              filter: {
-                ...view.filter,
-                attending: isLoggedIn && view.filter.attending,
-                followed: isLoggedIn && view.filter.followed,
-              },
+            filter={{
+              ...view.filter,
+              attending: isLoggedIn && view.filter.attending,
+              followed: isLoggedIn && view.filter.followed,
             }}
-            setView={setView}
+            setFilter={(filter) => {
+              setView({ ...view, filter });
+            }}
+            layout={view.layout}
+            setLayout={(layout) => {
+              setView({ ...view, layout });
+            }}
           />
         </Suspense>
       </SimpleErrorBoundary>
-    </Fragment>
+    </>
   );
 }
