@@ -28,6 +28,7 @@ import "maplibre-theme/modern.css";
 import { CSSProperties, ReactNode, useMemo, useState } from "react";
 import { hookifyPromise } from "~/hooks";
 import classes from "./Map.module.css";
+import absurd from "~/absurd";
 
 const API_KEY = "a4d6fb59d9d6e179";
 
@@ -40,6 +41,12 @@ function makeStyle({
   colorScheme: "light" | "dark";
   locale: string;
 }): StyleSpecification {
+  const flavorName =
+    colorScheme == "light"
+      ? "white"
+      : colorScheme == "dark"
+      ? "black"
+      : absurd(colorScheme);
   return {
     version: 8,
     sources: {
@@ -52,8 +59,8 @@ function makeStyle({
     },
     glyphs:
       "https://protomaps.github.io/basemaps-assets/fonts/{fontstack}/{range}.pbf",
-    sprite: `https://protomaps.github.io/basemaps-assets/sprites/v4/${colorScheme}`,
-    layers: layers("protomaps", namedFlavor(colorScheme), {
+    sprite: `https://protomaps.github.io/basemaps-assets/sprites/v4/${flavorName}`,
+    layers: layers("protomaps", namedFlavor(flavorName), {
       lang: match([locale], SUPPORTED_LANGUAGES, "en"),
     }),
     transition: { duration: 0, delay: 0 },
