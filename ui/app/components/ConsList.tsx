@@ -65,6 +65,7 @@ import {
   groupBy,
   map,
   Range,
+  sample,
   sorted,
   toArray,
 } from "iter-fns";
@@ -149,10 +150,18 @@ export function ConRow({
     [t]
   );
 
-  const follows =
-    followedConAttendees != null
-      ? followedConAttendees[con.identifier] ?? []
-      : null;
+  const follows = useMemo(
+    () =>
+      followedConAttendees != null
+        ? followedConAttendees[con.identifier] ?? []
+        : null,
+    [followedConAttendees, con.identifier]
+  );
+
+  const sampledFollows = useMemo(
+    () => (follows != null ? sample(follows, MAX_AVATARS_IN_STACK) : null),
+    [follows]
+  );
 
   const now = useNow();
   const active = isAfter(now, con.start) && !isAfter(now, con.end);
@@ -237,8 +246,7 @@ export function ConRow({
                 {" "}
                 <Tooltip
                   label={listFormat.format(
-                    follows
-                      .slice(0, MAX_AVATARS_IN_STACK)
+                    sampledFollows!
                       .map(
                         (follow) => follow.displayName ?? follow.handle ?? ""
                       )
@@ -259,7 +267,7 @@ export function ConRow({
                     spacing="xs"
                     style={{ verticalAlign: "bottom" }}
                   >
-                    {follows.slice(0, MAX_AVATARS_IN_STACK).map((follow) => (
+                    {sampledFollows!.map((follow) => (
                       <Avatar
                         key={follow.did}
                         src={follow.avatar}
@@ -595,7 +603,7 @@ export type CalendarLayoutOptions = qp.InferSchema<
 
 export const MapLayoutOptions = qp.schema({
   center: qp.scalar(
-    qp.object({ lat: qp.float, lng: qp.float, zoom: qp.float }, " ")
+    qp.tuple({ lat: qp.float, lng: qp.float, zoom: qp.float }, " ")
   ),
 });
 export type MapLayoutOptions = qp.InferSchema<typeof MapLayoutOptions>;
