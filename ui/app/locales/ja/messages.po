@@ -166,7 +166,7 @@ msgstr "不明"
 #: app/components/ConsList.tsx:967
 #: app/components/ConsList.tsx:1119
 msgid "{0, plural, one {# day or more} other {# days or more}}"
-msgstr "{0}日間以上"
+msgstr "{0}日以上"
 
 #. placeholder {0}: [minDays][0]
 #. placeholder {0}: [value][0]
