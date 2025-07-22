@@ -1756,7 +1756,7 @@ export default function ConsList({
                       ? "/map"
                       : layout.type == "list"
                       ? "/"
-                      : absurd(layout);
+                      : absurd<string>(layout);
 
                   navigate({ pathname, search: searchParams.toString() });
                 }}
