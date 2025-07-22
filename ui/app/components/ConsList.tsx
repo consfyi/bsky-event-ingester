@@ -1590,11 +1590,6 @@ function useFilterPredicate(filter: FilterOptions) {
     [t, filter]
   );
 
-  const maxDays =
-    filter.maxDays >= DEFAULT_FILTER_OPTIONS.maxDays
-      ? Infinity
-      : filter.maxDays;
-
   return useCallback(
     (con: ConWithPost) => {
       const days = differenceInDays(con.end, con.start);
@@ -1610,14 +1605,15 @@ function useFilterPredicate(filter: FilterOptions) {
         filter.continents.includes(getContinentForCountry(con.country)) &&
         // Duration filter
         days >= filter.minDays &&
-        days <= maxDays &&
+        (filter.maxDays >= DEFAULT_FILTER_OPTIONS.maxDays ||
+          days <= DEFAULT_FILTER_OPTIONS.maxDays) &&
         // Followed filter
         (!filter.followed ||
           followedConAttendees == null ||
           (followedConAttendees[con.identifier] ?? []).length > 0)
       );
     },
-    [t, filter, followedConAttendees, maxDays, queryRe]
+    [t, filter, followedConAttendees, queryRe]
   );
 }
 
