@@ -1,5 +1,5 @@
 use atrium_api::types::{Collection as _, TryFromUnknown as _, TryIntoUnknown as _};
-use furcons_bsky_labeler::*;
+use consfyi::*;
 use futures::StreamExt as _;
 use num_traits::ToPrimitive as _;
 use sqlx::Acquire as _;

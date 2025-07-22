@@ -1,4 +1,4 @@
-use furcons_bsky_labeler::*;
+use consfyi::*;
 use sqlx::Connection as _;
 
 #[derive(serde::Deserialize)]

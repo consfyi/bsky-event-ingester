@@ -1,4 +1,4 @@
-# furcons-bsky-labeler
+# cons.fyi
 
 This is the code behind [@cons.fyi](https://bsky.app/profile/cons.fyi).
 
@@ -59,7 +59,7 @@ Make sure you run both of them!
 
 ## Design
 
-furcons-bsky-labeler consists of two parts: the labeler itself and the UI.
+cons.fyi consists of two parts: the labeler itself and the UI.
 
 ### Labeler
 
