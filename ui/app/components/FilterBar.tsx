@@ -2,6 +2,7 @@ import { MessageDescriptor } from "@lingui/core";
 import { msg } from "@lingui/core/macro";
 import { Plural, Trans, useLingui } from "@lingui/react/macro";
 import {
+  Anchor,
   Badge,
   Box,
   Button,
@@ -34,7 +35,7 @@ import {
 import { differenceInDays } from "date-fns";
 import { compareDesc, comparing, map, Range, sorted, toArray } from "iter-fns";
 import { ReactNode, useCallback, useMemo, useState } from "react";
-import { useNavigate } from "react-router";
+import { Link } from "react-router";
 import regexpEscape from "regexp.escape";
 import { Continent, CONTINENTS, getContinentForCountry } from "~/continents";
 import {
@@ -78,29 +79,32 @@ export function LayoutSwitcher({
   layoutType: keyof typeof LAYOUTS;
   filter: FilterOptions;
 }) {
-  const navigate = useNavigate();
-
   return (
     <SegmentedControl
       size="xs"
       value={layoutType}
-      onChange={(value) => {
-        const pathname = LAYOUTS[value].pathname;
-        const searchParams = new URLSearchParams();
-        qp.serialize(FilterOptions, filter, searchParams);
-        navigate({ pathname, search: searchParams.toString() });
-      }}
-      data={Object.entries(LAYOUTS).map(([value, { label, Icon }]) => ({
-        value,
-        label: (
-          <Center style={{ gap: 6 }}>
-            <Icon size={14} />
-            <Text span size="xs" visibleFrom="sm">
-              {label}
-            </Text>
-          </Center>
-        ),
-      }))}
+      data={Object.entries(LAYOUTS).map(([value, { label, Icon }]) => {
+        const to = new URL(LAYOUTS[value].pathname, window.location.toString());
+        qp.serialize(FilterOptions, filter, to.searchParams);
+
+        return {
+          value,
+          label: (
+            <Anchor
+              style={{ color: "var(--mantine-color-text)" }}
+              component={Link}
+              to={to.toString()}
+            >
+              <Center style={{ gap: 6 }}>
+                <Icon size={14} />
+                <Text span size="xs" visibleFrom="sm">
+                  {label}
+                </Text>
+              </Center>
+            </Anchor>
+          ),
+        };
+      })}
     />
   );
 }
