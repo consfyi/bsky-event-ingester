@@ -952,7 +952,6 @@ function Filters({
               <Box p="calc(var(--mantine-spacing-xs) / 1.5) var(--mantine-spacing-sm)">
                 <RangeSlider
                   w={200}
-                  mb="xs"
                   min={1}
                   max={DEFAULT_FILTER_OPTIONS.maxDays}
                   minRange={0}
