@@ -1,7 +1,9 @@
 import { Box, Center, Container, Loader } from "@mantine/core";
+import { getDay, isAfter } from "date-fns";
 import { Suspense, useState } from "react";
-import { ConWithPost } from "~/hooks";
+import { ConWithPost, useNow } from "~/hooks";
 import * as qp from "~/qp";
+import ConRow from "../ConRow";
 import FilterBar, {
   FilterOptions,
   LayoutSwitcher,
@@ -30,6 +32,8 @@ export default function MapView({
   setFilter(filter: FilterOptions): void;
 }) {
   const [center] = useState(layout.center ?? null);
+  const now = useNow();
+
   const pred = useFilterPredicate(filter);
   const filteredCons = cons.filter(pred);
 
@@ -75,7 +79,59 @@ export default function MapView({
             }
           >
             <Map
-              cons={filteredCons}
+              pins={filteredCons.flatMap((con) => {
+                if (con.geocoded == null || con.geocoded.latLng == null) {
+                  return [];
+                }
+
+                const [lat, lng] = con.geocoded.latLng;
+                const active =
+                  isAfter(now, con.start) && !isAfter(now, con.end);
+
+                const color = [
+                  "red",
+                  "orange",
+                  "yellow",
+                  "green",
+                  "blue",
+                  "indigo",
+                  "violet",
+                ][getDay(con.start)];
+
+                const variant =
+                  con.post.viewer != null && con.post.viewer.like != null
+                    ? "filled"
+                    : "light";
+
+                return [
+                  {
+                    id: con.identifier,
+                    lat,
+                    lng,
+                    active,
+                    color,
+                    variant,
+                    zIndex:
+                      con.post.viewer != null && con.post.viewer.like != null
+                        ? 2
+                        : active
+                        ? 1
+                        : 0,
+                    popup: (
+                      <ConRow
+                        con={con}
+                        showMonthInIcon
+                        showEndDateOnly={false}
+                        showLocation={false}
+                        showFollowed
+                        showLikeButton
+                        showBigIcon={false}
+                        showDuration={false}
+                      />
+                    ),
+                  },
+                ];
+              })}
               initialCenter={center}
               setCenter={(center) => setLayout({ ...layout, center })}
             />

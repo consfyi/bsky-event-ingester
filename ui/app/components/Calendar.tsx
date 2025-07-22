@@ -37,6 +37,7 @@ import { reinterpretAsLocalDate } from "~/date";
 import { useNow } from "~/hooks";
 
 export interface Event {
+  id: string;
   link: string;
   title: string;
   label: React.ReactNode;

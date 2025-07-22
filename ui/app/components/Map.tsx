@@ -5,6 +5,7 @@ import {
   CloseButton,
   Flex,
   Indicator,
+  MantineColor,
   useComputedColorScheme,
   useMantineTheme,
 } from "@mantine/core";
@@ -22,12 +23,10 @@ import {
   StyleSpecification,
   useMap,
 } from "@vis.gl/react-maplibre";
-import { getDay, isAfter } from "date-fns";
 import "maplibre-theme/icons.default.css";
 import "maplibre-theme/modern.css";
-import { useMemo, useState } from "react";
-import { ConWithPost, hookifyPromise, useNow } from "~/hooks";
-import ConRow from "./ConRow";
+import { ReactNode, useMemo, useState } from "react";
+import { hookifyPromise } from "~/hooks";
 import classes from "./Map.module.css";
 
 const API_KEY = "a4d6fb59d9d6e179";
@@ -61,65 +60,50 @@ function makeStyle({
   };
 }
 
-function Pin({
-  con,
-  lat,
-  lng,
+export interface Pin {
+  id: string;
+  lat: number;
+  lng: number;
+  variant: string;
+  color: MantineColor;
+  active: boolean;
+  zIndex: number;
+  popup: ReactNode;
+}
+
+function MarkupWithPopup({
+  pin,
   showPopup,
   setShowPopup,
 }: {
-  con: ConWithPost;
-  lat: number;
-  lng: number;
+  pin: Pin;
   showPopup: boolean;
   setShowPopup: (v: boolean) => void;
 }) {
   const theme = useMantineTheme();
 
-  const color = [
-    "red",
-    "orange",
-    "yellow",
-    "green",
-    "blue",
-    "indigo",
-    "violet",
-  ][getDay(con.start)];
-
-  const variant =
-    con.post.viewer != null && con.post.viewer.like != null
-      ? "filled"
-      : "light";
-
   const colors = theme.variantColorResolver({
     theme,
-    color,
-    variant,
+    color: pin.color,
+    variant: pin.variant,
   });
 
   const mapRef = useMap();
-  const now = useNow();
-  const active = isAfter(now, con.start) && !isAfter(now, con.end);
 
   return (
     <>
       <Marker
-        latitude={lat}
-        longitude={lng}
+        latitude={pin.lat}
+        longitude={pin.lng}
         onClick={(e) => {
           e.originalEvent.stopPropagation();
           if (mapRef.current != null && showPopup) {
-            mapRef.current.flyTo({ center: [lng, lat] });
+            mapRef.current.flyTo({ center: [pin.lng, pin.lat] });
           }
           setShowPopup(true);
         }}
         style={{
-          zIndex:
-            con.post.viewer != null && con.post.viewer.like != null
-              ? 2
-              : active
-              ? 1
-              : 0,
+          zIndex: pin.zIndex,
         }}
         subpixelPositioning
       >
@@ -130,15 +114,15 @@ function Pin({
             processing
             size={12}
             withBorder
-            disabled={!active}
+            disabled={!pin.active}
             zIndex={2}
             offset={6}
           >
             <IconMapPinFilled
               size={32}
               color={
-                variant == "light"
-                  ? `color-mix(in srgb, var(--mantine-color-${color}-filled), var(--mantine-color-body) 90%)`
+                pin.variant == "light"
+                  ? `color-mix(in srgb, var(--mantine-color-${pin.color}-filled), var(--mantine-color-body) 90%)`
                   : colors.background
               }
               style={{
@@ -154,21 +138,12 @@ function Pin({
           closeOnClick={false}
           focusAfterOpen={false}
           maxWidth="none"
-          latitude={lat}
-          longitude={lng}
+          latitude={pin.lat}
+          longitude={pin.lng}
           style={{ zIndex: 100 }}
         >
           <Flex gap="xs">
-            <ConRow
-              con={con}
-              showMonthInIcon
-              showEndDateOnly={false}
-              showLocation={false}
-              showFollowed
-              showLikeButton
-              showBigIcon={false}
-              showDuration={false}
-            />
+            {pin.popup}
             <CloseButton
               onClick={() => {
                 setShowPopup(false);
@@ -209,11 +184,11 @@ const useMyLocation = hookifyPromise(
 );
 
 export default function Map({
-  cons,
+  pins,
   initialCenter,
   setCenter,
 }: {
-  cons: ConWithPost[];
+  pins: Pin[];
   initialCenter: { lat: number; lng: number; zoom: number } | null;
   setCenter(center: { lat: number; lng: number; zoom: number }): void;
 }) {
@@ -276,22 +251,16 @@ export default function Map({
         }}
       >
         <AttributionControl compact={false} />
-        {cons.flatMap((con) =>
-          con.geocoded != null && con.geocoded.latLng != null
-            ? [
-                <Pin
-                  key={con.identifier}
-                  con={con}
-                  showPopup={con.identifier == selected}
-                  setShowPopup={(v) => {
-                    setSelected(v ? con.identifier : null);
-                  }}
-                  lat={con.geocoded.latLng[0]}
-                  lng={con.geocoded.latLng[1]}
-                />,
-              ]
-            : []
-        )}
+        {pins.map((pin, i) => (
+          <MarkupWithPopup
+            key={i}
+            pin={pin}
+            showPopup={pin.id == selected}
+            setShowPopup={(v) => {
+              setSelected(v ? pin.id : null);
+            }}
+          />
+        ))}
       </Maplibre>
     </Box>
   );
