@@ -172,13 +172,16 @@ impl JsonLdInput {
 }
 
 async fn fetch_events(
+    reqwest_client: &reqwest::Client,
     calendar_url: &str,
     map_url: &str,
 ) -> Result<std::collections::HashMap<u64, Event>, anyhow::Error> {
     let (raw_map, raw_calendar) = tokio::try_join!(
         async {
             Ok::<_, anyhow::Error>(
-                reqwest::get(map_url)
+                reqwest_client
+                    .get(map_url)
+                    .send()
                     .await?
                     .error_for_status()?
                     .bytes()
@@ -187,7 +190,9 @@ async fn fetch_events(
         },
         async {
             Ok::<_, anyhow::Error>(
-                reqwest::get(calendar_url)
+                reqwest_client
+                    .get(calendar_url)
+                    .send()
                     .await?
                     .error_for_status()?
                     .bytes()
@@ -428,6 +433,7 @@ async fn fetch_old_events(
 }
 
 async fn sync_labels(
+    reqwest_client: &reqwest::Client,
     calendar_url: &str,
     map_url: &str,
     ui_endpoint: &str,
@@ -448,7 +454,7 @@ async fn sync_labels(
 
     let now = chrono::Utc::now();
 
-    let mut events = fetch_events(calendar_url, map_url).await?;
+    let mut events = fetch_events(reqwest_client, calendar_url, map_url).await?;
 
     // Remove expired events.
     events = events
@@ -1008,8 +1014,12 @@ async fn main() -> Result<(), anyhow::Error> {
         events: std::collections::HashMap::new(),
     }));
 
+    let reqwest_client = reqwest::Client::new();
+
     let session = atrium_api::agent::atp_agent::CredentialSession::new(
-        atrium_xrpc_client::reqwest::ReqwestClient::new(&config.bsky_endpoint),
+        atrium_xrpc_client::reqwest::ReqwestClientBuilder::new(&config.bsky_endpoint)
+            .client(reqwest_client.clone())
+            .build(),
         atrium_api::agent::atp_agent::store::MemorySessionStore::default(),
     );
     session
@@ -1024,6 +1034,7 @@ async fn main() -> Result<(), anyhow::Error> {
     log::info!("syncing initial labels");
 
     sync_labels(
+        &reqwest_client,
         &config.calendar_url,
         &config.map_url,
         &config.ui_endpoint,
@@ -1042,6 +1053,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
                 log::info!("syncing labels");
                 if let Err(e) = sync_labels(
+                    &reqwest_client,
                     &config.calendar_url,
                     &config.map_url,
                     &config.ui_endpoint,
