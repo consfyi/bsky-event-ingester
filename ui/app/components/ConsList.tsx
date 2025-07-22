@@ -79,7 +79,7 @@ import {
 } from "react";
 import { Link, useNavigate } from "react-router";
 import regexpEscape from "regexp.escape";
-import { z } from "zod/v4-mini";
+
 import absurd from "~/absurd";
 import Avatar from "~/components/Avatar";
 import Flag from "~/components/Flag";
@@ -729,10 +729,11 @@ function Filters({
     [continentCount]
   );
 
-  const continentsFiltered = !qp.equals(
-    filter.continents,
-    DEFAULT_FILTER_OPTIONS.continents
-  );
+  const continentsFiltered =
+    filter.continents.length == DEFAULT_FILTER_OPTIONS.continents.length &&
+    filter.continents.every(
+      (c, i) => DEFAULT_FILTER_OPTIONS.continents[i] == c
+    );
   const durationFiltered =
     filter.minDays != DEFAULT_FILTER_OPTIONS.minDays ||
     filter.maxDays != DEFAULT_FILTER_OPTIONS.maxDays;
@@ -1327,7 +1328,11 @@ function useFirstDayOfWeek() {
       }
 
       try {
-        return FirstDayOfWeek.parse(JSON.parse(value));
+        const day = JSON.parse(value);
+        if (!FIRST_DAYS_OF_WEEK.includes(day)) {
+          return DEFAULT_FIRST_DAY_OF_WEEK;
+        }
+        return day;
       } catch (e) {
         return DEFAULT_FIRST_DAY_OF_WEEK;
       }
@@ -1417,7 +1422,7 @@ function CalendarSettingsMenu({
         <Menu.Label>
           <Trans>Week starts on</Trans>
         </Menu.Label>
-        {FirstDayOfWeek.def.values.map((day) => (
+        {FIRST_DAYS_OF_WEEK.map((day) => (
           <Menu.Item
             key={day as Day}
             leftSection={
@@ -1505,8 +1510,7 @@ function MapLayout({
   );
 }
 
-const FirstDayOfWeek = z.literal([0, 1, 6]);
-type FirstDayOfWeek = z.infer<typeof FirstDayOfWeek>;
+const FIRST_DAYS_OF_WEEK: Day[] = [0, 1, 6];
 
 const LAYOUTS: { Icon: Icon; label: ReactNode; options: LayoutOptions }[] = [
   {
@@ -1630,7 +1634,7 @@ function EmptyState({
           <Trans>No cons to display.</Trans>
         </Text>
 
-        {!qp.equals(filter, DEFAULT_FILTER_OPTIONS) ? (
+        {!qp.equals(FilterOptions, filter, DEFAULT_FILTER_OPTIONS) ? (
           <Box>
             <Button
               onClick={() => {
