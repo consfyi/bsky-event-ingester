@@ -657,6 +657,34 @@ const CONTINENT_NAMES: Record<Continent, MessageDescriptor> = {
   XX: msg`Unknown`,
 };
 
+function DayText({ minDays, maxDays }: { minDays: number; maxDays: number }) {
+  return (
+    <Text size="sm">
+      {minDays == maxDays ? (
+        minDays >= DEFAULT_FILTER_OPTIONS.maxDays ? (
+          <Plural
+            value={DEFAULT_FILTER_OPTIONS.maxDays}
+            one="# day or more"
+            other="# days or more"
+          />
+        ) : (
+          <Plural value={[minDays][0]} one="# day" other="# days" />
+        )
+      ) : maxDays >= DEFAULT_FILTER_OPTIONS.maxDays ? (
+        <Plural
+          value={[minDays][0]}
+          one="# day or more"
+          other="# days or more"
+        />
+      ) : (
+        <Trans>
+          {[minDays][0]} to {[maxDays][0]} days
+        </Trans>
+      )}
+    </Text>
+  );
+}
+
 function Filters({
   cons,
   filter,
@@ -910,31 +938,7 @@ function Filters({
                     })}
               >
                 {durationFiltered ? (
-                  filter.minDays == filter.maxDays ? (
-                    filter.minDays >= DEFAULT_FILTER_OPTIONS.maxDays ? (
-                      <Plural
-                        value={DEFAULT_FILTER_OPTIONS.maxDays}
-                        one="# day or more"
-                        other="# days or more"
-                      />
-                    ) : (
-                      <Plural
-                        value={filter.minDays}
-                        one="# day"
-                        other="# days"
-                      />
-                    )
-                  ) : filter.maxDays >= DEFAULT_FILTER_OPTIONS.maxDays ? (
-                    <Plural
-                      value={filter.minDays}
-                      one="# day or more"
-                      other="# days or more"
-                    />
-                  ) : (
-                    <Trans>
-                      {filter.minDays} to {filter.maxDays} days
-                    </Trans>
-                  )
+                  <DayText minDays={filter.minDays} maxDays={filter.maxDays} />
                 ) : (
                   <Trans>Number of days</Trans>
                 )}
@@ -944,6 +948,7 @@ function Filters({
               <Box p="calc(var(--mantine-spacing-xs) / 1.5) var(--mantine-spacing-sm)">
                 <RangeSlider
                   w={200}
+                  mb="xs"
                   min={1}
                   max={DEFAULT_FILTER_OPTIONS.maxDays}
                   minRange={0}
@@ -1127,6 +1132,9 @@ function Filters({
             )
           )}
         />
+        <Text size="sm">
+          <DayText minDays={filter.minDays} maxDays={filter.maxDays} />
+        </Text>
       </Drawer>
     </>
   );
