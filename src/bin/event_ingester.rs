@@ -1019,7 +1019,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .set_default("bsky_endpoint", "https://bsky.social")?
         .set_default("calendar_url", "https://furrycons.com/calendar/")?
         .set_default("keypair_path", "signing.key")?
-        .set_default("ui_endpoint", "https://cons.furryli.st")?
+        .set_default("ui_endpoint", "https://cons.fyi")?
         .set_default(
             "jetstream_endpoint",
             String::from(jetstream_oxide::DefaultJetstreamEndpoints::USEastOne),

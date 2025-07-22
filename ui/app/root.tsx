@@ -60,7 +60,8 @@ import {
   ScrollRestoration,
   useNavigation,
   useRouteError,
- useLocation } from "react-router";
+  useLocation,
+} from "react-router";
 import Avatar from "~/components/Avatar";
 import clientMetadata from "../public/client-metadata.json";
 import { DEFAULT_PDS_HOST, startLogin } from "./bluesky";
@@ -358,7 +359,7 @@ function Footer() {
           <ActionIcon
             aria-label="Bluesky"
             component="a"
-            href="https://bsky.app/profile/cons.furryli.st"
+            href="https://bsky.app/profile/cons.fyi"
             target="_blank"
             rel="noreferrer"
             size="md"
@@ -439,11 +440,11 @@ function Welcome() {
           <Text size="sm" mb="xs">
             This the website for the{" "}
             <Anchor
-              href="https://bsky.app/profile/cons.furryli.st"
+              href="https://bsky.app/profile/cons.fyi"
               target="_blank"
               rel="noreferrer"
             >
-              <IconBrandBluesky size={12} /> @cons.furryli.st
+              <IconBrandBluesky size={12} /> @cons.fyi
             </Anchor>{" "}
             service. For the full experience, please log in. You’ll be able to:
           </Text>

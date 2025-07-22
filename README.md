@@ -1,6 +1,6 @@
 # furcons-bsky-labeler
 
-This is the code behind [@cons.furryli.st](https://bsky.app/profile/cons.furryli.st).
+This is the code behind [@cons.fyi](https://bsky.app/profile/cons.fyi).
 
 ## First-time setup
 
