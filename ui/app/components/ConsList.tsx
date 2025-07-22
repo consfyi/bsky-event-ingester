@@ -581,7 +581,7 @@ export const FilterOptions = qp.schema({
   q: qp.scalar(qp.string, ""),
   attending: qp.scalar(qp.boolean, false),
   followed: qp.scalar(qp.boolean, false),
-  continents: qp.scalar(qp.sepBy(qp.enum_(CONTINENTS), " "), [...CONTINENTS]),
+  continents: qp.scalar(qp.array(qp.enum_(CONTINENTS), " "), [...CONTINENTS]),
   minDays: qp.scalar(qp.int, 1),
   maxDays: qp.scalar(qp.int, 7),
 });
