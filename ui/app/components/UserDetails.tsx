@@ -12,9 +12,9 @@ import {
 } from "@mantine/core";
 import { Suspense } from "react";
 import Avatar from "~/components/Avatar";
-import { ConRow } from "~/components/ConsList";
 import { Profile } from "~/endpoints";
 import { useConsWithPosts, useProfileLabels, useSelf } from "~/hooks";
+import ConRow from "./ConRow";
 
 function Attending({ profile }: { profile: Profile }) {
   const self = useSelf();
