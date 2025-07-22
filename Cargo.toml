@@ -16,7 +16,6 @@ config = "0.15"
 deunicode = "1"
 env_logger = "0.11"
 futures = "0.3"
-google_maps = "3"
 geotz = { version = "0.1", features = ["with-data"] }
 htmlize = { version = "1", features = ["unescape"] }
 icu_casemap = "2"
@@ -40,3 +39,4 @@ serde_with = "3"
 sqlx = { version = "0.8", features = ["postgres", "runtime-tokio", "chrono"] }
 thiserror = "1"
 tokio = { version = "1", features = ["full"] }
+xml-rs = "0.8"

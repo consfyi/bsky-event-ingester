@@ -1,9 +1,7 @@
 use atrium_api::types::{Collection as _, TryFromUnknown as _, TryIntoUnknown as _};
 use consfyi::*;
 use futures::StreamExt as _;
-use num_traits::ToPrimitive as _;
 use sqlx::Acquire as _;
-use std::str::FromStr as _;
 
 #[derive(serde::Deserialize, Debug)]
 struct Config {
@@ -13,18 +11,11 @@ struct Config {
     ui_endpoint: String,
     jetstream_endpoint: String,
     calendar_url: String,
+    map_url: String,
     postgres_url: String,
     keypair_path: String,
     label_sync_delay_secs: u64,
-    google_maps_api_key: String,
     commit_firehose_cursor_every_secs: u64,
-}
-
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct Geocoded {
-    lat_lng: Option<[String; 2]>,
-    timezone: Option<chrono_tz::Tz>,
 }
 
 struct EventsState {
@@ -41,7 +32,8 @@ struct LabelerEventInfo {
     address: String,
     country: String,
     url: String,
-    geocoded: Option<Geocoded>,
+    lat_lng: Option<[String; 2]>,
+    timezone: Option<String>,
 }
 
 async fn list_all_records(
@@ -100,18 +92,15 @@ struct Event {
     country: String,
     start_date: chrono::NaiveDate,
     end_date: chrono::NaiveDate,
-    geocoded: Option<Geocoded>,
-    rkey: Option<Option<atrium_api::types::string::RecordKey>>,
+    lat_lng: Option<[f64; 2]>,
+    timezone: Option<chrono_tz::Tz>,
+    rkey: Option<atrium_api::types::string::RecordKey>,
 }
 
 impl Event {
     fn end_time(&self) -> chrono::DateTime<chrono::Utc> {
         let date = self.end_date + chrono::Days::new(1);
-        let tz = self
-            .geocoded
-            .as_ref()
-            .and_then(|g| g.timezone)
-            .unwrap_or(chrono_tz::UTC);
+        let tz = self.timezone.unwrap_or(chrono_tz::UTC);
 
         date.and_time(chrono::NaiveTime::MIN)
             .and_local_timezone(tz)
@@ -184,17 +173,71 @@ impl JsonLdInput {
 
 async fn fetch_events(
     calendar_url: &str,
+    map_url: &str,
 ) -> Result<std::collections::HashMap<u64, Event>, anyhow::Error> {
+    let (raw_map, raw_calendar) = tokio::try_join!(
+        async {
+            Ok::<_, anyhow::Error>(
+                reqwest::get(map_url)
+                    .await?
+                    .error_for_status()?
+                    .bytes()
+                    .await?,
+            )
+        },
+        async {
+            Ok::<_, anyhow::Error>(
+                reqwest::get(calendar_url)
+                    .await?
+                    .error_for_status()?
+                    .bytes()
+                    .await?,
+            )
+        }
+    )?;
+
+    let mut markers = std::collections::HashMap::<u64, [f64; 2]>::new();
+    for event in xml::reader::EventReader::new(std::io::Cursor::new(raw_map)) {
+        match event? {
+            xml::reader::XmlEvent::StartElement {
+                name, attributes, ..
+            } => {
+                if name.local_name != "marker" {
+                    continue;
+                }
+
+                let mut id = None;
+                let mut lat = None;
+                let mut lng = None;
+                for attr in attributes {
+                    match attr.name.local_name.as_str() {
+                        "id" => {
+                            id = attr.value.parse().ok();
+                        }
+                        "lat" => {
+                            lat = attr.value.parse().ok();
+                        }
+                        "lng" => {
+                            lng = attr.value.parse().ok();
+                        }
+                        _ => {}
+                    }
+                }
+
+                let (Some(id), Some(lat), Some(lng)) = (id, lat, lng) else {
+                    continue;
+                };
+
+                markers.insert(id, [lat, lng]);
+            }
+            _ => {}
+        }
+    }
+
     let mut events = std::collections::HashMap::new();
 
-    for element in scraper::Html::parse_document(
-        &reqwest::get(calendar_url)
-            .await?
-            .error_for_status()?
-            .text()
-            .await?,
-    )
-    .select(&scraper::Selector::parse("script[type=\"application/ld+json\"]").unwrap())
+    for element in scraper::Html::parse_document(&String::from_utf8(raw_calendar.to_vec())?)
+        .select(&scraper::Selector::parse("script[type=\"application/ld+json\"]").unwrap())
     {
         for doc in serde_json::from_str::<JsonLdInput>(
             &htmlize::unescape(element.text().collect::<String>()).replace("\n", " "),
@@ -268,13 +311,18 @@ async fn fetch_events(
 
             static ID_REGEX: std::sync::LazyLock<regex::Regex> =
                 std::sync::LazyLock::new(|| regex::Regex::new(r#"/event/(\d+)/"#).unwrap());
-            let id = ID_REGEX
+            let id: u64 = ID_REGEX
                 .captures(&event.url)
                 .ok_or(anyhow::anyhow!("could not get ID"))?
                 .get(1)
                 .unwrap()
                 .as_str()
                 .parse()?;
+
+            let lat_lng = markers.get(&id).cloned();
+            let timezone = lat_lng
+                .and_then(|[lat, lng]| geotz::lookup([lng, lat]).ok())
+                .and_then(|tz| tz.first().and_then(|tz| tz.parse().ok()));
 
             events.insert(
                 id,
@@ -287,7 +335,8 @@ async fn fetch_events(
                     start_date,
                     end_date,
                     slug,
-                    geocoded: None,
+                    lat_lng,
+                    timezone,
                     rkey: None,
                 },
             );
@@ -307,8 +356,6 @@ const EXTRA_DATA_EVENT_INFO: &str = "fbl_eventInfo";
 #[derive(Debug)]
 struct OldEvent {
     rkey: Option<atrium_api::types::string::RecordKey>,
-    address: String,
-    geocoded: Option<Geocoded>,
 }
 
 const EXPIRY_DATE_GRACE_PERIOD: chrono::Days = chrono::Days::new(7);
@@ -374,25 +421,7 @@ async fn fetch_old_events(
                         }
                     };
 
-                    let info = v
-                        .extra_data
-                        .get(EXTRA_DATA_EVENT_INFO)
-                        .ok()
-                        .flatten()
-                        .cloned()
-                        .and_then(|v| ipld_core::serde::from_ipld::<LabelerEventInfo>(v).ok());
-
-                    Some((
-                        base26::decode(&v.identifier).unwrap(),
-                        OldEvent {
-                            rkey,
-                            address: info
-                                .as_ref()
-                                .map(|info| info.address.to_string())
-                                .unwrap_or_else(|| "".to_string()),
-                            geocoded: info.and_then(|info| info.geocoded),
-                        },
-                    ))
+                    Some((base26::decode(&v.identifier).unwrap(), OldEvent { rkey }))
                 })
                 .collect::<std::collections::HashMap<_, _>>()
         }))
@@ -400,6 +429,7 @@ async fn fetch_old_events(
 
 async fn sync_labels(
     calendar_url: &str,
+    map_url: &str,
     ui_endpoint: &str,
     did: &atrium_api::types::string::Did,
     agent: &atrium_api::agent::Agent<
@@ -408,7 +438,6 @@ async fn sync_labels(
             atrium_xrpc_client::reqwest::ReqwestClient,
         >,
     >,
-    google_maps_client: Option<&google_maps::Client>,
     events_state: std::sync::Arc<tokio::sync::Mutex<EventsState>>,
 ) -> Result<(), anyhow::Error> {
     // Lock the entire events state while labels are syncing.
@@ -419,16 +448,12 @@ async fn sync_labels(
 
     let now = chrono::Utc::now();
 
-    let mut events = fetch_events(calendar_url).await?;
+    let mut events = fetch_events(calendar_url, map_url).await?;
 
+    // Remove expired events.
     events = events
         .into_iter()
-        .filter(|(_, event)| {
-            // Somewhat obnoxiously we have to do this in UTC, because otherwise we have to geocode to find the timezone.
-            now < event.end_date.and_time(chrono::NaiveTime::MIN).and_utc()
-                    + chrono::Days::new(2) // Add an extra 2 days to compensate for very ahead timezones, like Pacific/Auckland.
-                    + EXPIRY_DATE_GRACE_PERIOD
-        })
+        .filter(|(_, event)| now < event.end_time() + EXPIRY_DATE_GRACE_PERIOD)
         .collect();
 
     let mut writes = vec![];
@@ -479,69 +504,11 @@ async fn sync_labels(
         })
         .collect();
 
-    // Perform geocoding, if required.
-    if let Some(google_maps_client) = google_maps_client.as_ref() {
-        let old_events = &old_events;
-
-        events =
-            futures::future::try_join_all(events.into_iter().map(|(id, mut event)| async move {
-                event.geocoded = Some(
-                    if let Some(geocoded) = old_events
-                        .get(&id)
-                        .filter(|e| e.address == event.address)
-                        .and_then(|e| e.geocoded.as_ref())
-                        .filter(|g| g.timezone.is_none() || g.lat_lng.is_some())
-                    {
-                        geocoded.clone()
-                    } else {
-                        if let Some(geocoding) = google_maps_client
-                            .geocoding()
-                            .with_address(&event.address)
-                            .execute()
-                            .await?
-                            .results
-                            .into_iter()
-                            .next()
-                        {
-                            let lat = geocoding.geometry.location.lat.to_f64().unwrap();
-                            let lng = geocoding.geometry.location.lng.to_f64().unwrap();
-
-                            let tz = geotz::lookup([lng, lat])
-                                .ok()
-                                .map(|v| v.into_iter().next())
-                                .flatten()
-                                .and_then(|v| chrono_tz::Tz::from_str(&v).ok());
-
-                            Geocoded {
-                                lat_lng: Some([lat.to_string(), lng.to_string()]),
-                                timezone: tz,
-                            }
-                        } else {
-                            Geocoded {
-                                lat_lng: None,
-                                timezone: None,
-                            }
-                        }
-                    },
-                );
-
-                Ok::<_, anyhow::Error>((id, event))
-            }))
-            .await?
-            .into_iter()
-            .collect();
-    }
-
-    // Delete events.
+    // Delete old events if we don't see them in our retrieved events.
     for (id, oe) in old_events.into_iter() {
         if let Some(event) = events.get_mut(&id) {
-            if now < event.end_time() + EXPIRY_DATE_GRACE_PERIOD {
-                // Event hasn't expired, no need to delete.
-                event.rkey = Some(oe.rkey);
-                continue;
-            }
-
-            event.rkey = Some(None);
+            event.rkey = oe.rkey.clone();
+            continue;
         }
 
         if let Some(rkey) = oe.rkey {
@@ -569,7 +536,6 @@ async fn sync_labels(
     // Create new events.
     let mut sorted_events = events.iter_mut().collect::<Vec<_>>();
     sorted_events.sort_by_key(|(_, event)| (event.start_date, event.end_date));
-
     {
         let mut created_at = now;
 
@@ -584,9 +550,11 @@ async fn sync_labels(
             )
             .unwrap();
 
-            event.rkey = Some(Some(rkey.clone()));
+            event.rkey = Some(rkey.clone());
 
             {
+                let text = format!("{}", event.full_name);
+
                 let record: atrium_api::app::bsky::feed::post::Record =
                     atrium_api::app::bsky::feed::post::RecordData {
                         created_at: atrium_api::types::string::Datetime::new(
@@ -614,12 +582,12 @@ async fn sync_labels(
                             )],
                             index: atrium_api::app::bsky::richtext::facet::ByteSliceData {
                                 byte_start: 0,
-                                byte_end: event.full_name.bytes().len(),
+                                byte_end: text.bytes().len(),
                             }
                             .into(),
                         }
                         .into()]),
-                        text: event.full_name.clone(),
+                        text,
                     }
                     .into();
 
@@ -671,6 +639,7 @@ async fn sync_labels(
         }
     }
 
+    // Update the record.
     {
         let record: atrium_api::app::bsky::labeler::service::Record =
             atrium_api::app::bsky::labeler::service::RecordData {
@@ -678,7 +647,7 @@ async fn sync_labels(
                 labels: None,
                 policies: atrium_api::app::bsky::labeler::defs::LabelerPoliciesData {
                     label_values: sorted_events.iter().filter(|(_, event)| {
-                        event.rkey.as_ref().unwrap().is_some()
+                        event.rkey.as_ref().is_some()
                     }).map(|(id, _)| base26::encode(**id)).collect(),
                     label_value_definitions: Some(
                         sorted_events.iter()
@@ -713,7 +682,7 @@ async fn sync_labels(
 
                                 extra_data.insert(
                                     EXTRA_DATA_POST_RKEY.to_string(),
-                                    if let Some(rkey) = event.rkey.as_ref().unwrap() {
+                                    if let Some(rkey) = event.rkey.as_ref() {
                                         ipld_core::serde::to_ipld(rkey.to_string()).unwrap()
                                     } else {
                                         ipld_core::ipld::Ipld::Null
@@ -733,7 +702,8 @@ async fn sync_labels(
                                         address: event.address.clone(),
                                         country: event.country.clone(),
                                         url: event.url.clone(),
-                                        geocoded: event.geocoded.clone(),
+                                        lat_lng: event.lat_lng.map(|[lat, lng]| [lat.to_string(), lng.to_string()]),
+                                        timezone: event.timezone.map(|tz| tz.to_string()),
                                     }).unwrap(),
                                 );
 
@@ -786,13 +756,7 @@ async fn sync_labels(
 
     events_state.rkeys_to_ids = sorted_events
         .iter()
-        .flat_map(|(id, event)| {
-            event
-                .rkey
-                .as_ref()
-                .and_then(|rkey| rkey.as_ref())
-                .map(|rkey| (rkey.clone(), **id))
-        })
+        .flat_map(|(id, event)| event.rkey.as_ref().map(|rkey| (rkey.clone(), **id)))
         .collect();
 
     events_state.events = events;
@@ -1018,6 +982,10 @@ async fn main() -> Result<(), anyhow::Error> {
         .add_source(config::File::with_name("config.toml"))
         .set_default("bsky_endpoint", "https://bsky.social")?
         .set_default("calendar_url", "https://furrycons.com/calendar/")?
+        .set_default(
+            "map_url",
+            "https://furrycons.com/calendar/map/yc-maps/map-upcoming.xml",
+        )?
         .set_default("keypair_path", "signing.key")?
         .set_default("ui_endpoint", "https://cons.fyi")?
         .set_default(
@@ -1053,20 +1021,14 @@ async fn main() -> Result<(), anyhow::Error> {
 
     let db_pool = sqlx::PgPool::connect(&config.postgres_url).await?;
 
-    let google_maps_client = if !config.google_maps_api_key.is_empty() {
-        Some(google_maps::Client::try_new(config.google_maps_api_key)?)
-    } else {
-        None
-    };
-
     log::info!("syncing initial labels");
 
     sync_labels(
         &config.calendar_url,
+        &config.map_url,
         &config.ui_endpoint,
         &did,
         &agent,
-        google_maps_client.as_ref(),
         events_state.clone(),
     )
     .await?;
@@ -1081,10 +1043,10 @@ async fn main() -> Result<(), anyhow::Error> {
                 log::info!("syncing labels");
                 if let Err(e) = sync_labels(
                     &config.calendar_url,
+                    &config.map_url,
                     &config.ui_endpoint,
                     &did,
                     &agent,
-                    google_maps_client.as_ref(),
                     events_state.clone(),
                 )
                 .await
