@@ -113,33 +113,6 @@ export function array<T>(type: Type<T>, sep: string): Type<T[]> {
   };
 }
 
-function literalImpl<T, U extends T>(type: Type<T>, lit: U): Type<U> {
-  return {
-    parse(v) {
-      const parsed = type.parse(v);
-      return parsed !== undefined && type.equals(parsed, lit) ? lit : undefined;
-    },
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    serialize(v) {
-      return type.serialize(lit);
-    },
-    equals(x, y) {
-      return type.equals(x, y);
-    },
-  };
-}
-
-export function literal<T extends string | number>(lit: T): Type<T> {
-  switch (typeof lit) {
-    case "string":
-      return literalImpl(string, lit);
-    case "number":
-      return literalImpl(float, lit);
-    default:
-      return absurd(lit);
-  }
-}
-
 export function enumImpl<T, U extends T>(
   type: Type<T>,
   values: readonly U[]
