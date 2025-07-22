@@ -215,7 +215,7 @@ msgstr "{0}地域選択中"
 #: app/components/ConsList.tsx:943
 #: app/components/ConsList.tsx:1103
 msgid "Number of days"
-msgstr "日数"
+msgstr "開催日数"
 
 #: app/components/ConsList.tsx:1005
 #: app/components/ConsList.tsx:1040
