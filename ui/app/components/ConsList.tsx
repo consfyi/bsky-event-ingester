@@ -1609,7 +1609,7 @@ function useFilterPredicate(filter: FilterOptions) {
         // Duration filter
         days >= filter.minDays &&
         (filter.maxDays >= DEFAULT_FILTER_OPTIONS.maxDays ||
-          days <= DEFAULT_FILTER_OPTIONS.maxDays) &&
+          days <= filter.maxDays) &&
         // Followed filter
         (!filter.followed ||
           followedConAttendees == null ||
