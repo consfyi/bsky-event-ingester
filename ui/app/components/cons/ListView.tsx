@@ -334,7 +334,6 @@ export default function ListView({
   const { data: followedConAttendees } = useFollowedConAttendeesDLE();
 
   const compact = filter.attending || filter.q != "";
-  // const navigate = useNavigate();
 
   return (
     <Box style={{ position: "relative" }}>

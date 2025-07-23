@@ -24,10 +24,9 @@ import type {
   ResourceUri,
 } from "@atcute/lexicons";
 import {
-  configureOAuth,
+  configureOAuth as configureOAuthInternal,
   createAuthorizationUrl,
   deleteStoredSession,
-  finalizeAuthorization,
   getSession,
   listStoredSessions,
   OAuthUserAgent,
@@ -315,13 +314,17 @@ export class Client {
   }
 }
 
-export async function createClient() {
-  configureOAuth({
+export function configureOAuth() {
+  configureOAuthInternal({
     metadata: {
       client_id: clientMetadata.client_id,
       redirect_uri: clientMetadata.redirect_uris[0],
     },
   });
+}
+
+export async function createClient() {
+  configureOAuth();
 
   let session: Session | null = null;
 

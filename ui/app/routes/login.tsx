@@ -1,10 +1,6 @@
-import {
-  configureOAuth,
-  finalizeAuthorization,
-} from "@atcute/oauth-browser-client";
-import { Navigate } from "react-router";
+import { finalizeAuthorization } from "@atcute/oauth-browser-client";
+import { configureOAuth } from "~/bluesky";
 import { hookifyPromise } from "~/hooks";
-import clientMetadata from "../../public/client-metadata.json";
 
 const useLogin = (() => {
   let useLoginInternal: (() => void) | null = null;
@@ -13,19 +9,15 @@ const useLogin = (() => {
       useLoginInternal = hookifyPromise(
         (async () => {
           const params = new URLSearchParams(window.location.hash.slice(1));
-
-          configureOAuth({
-            metadata: {
-              client_id: clientMetadata.client_id,
-              redirect_uri: clientMetadata.redirect_uris[0],
-            },
-          });
+          configureOAuth();
 
           try {
             await finalizeAuthorization(params);
           } catch (e) {
             // Do nothing.
           }
+
+          window.location.replace("/");
         })()
       );
     }
@@ -35,5 +27,5 @@ const useLogin = (() => {
 
 export default function Login() {
   useLogin();
-  return <Navigate to="/" replace />;
+  return null;
 }
