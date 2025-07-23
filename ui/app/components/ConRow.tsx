@@ -261,8 +261,10 @@ export default function ConRow({
             <Text span visibleFrom="xs">
               <IconMapPin title={t`Location`} size={12} />{" "}
               <Anchor
-                href={`https://www.google.com/maps?q=${encodeURIComponent(
-                  con.address
+                href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+                  con.latLng != null
+                    ? `${con.latLng[0]},${con.latLng[1]}`
+                    : con.address
                 )}`}
                 target="_blank"
                 rel="noreferrer"

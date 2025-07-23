@@ -270,8 +270,10 @@ export function Body({ con }: { con: ConWithPost }) {
             </Box>
             <Text size="sm" mb={5}>
               <Anchor
-                href={`https://www.google.com/maps?q=${encodeURIComponent(
-                  con.address
+                href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+                  con.latLng != null
+                    ? `${con.latLng[0]},${con.latLng[1]}`
+                    : con.address
                 )}`}
                 target="_blank"
                 rel="noreferrer"
