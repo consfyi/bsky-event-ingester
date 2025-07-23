@@ -316,13 +316,6 @@ export class Client {
 }
 
 export async function createClient() {
-  const params = new URLSearchParams(window.location.hash.slice(1));
-  window.history.replaceState(
-    null,
-    "",
-    window.location.pathname + window.location.search
-  );
-
   configureOAuth({
     metadata: {
       client_id: clientMetadata.client_id,
@@ -331,20 +324,13 @@ export async function createClient() {
   });
 
   let session: Session | null = null;
-  if (params.size > 0) {
+
+  for (const did of listStoredSessions()) {
     try {
-      session = await finalizeAuthorization(params);
+      session = await getSession(did, { allowStale: false });
+      break;
     } catch (e) {
-      // Do nothing.
-    }
-  } else {
-    for (const did of listStoredSessions()) {
-      try {
-        session = await getSession(did, { allowStale: false });
-        break;
-      } catch (e) {
-        deleteStoredSession(did);
-      }
+      deleteStoredSession(did);
     }
   }
 
