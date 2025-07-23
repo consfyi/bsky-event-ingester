@@ -87,11 +87,11 @@ export default function MapView({
                 left: 0,
               }}
               pins={filteredCons.flatMap((con) => {
-                if (con.geocoded == null || con.geocoded.latLng == null) {
+                if (con.latLng == null) {
                   return [];
                 }
 
-                const [lat, lng] = con.geocoded.latLng;
+                const [lat, lng] = con.latLng;
                 const active =
                   isAfter(now, con.start) && !isAfter(now, con.end);
 

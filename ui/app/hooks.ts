@@ -86,11 +86,6 @@ function useConPosts() {
   return posts;
 }
 
-export interface Geocoded {
-  latLng: [number, number] | null;
-  timezone: string | null;
-}
-
 export interface Con {
   identifier: string;
   slug: string;
@@ -99,7 +94,8 @@ export interface Con {
   end: TZDate;
   address: string;
   country: string;
-  geocoded: Geocoded | null;
+  latLng: [number, number] | null;
+  timezone: string | null;
   postRkey: string;
   url: string;
 }
@@ -121,10 +117,8 @@ export function useCons() {
               date: string;
               address: string;
               country: string;
-              geocoded: {
-                latLng: [string, string] | null;
-                timezone: string | null;
-              } | null;
+              latLng: [string, string] | null;
+              timezone: string | null;
               url: string;
             };
             fbl_postRkey: string;
@@ -135,7 +129,7 @@ export function useCons() {
 
           const refDate = new TZDateMini(
             new Date(),
-            fullDef.fbl_eventInfo.geocoded?.timezone ?? "UTC"
+            fullDef.fbl_eventInfo.timezone ?? "UTC"
           );
 
           const endDate = addDays(
@@ -168,18 +162,14 @@ export function useCons() {
               end: endDate,
               address: fullDef.fbl_eventInfo.address,
               country: fullDef.fbl_eventInfo.country,
-              geocoded:
-                fullDef.fbl_eventInfo.geocoded != null
-                  ? {
-                      timezone: fullDef.fbl_eventInfo.geocoded.timezone,
-                      latLng:
-                        fullDef.fbl_eventInfo.geocoded.latLng != null
-                          ? (fullDef.fbl_eventInfo.geocoded.latLng.map((v) =>
-                              parseFloat(v)
-                            ) as [number, number])
-                          : null,
-                    }
+              latLng:
+                fullDef.fbl_eventInfo.latLng != null
+                  ? (fullDef.fbl_eventInfo.latLng.map((v) => parseFloat(v)) as [
+                      number,
+                      number
+                    ])
                   : null,
+              timezone: fullDef.fbl_eventInfo.timezone,
               postRkey: fullDef.fbl_postRkey,
               url: fullDef.fbl_eventInfo.url,
             } satisfies Con,
