@@ -271,7 +271,7 @@ export function Body({ con }: { con: ConWithPost }) {
             <Text size="sm" mb={5}>
               <Anchor
                 component={Link}
-                to={`/map?con=${con.slug}`}
+                to={`/map#${con.slug}`}
                 c="var(--mantine-color-text)"
               >
                 {con.address}

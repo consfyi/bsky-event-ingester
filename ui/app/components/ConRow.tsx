@@ -263,7 +263,7 @@ export default function ConRow({
               <IconMapPin title={t`Location`} size={12} />{" "}
               <Anchor
                 component={Link}
-                to={`/map?con=${con.slug}`}
+                to={`/map#${con.slug}`}
                 c="var(--mantine-color-text)"
               >
                 {con.address}

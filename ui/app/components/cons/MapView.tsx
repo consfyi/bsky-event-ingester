@@ -1,6 +1,7 @@
 import { Box, Center, Container, Loader } from "@mantine/core";
 import { getDay, isAfter } from "date-fns";
 import { Suspense, useMemo, useState } from "react";
+import { useLocation, useNavigate } from "react-router";
 import { ConWithPost, useNow } from "~/hooks";
 import * as qp from "~/qp";
 import ConRow from "../ConRow";
@@ -16,7 +17,6 @@ export const LayoutOptions = qp.schema({
   center: qp.scalar(
     qp.tuple({ lat: qp.float, lng: qp.float, zoom: qp.float }, " ")
   ),
-  con: qp.scalar(qp.string),
 });
 export type LayoutOptions = qp.InferSchema<typeof LayoutOptions>;
 
@@ -33,12 +33,15 @@ export default function MapView({
   filter: FilterOptions;
   setFilter(filter: FilterOptions): void;
 }) {
-  const selected = useMemo(() => {
-    if (layout.con == null) {
-      return null;
-    }
-    return cons.find((con) => con.slug == layout.con) ?? null;
-  }, [layout.con, cons]);
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  const slug = location.hash != "" ? location.hash.slice(1) : null;
+
+  const selected = useMemo(
+    () => (slug != null ? cons.find((con) => con.slug == slug) ?? null : null),
+    [slug, cons]
+  );
 
   const [center] = useState(() => {
     if (layout.center != null) {
@@ -111,8 +114,15 @@ export default function MapView({
                     : null;
                 setLayout({
                   ...layout,
-                  con: con != null ? con.slug : undefined,
                 });
+                navigate(
+                  {
+                    pathname: location.pathname,
+                    search: location.search,
+                    hash: con != null ? con.slug : "",
+                  },
+                  { replace: true }
+                );
               }}
               pins={filteredCons.flatMap((con) => {
                 if (con.latLng == null) {
