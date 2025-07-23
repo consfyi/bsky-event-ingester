@@ -1,5 +1,12 @@
 import { Center, Loader } from "@mantine/core";
-import { ReactNode, Suspense, useEffect, useRef, useState } from "react";
+import {
+  ReactNode,
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import { useLocation, useNavigate } from "react-router";
 import SimpleErrorBoundary from "~/components/SimpleErrorBoundary";
 import { ConWithPost, useConsWithPosts, useIsLoggedIn } from "~/hooks";
@@ -26,52 +33,44 @@ export default function ConsListPage<T extends qp.Schema>({
   const navigate = useNavigate();
   const location = useLocation();
 
-  const [view, setView] = useState<{
-    filter: FilterOptions;
-    layout: qp.InferSchema<typeof LayoutOptions>;
-  }>(() => {
+  const pendingView = useMemo(() => {
     const searchParams = new URLSearchParams(location.search);
     return {
       filter: qp.parse(FilterOptions, searchParams),
       layout: qp.parse(LayoutOptions, searchParams),
     };
-  });
-
-  const updatingFromSearchParams = useRef(false);
-
-  useEffect(() => {
-    updatingFromSearchParams.current = true;
-    const searchParams = new URLSearchParams(location.search);
-    setView({
-      filter: qp.parse(FilterOptions, searchParams),
-      layout: qp.parse(LayoutOptions, searchParams),
-    });
-    updatingFromSearchParams.current = false;
   }, [location.search, LayoutOptions]);
 
+  const [viewInternal, setViewInternal] = useState<{
+    filter: FilterOptions;
+    layout: qp.InferSchema<typeof LayoutOptions>;
+  }>(pendingView);
+
   useEffect(() => {
-    if (updatingFromSearchParams.current) {
-      return;
-    }
+    setViewInternal(pendingView);
+  }, [pendingView]);
 
-    const searchParams = new URLSearchParams();
-    qp.serialize(FilterOptions, view.filter, searchParams);
-    qp.serialize(LayoutOptions, view.layout, searchParams);
-    const search = searchParams.toString();
+  const setView = useCallback(
+    (view: typeof viewInternal) => {
+      setViewInternal(view);
 
-    if (location.search.slice(1) == search) {
-      return;
-    }
+      const searchParams = new URLSearchParams();
+      qp.serialize(FilterOptions, view.filter, searchParams);
+      qp.serialize(LayoutOptions, view.layout, searchParams);
 
-    navigate(
-      {
-        pathname: location.pathname,
-        hash: location.hash,
-        search,
-      },
-      { replace: true }
-    );
-  }, [view, navigate, location, LayoutOptions]);
+      navigate(
+        {
+          pathname: location.pathname,
+          hash: location.hash,
+          search: searchParams.toString(),
+        },
+        { replace: true }
+      );
+    },
+    [LayoutOptions, location, navigate]
+  );
+
+  const view = viewInternal;
 
   return (
     <>
