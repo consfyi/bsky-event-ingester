@@ -168,7 +168,7 @@ export default function MapView({
                 ];
               })}
               initialCenter={center}
-              setCenter={(center) => setLayout({ center, con: undefined })}
+              setCenter={(center) => setLayout({ ...layout, center })}
             />
             {filteredCons.length == 0 ? (
               <Center
