@@ -256,7 +256,8 @@ function useFollowedConAttendeesGlobalMemo(data: Profile[] | undefined) {
           if (label.src != LABELER_DID) {
             continue;
           }
-          cons[label.val] = [...(cons[label.val] ?? []), follow];
+          const followed = (cons[label.val] ??= []);
+          followed.push(follow);
         }
       }
       for (const k in cons) {
