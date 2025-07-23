@@ -16,7 +16,7 @@ msgstr ""
 #. placeholder {0}: unknownLikes.length
 #. placeholder {0}: [unknownLikeCount][0]
 #: app/components/ConDetails.tsx:139
-#: app/components/ConDetails.tsx:343
+#: app/components/ConDetails.tsx:340
 msgid "{0, plural, one {# person you don’t follow} other {# people you don’t follow}}"
 msgstr "フォローしていないユーザー{0}人"
 
@@ -30,8 +30,8 @@ msgid "View Bluesky Post"
 msgstr "Bluesky の投稿を見る"
 
 #: app/components/ConDetails.tsx:247
-#: app/components/ConRow.tsx:220
-#: app/components/cons/ListView.tsx:284
+#: app/components/ConRow.tsx:223
+#: app/components/cons/ListView.tsx:286
 msgid "Date"
 msgstr "開催日"
 
@@ -39,60 +39,61 @@ msgstr "開催日"
 #. placeholder {0}: dateTimeFormat.formatRange( reinterpretAsLocalDate(con.start), reinterpretAsLocalDate(subDays(con.end, 1)) )
 #. placeholder {1}: differenceInDays(con.end, con.start)
 #: app/components/ConDetails.tsx:251
-#: app/components/ConRow.tsx:222
+#: app/components/ConRow.tsx:225
 msgctxt "[start date]-[end date] ([duration] days long)"
 msgid "{0} ({1, plural, one {# day long} other {# days long}})"
 msgstr "{0}（{1}日間）"
 
 #: app/components/ConDetails.tsx:269
-#: app/components/ConRow.tsx:262
+#: app/components/ConRow.tsx:265
+#: app/components/ConRow.tsx:279
 msgid "Location"
 msgstr "開催地"
 
-#: app/components/ConDetails.tsx:287
+#: app/components/ConDetails.tsx:284
 msgid "Link"
 msgstr "リンク"
 
-#: app/components/ConDetails.tsx:305
+#: app/components/ConDetails.tsx:302
 #: app/components/LikeButton.tsx:31
 msgid "Going"
 msgstr "参加者"
 
 #. placeholder {0}: [likeCount][0]
-#: app/components/ConDetails.tsx:308
+#: app/components/ConDetails.tsx:305
 msgctxt "attendee count, including you"
 msgid "{0} including you"
 msgstr "{0}人（自分込み）"
 
 #. placeholder {0}: [likeCount][0]
-#: app/components/ConDetails.tsx:312
-#: app/components/ConRow.tsx:173
+#: app/components/ConDetails.tsx:309
+#: app/components/ConRow.tsx:176
 msgctxt "attendee count"
 msgid "{0}"
 msgstr "{0}人"
 
-#: app/components/ConDetails.tsx:322
+#: app/components/ConDetails.tsx:319
 msgid "Loading people you follow"
 msgstr "フォロー中のユーザーを読み込み中"
 
-#: app/components/ConRow.tsx:167
-#: app/components/cons/ListView.tsx:298
+#: app/components/ConRow.tsx:170
+#: app/components/cons/ListView.tsx:300
 msgctxt "number of people going"
 msgid "People going"
 msgstr "参加者数"
 
 #. placeholder {0}: follows.length - MAX_AVATARS_IN_STACK
-#: app/components/ConRow.tsx:186
+#: app/components/ConRow.tsx:189
 msgid "{0, plural, one {# other you follow} other {# others you follow}}"
 msgstr "フォロー中の他の{0}人"
 
-#: app/components/ConRow.tsx:237
+#: app/components/ConRow.tsx:240
 msgid "End date"
 msgstr "終了日"
 
 #. placeholder {0}: i18n.date(reinterpretAsLocalDate(subDays(con.end, 1)), { weekday: "short", day: "numeric", month: "short", year: getYear(reinterpretAsLocalDate(con.start)) != getYear(reinterpretAsLocalDate(subDays(con.end, 1))) ? "numeric" : undefined, })
 #. placeholder {1}: differenceInDays(con.end, con.start)
-#: app/components/ConRow.tsx:238
+#: app/components/ConRow.tsx:241
 msgctxt "until [date] ([duration] days long)"
 msgid "until {0} ({1, plural, one {# day long} other {# days long}})"
 msgstr "{0}まで（{1}日間）"
@@ -225,7 +226,7 @@ msgid "An error occurred while attempting to load this data."
 msgstr "データの読み込み中にエラーが発生しました。"
 
 #: app/components/UserDetails.tsx:47
-#: app/components/UserDetails.tsx:137
+#: app/components/UserDetails.tsx:139
 msgctxt "user attending cons"
 msgid "Going"
 msgstr "参加予定"
@@ -237,12 +238,12 @@ msgid "{0}"
 msgstr "{0}件"
 
 #. placeholder {0}: unknownCons.length
-#: app/components/UserDetails.tsx:74
+#: app/components/UserDetails.tsx:75
 msgid "{0, plural, one {# con you aren’t going to} other {# cons you aren’t going to}}"
 msgstr "自分が参加予定のないコンベンション{0}件"
 
 #: app/components/cons/CalendarView.tsx:109
-#: app/components/cons/ListView.tsx:357
+#: app/components/cons/ListView.tsx:358
 msgid "Settings"
 msgstr "設定"
 
@@ -262,45 +263,45 @@ msgstr "相手の"
 msgid "Yours"
 msgstr "自分の"
 
-#: app/components/cons/ListView.tsx:285
+#: app/components/cons/ListView.tsx:287
 msgid "Soonest to latest"
 msgstr "早い順"
 
-#: app/components/cons/ListView.tsx:287
+#: app/components/cons/ListView.tsx:289
 msgid "Latest to soonest"
 msgstr "遅い順"
 
-#: app/components/cons/ListView.tsx:291
+#: app/components/cons/ListView.tsx:293
 msgid "Name"
 msgstr "名称"
 
-#: app/components/cons/ListView.tsx:292
+#: app/components/cons/ListView.tsx:294
 msgid "A to Z"
 msgstr "A-Z順"
 
-#: app/components/cons/ListView.tsx:294
+#: app/components/cons/ListView.tsx:296
 msgid "Z to A"
 msgstr "Z-A順"
 
-#: app/components/cons/ListView.tsx:299
-#: app/components/cons/ListView.tsx:306
+#: app/components/cons/ListView.tsx:301
+#: app/components/cons/ListView.tsx:308
 msgid "Fewest to most"
 msgstr "少ない順"
 
-#: app/components/cons/ListView.tsx:301
-#: app/components/cons/ListView.tsx:308
+#: app/components/cons/ListView.tsx:303
+#: app/components/cons/ListView.tsx:310
 msgid "Most to fewest"
 msgstr "多い順"
 
-#: app/components/cons/ListView.tsx:305
+#: app/components/cons/ListView.tsx:307
 msgid "People you follow going"
 msgstr "フォロー中の参加者数"
 
-#: app/components/cons/ListView.tsx:386
+#: app/components/cons/ListView.tsx:387
 msgid "Sort by"
 msgstr "並び順"
 
-#: app/components/cons/ListView.tsx:426
+#: app/components/cons/ListView.tsx:427
 msgid "Order"
 msgstr "順序"
 
@@ -342,7 +343,7 @@ msgid "https://your.pds.com"
 msgstr "https://jibun-no.pds.com"
 
 #: app/root.tsx:339
-msgid "All furry convention data courtesy of the volunteers at <0>FurryCons.com</0> – thank you! Convention missing? <1>Submit it here!</1>"
+msgid "All convention data courtesy of the volunteers at <0>FurryCons.com</0> – thank you! Convention missing? <1>Submit it here!</1>"
 msgstr "全てのコンベンションのデータは <0>FurryCons.com</0> のボランティアの皆様のご厚意によるものです。コンベンションが掲載されていませんか？<1>こちらから投稿してください！</1>"
 
 #: app/root.tsx:391

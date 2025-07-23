@@ -337,7 +337,7 @@ function Footer() {
       >
         <Text c="dimmed" size="sm" mb="sm">
           <Trans>
-            All furry convention data courtesy of the volunteers at{" "}
+            All convention data courtesy of the volunteers at{" "}
             <Anchor
               href="https://furrycons.com"
               target="_blank"
