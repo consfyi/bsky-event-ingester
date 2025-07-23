@@ -58,7 +58,7 @@ function Attending({ profile }: { profile: Profile }) {
               con={con}
               showMonthInIcon
               showEndDateOnly
-              showLocation={false}
+              showLocation="hide"
               showFollowed={false}
               showLikeButton={false}
               showBigIcon
@@ -87,7 +87,7 @@ function Attending({ profile }: { profile: Profile }) {
                 con={con}
                 showMonthInIcon
                 showEndDateOnly
-                showLocation={false}
+                showLocation="hide"
                 showFollowed={false}
                 showLikeButton={false}
                 showBigIcon

@@ -11,6 +11,11 @@ import FilterBar, {
 } from "../FilterBar";
 import Map from "../Map";
 import EmptyState from "../EmptyState";
+import { useSearchParams } from "react-router";
+
+const InitOptions = qp.schema({
+  con: qp.scalar(qp.string),
+});
 
 export const LayoutOptions = qp.schema({
   center: qp.scalar(
@@ -32,7 +37,25 @@ export default function MapView({
   filter: FilterOptions;
   setFilter(filter: FilterOptions): void;
 }) {
-  const [center] = useState(layout.center ?? null);
+  const [searchParams] = useSearchParams();
+  const [initialCon] = useState(() => {
+    const { con: slug } = qp.parse(InitOptions, searchParams);
+    if (slug == null) {
+      return null;
+    }
+    return cons.find((con) => con.slug == slug) ?? null;
+  });
+
+  const [center] = useState(() => {
+    if (layout.center != null) {
+      return layout.center;
+    }
+    if (initialCon != null && initialCon.latLng != null) {
+      const [lat, lng] = initialCon.latLng;
+      return { lat, lng, zoom: 17 };
+    }
+    return null;
+  });
   const now = useNow();
 
   const pred = useFilterPredicate(filter);
@@ -86,6 +109,9 @@ export default function MapView({
                 top: 0,
                 left: 0,
               }}
+              initialSelected={
+                initialCon != null ? initialCon.identifier : null
+              }
               pins={filteredCons.flatMap((con) => {
                 if (con.latLng == null) {
                   return [];
@@ -129,7 +155,7 @@ export default function MapView({
                         con={con}
                         showMonthInIcon
                         showEndDateOnly={false}
-                        showLocation={false}
+                        showLocation="break"
                         showFollowed
                         showLikeButton
                         showBigIcon={false}

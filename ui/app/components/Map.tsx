@@ -195,15 +195,17 @@ export default function Map({
   style,
   initialCenter,
   setCenter,
+  initialSelected,
 }: {
   pins: Pin[];
   style: CSSProperties;
   initialCenter: { lat: number; lng: number; zoom: number } | null;
   setCenter(center: { lat: number; lng: number; zoom: number }): void;
+  initialSelected: string | null;
 }) {
   const colorScheme = useComputedColorScheme();
   const { i18n, t } = useLingui();
-  const [selected, setSelected] = useState<string | null>();
+  const [selected, setSelected] = useState<string | null>(initialSelected);
 
   const myLatLng = useMyLocation();
 

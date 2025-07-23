@@ -43,7 +43,7 @@ export default function ConRow({
   con: ConWithPost;
   showMonthInIcon: boolean;
   showEndDateOnly: boolean;
-  showLocation: boolean;
+  showLocation: "inline" | "break" | "hide";
   showFollowed: boolean;
   showLikeButton: boolean;
   showBigIcon: boolean;
@@ -257,17 +257,12 @@ export default function ConRow({
               </Trans>
             </Text>
           )}
-          {showLocation ? (
+          {showLocation == "inline" ? (
             <Text span visibleFrom="xs">
               <IconMapPin title={t`Location`} size={12} />{" "}
               <Anchor
-                href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
-                  con.latLng != null
-                    ? `${con.latLng[0]},${con.latLng[1]}`
-                    : con.address
-                )}`}
-                target="_blank"
-                rel="noreferrer"
+                component={Link}
+                to={`/map?con=${con.slug}`}
                 c="var(--mantine-color-text)"
               >
                 {con.address}
@@ -275,6 +270,13 @@ export default function ConRow({
             </Text>
           ) : null}
         </Text>
+        {showLocation == "break" ? (
+          <Text size="sm" truncate>
+            <Text span>
+              <IconMapPin title={t`Location`} size={12} /> {con.address}
+            </Text>
+          </Text>
+        ) : null}
       </Box>
     </Group>
   );

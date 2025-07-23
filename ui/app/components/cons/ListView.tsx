@@ -139,7 +139,7 @@ function ConsByDate({
                   con={con}
                   showMonthInIcon={false}
                   showEndDateOnly
-                  showLocation
+                  showLocation="inline"
                   showFollowed
                   showLikeButton
                   showBigIcon
@@ -241,7 +241,7 @@ function ConsBy({ cons }: { cons: ConWithPost[] }) {
               con={con}
               showMonthInIcon
               showEndDateOnly={false}
-              showLocation
+              showLocation="inline"
               showFollowed
               showLikeButton
               showBigIcon
