@@ -1,26 +1,22 @@
 import { Box, Center, Container, Loader } from "@mantine/core";
 import { getDay, isAfter } from "date-fns";
-import { Suspense, useState } from "react";
+import { Suspense, useMemo, useState } from "react";
 import { ConWithPost, useNow } from "~/hooks";
 import * as qp from "~/qp";
 import ConRow from "../ConRow";
+import EmptyState from "../EmptyState";
 import FilterBar, {
   FilterOptions,
   LayoutSwitcher,
   useFilterPredicate,
 } from "../FilterBar";
 import Map from "../Map";
-import EmptyState from "../EmptyState";
-import { useSearchParams } from "react-router";
-
-const InitOptions = qp.schema({
-  con: qp.scalar(qp.string),
-});
 
 export const LayoutOptions = qp.schema({
   center: qp.scalar(
     qp.tuple({ lat: qp.float, lng: qp.float, zoom: qp.float }, " ")
   ),
+  con: qp.scalar(qp.string),
 });
 export type LayoutOptions = qp.InferSchema<typeof LayoutOptions>;
 
@@ -37,21 +33,19 @@ export default function MapView({
   filter: FilterOptions;
   setFilter(filter: FilterOptions): void;
 }) {
-  const [searchParams] = useSearchParams();
-  const [initialCon] = useState(() => {
-    const { con: slug } = qp.parse(InitOptions, searchParams);
-    if (slug == null) {
+  const selected = useMemo(() => {
+    if (layout.con == null) {
       return null;
     }
-    return cons.find((con) => con.slug == slug) ?? null;
-  });
+    return cons.find((con) => con.slug == layout.con) ?? null;
+  }, [layout.con, cons]);
 
   const [center] = useState(() => {
     if (layout.center != null) {
       return layout.center;
     }
-    if (initialCon != null && initialCon.latLng != null) {
-      const [lat, lng] = initialCon.latLng;
+    if (selected != null && selected.latLng != null) {
+      const [lat, lng] = selected.latLng;
       return { lat, lng, zoom: 17 };
     }
     return null;
@@ -109,9 +103,17 @@ export default function MapView({
                 top: 0,
                 left: 0,
               }}
-              initialSelected={
-                initialCon != null ? initialCon.identifier : null
-              }
+              selected={selected != null ? selected.identifier : null}
+              setSelected={(identifier) => {
+                const con =
+                  identifier != null
+                    ? cons.find((con) => con.identifier == identifier)
+                    : null;
+                setLayout({
+                  ...layout,
+                  con: con != null ? con.slug : undefined,
+                });
+              }}
               pins={filteredCons.flatMap((con) => {
                 if (con.latLng == null) {
                   return [];
@@ -166,7 +168,7 @@ export default function MapView({
                 ];
               })}
               initialCenter={center}
-              setCenter={(center) => setLayout({ ...layout, center })}
+              setCenter={(center) => setLayout({ center, con: undefined })}
             />
             {filteredCons.length == 0 ? (
               <Center

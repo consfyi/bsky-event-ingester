@@ -201,6 +201,7 @@ export default function CalendarView({
               includeToday={!compact}
               events={filteredCons.map((con) => ({
                 id: con.identifier,
+                anchor: con.slug,
                 label: (
                   <>
                     <Flag country={con.country} size={8} me={4} />

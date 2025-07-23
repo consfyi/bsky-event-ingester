@@ -25,10 +25,10 @@ import {
 } from "@vis.gl/react-maplibre";
 import "maplibre-theme/icons.default.css";
 import "maplibre-theme/modern.css";
-import { CSSProperties, ReactNode, useMemo, useState } from "react";
+import { CSSProperties, ReactNode, useMemo } from "react";
+import absurd from "~/absurd";
 import { hookifyPromise } from "~/hooks";
 import classes from "./Map.module.css";
-import absurd from "~/absurd";
 
 const API_KEY = "a4d6fb59d9d6e179";
 
@@ -195,17 +195,18 @@ export default function Map({
   style,
   initialCenter,
   setCenter,
-  initialSelected,
+  selected,
+  setSelected,
 }: {
   pins: Pin[];
   style: CSSProperties;
   initialCenter: { lat: number; lng: number; zoom: number } | null;
   setCenter(center: { lat: number; lng: number; zoom: number }): void;
-  initialSelected: string | null;
+  selected: string | null;
+  setSelected(selected: string | null): void;
 }) {
   const colorScheme = useComputedColorScheme();
   const { i18n, t } = useLingui();
-  const [selected, setSelected] = useState<string | null>(initialSelected);
 
   const myLatLng = useMyLocation();
 

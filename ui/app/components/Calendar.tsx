@@ -38,6 +38,7 @@ import { useNow } from "~/hooks";
 
 export interface Event {
   id: string;
+  anchor: string;
   link: string;
   title: string;
   label: React.ReactNode;
@@ -161,6 +162,7 @@ function EventSegment({ segment }: { segment: Segment }) {
 
   return (
     <Anchor
+      id={segment.hasStart ? segment.event.anchor : undefined}
       title={segment.event.title}
       underline="never"
       to={segment.event.link}
