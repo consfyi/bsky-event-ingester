@@ -172,6 +172,7 @@ export default function MapView({
                         showLikeButton
                         showBigIcon={false}
                         showDuration={false}
+                        withId={false}
                       />
                     ),
                   },

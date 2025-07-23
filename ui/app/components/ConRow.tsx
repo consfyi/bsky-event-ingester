@@ -39,6 +39,7 @@ export default function ConRow({
   showLikeButton,
   showBigIcon,
   showDuration,
+  withId,
 }: {
   con: ConWithPost;
   showMonthInIcon: boolean;
@@ -48,6 +49,7 @@ export default function ConRow({
   showLikeButton: boolean;
   showBigIcon: boolean;
   showDuration: boolean;
+  withId: boolean;
 }) {
   const isAttending = con.post.viewer?.like != null;
   const { data: followedConAttendees } = useFollowedConAttendeesDLE();
@@ -102,7 +104,7 @@ export default function ConRow({
   );
 
   return (
-    <Group gap="xs" wrap="nowrap">
+    <Group gap="xs" wrap="nowrap" id={withId ? con.slug : undefined}>
       {showBigIcon ? (
         <Anchor component={Link} to={`/${con.slug}`}>
           <Indicator

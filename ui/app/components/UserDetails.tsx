@@ -63,6 +63,7 @@ function Attending({ profile }: { profile: Profile }) {
               showLikeButton={false}
               showBigIcon
               showDuration
+              withId={false}
             />
           ))}
         </SimpleGrid>
@@ -92,6 +93,7 @@ function Attending({ profile }: { profile: Profile }) {
                 showLikeButton={false}
                 showBigIcon
                 showDuration
+                withId={false}
               />
             ))}
           </SimpleGrid>

@@ -144,6 +144,7 @@ function ConsByDate({
                   showLikeButton
                   showBigIcon
                   showDuration
+                  withId
                 />
               </Box>
             );
@@ -246,6 +247,7 @@ function ConsBy({ cons }: { cons: ConWithPost[] }) {
               showLikeButton
               showBigIcon
               showDuration
+              withId
             />
           </Box>
         );
