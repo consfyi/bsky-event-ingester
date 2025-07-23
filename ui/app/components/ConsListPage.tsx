@@ -1,6 +1,6 @@
 import { Center, Loader } from "@mantine/core";
 import { ReactNode, Suspense, useEffect, useRef, useState } from "react";
-import { useSearchParams } from "react-router";
+import { useLocation, useNavigate } from "react-router";
 import SimpleErrorBoundary from "~/components/SimpleErrorBoundary";
 import { ConWithPost, useConsWithPosts, useIsLoggedIn } from "~/hooks";
 import * as qp from "~/qp";
@@ -23,25 +23,31 @@ export default function ConsListPage<T extends qp.Schema>({
 
   const isLoggedIn = useIsLoggedIn();
 
-  const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
+  const location = useLocation();
+
   const [view, setView] = useState<{
     filter: FilterOptions;
     layout: qp.InferSchema<typeof LayoutOptions>;
-  }>(() => ({
-    filter: qp.parse(FilterOptions, searchParams),
-    layout: qp.parse(LayoutOptions, searchParams),
-  }));
+  }>(() => {
+    const searchParams = new URLSearchParams(location.search);
+    return {
+      filter: qp.parse(FilterOptions, searchParams),
+      layout: qp.parse(LayoutOptions, searchParams),
+    };
+  });
 
   const updatingFromSearchParams = useRef(false);
 
   useEffect(() => {
     updatingFromSearchParams.current = true;
+    const searchParams = new URLSearchParams(location.search);
     setView({
       filter: qp.parse(FilterOptions, searchParams),
       layout: qp.parse(LayoutOptions, searchParams),
     });
     updatingFromSearchParams.current = false;
-  }, [searchParams, LayoutOptions]);
+  }, [location.search, LayoutOptions]);
 
   useEffect(() => {
     if (updatingFromSearchParams.current) {
@@ -49,12 +55,23 @@ export default function ConsListPage<T extends qp.Schema>({
     }
 
     const searchParams = new URLSearchParams();
-
     qp.serialize(FilterOptions, view.filter, searchParams);
     qp.serialize(LayoutOptions, view.layout, searchParams);
+    const search = searchParams.toString();
 
-    setSearchParams(searchParams, { replace: true });
-  }, [searchParams, view, setSearchParams, LayoutOptions]);
+    if (location.search.slice(1) == search) {
+      return;
+    }
+
+    navigate(
+      {
+        pathname: location.pathname,
+        hash: location.hash,
+        search,
+      },
+      { replace: true }
+    );
+  }, [view, navigate, location, LayoutOptions]);
 
   return (
     <>
