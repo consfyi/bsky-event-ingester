@@ -573,7 +573,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
   }, []);
 
   const location = useLocation();
-  const showAlerts = location.pathname != "/map";
+  const showAlerts = !["/map", "/login"].includes(location.pathname);
 
   return (
     // lang is set by LinguiProvider.

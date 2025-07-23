@@ -327,7 +327,6 @@ export async function createClient() {
   configureOAuth();
 
   let session: Session | null = null;
-
   for (const did of listStoredSessions()) {
     try {
       session = await getSession(did, { allowStale: false });
@@ -336,6 +335,5 @@ export async function createClient() {
       deleteStoredSession(did);
     }
   }
-
   return new Client(session);
 }
