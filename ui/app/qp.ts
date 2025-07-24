@@ -1,10 +1,10 @@
-export interface Type<T> {
+export interface ScalarField<T> {
   parse(v: string): T | undefined;
   serialize(v: T): string;
   equals(x: T, y: T): boolean;
 }
 
-export const string: Type<string> = {
+export const string: ScalarField<string> = {
   parse(v) {
     return v;
   },
@@ -16,7 +16,7 @@ export const string: Type<string> = {
   },
 };
 
-export const int: Type<number> = {
+export const int: ScalarField<number> = {
   parse(v) {
     const r = parseInt(v);
     return !isNaN(r) ? r : undefined;
@@ -29,7 +29,7 @@ export const int: Type<number> = {
   },
 };
 
-export const float: Type<number> = {
+export const float: ScalarField<number> = {
   parse(v) {
     const r = parseFloat(v);
     return !isNaN(r) ? r : undefined;
@@ -42,7 +42,7 @@ export const float: Type<number> = {
   },
 };
 
-export const boolean: Type<boolean> = {
+export const boolean: ScalarField<boolean> = {
   parse(v) {
     return v === "true" || v === "1";
   },
@@ -55,9 +55,9 @@ export const boolean: Type<boolean> = {
 };
 
 export function tuple<T>(
-  types: { [K in keyof T]: Type<T[K]> },
+  types: { [K in keyof T]: ScalarField<T[K]> },
   sep: string
-): Type<T> {
+): ScalarField<T> {
   return {
     parse(v) {
       const parts = v.split(sep);
@@ -78,20 +78,20 @@ export function tuple<T>(
       return parsed as T;
     },
     serialize(vs) {
-      return (Object.entries(types) as [keyof T, Type<T[keyof T]>][])
+      return (Object.entries(types) as [keyof T, ScalarField<T[keyof T]>][])
         .map(([k, t]) => t.serialize(vs[k]))
         .join(sep);
     },
 
     equals(xs, ys) {
-      return (Object.entries(types) as [keyof T, Type<T[keyof T]>][]).every(
-        ([k, t]) => t.equals(xs[k], ys[k])
-      );
+      return (
+        Object.entries(types) as [keyof T, ScalarField<T[keyof T]>][]
+      ).every(([k, t]) => t.equals(xs[k], ys[k]));
     },
   };
 }
 
-export function array<T>(type: Type<T>, sep: string): Type<T[]> {
+export function array<T>(type: ScalarField<T>, sep: string): ScalarField<T[]> {
   return {
     parse(v) {
       if (v === "") {
@@ -113,8 +113,10 @@ export function array<T>(type: Type<T>, sep: string): Type<T[]> {
 
 export function enum_<const T extends string | number>(
   values: readonly T[]
-): Type<T> {
-  const type = (typeof values[0] === "number" ? float : string) as Type<T>;
+): ScalarField<T> {
+  const type = (
+    typeof values[0] === "number" ? float : string
+  ) as ScalarField<T>;
 
   const allowed = new Set(values);
   return {
@@ -133,19 +135,22 @@ export function enum_<const T extends string | number>(
 
 export interface MultipleField<T> {
   kind: "multiple";
-  type: Type<T>;
+  type: ScalarField<T>;
   multiple: true;
 }
 
 export interface DefaultField<T> {
   kind: "default";
-  type: Type<T>;
+  type: ScalarField<T>;
   default: T;
 }
 
-export type Field<T> = Type<T> | DefaultField<T> | MultipleField<T>;
+export type Field<T> = ScalarField<T> | DefaultField<T> | MultipleField<T>;
 
-export function default_<T>(type: Type<T>, defaultValue: T): DefaultField<T> {
+export function default_<T>(
+  type: ScalarField<T>,
+  defaultValue: T
+): DefaultField<T> {
   return {
     kind: "default",
     type,
@@ -153,7 +158,7 @@ export function default_<T>(type: Type<T>, defaultValue: T): DefaultField<T> {
   };
 }
 
-export function multiple<T>(type: Type<T>): MultipleField<T> {
+export function multiple<T>(type: ScalarField<T>): MultipleField<T> {
   return {
     kind: "multiple",
     type,
@@ -171,7 +176,7 @@ type InferField<F extends Field<unknown>> = F extends MultipleField<infer T>
   ? T[]
   : F extends DefaultField<infer T>
   ? T
-  : F extends Type<infer T>
+  : F extends ScalarField<infer T>
   ? T | undefined
   : never;
 
@@ -187,7 +192,7 @@ function isMultipleField<T>(f: Field<T>): f is MultipleField<T> {
   return "kind" in f && f.kind === "multiple";
 }
 
-function isType<T>(f: Field<T>): f is Type<T> {
+function isType<T>(f: Field<T>): f is ScalarField<T> {
   return !isDefaultField(f) && !isMultipleField(f);
 }
 
