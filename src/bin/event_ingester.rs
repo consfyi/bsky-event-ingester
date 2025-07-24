@@ -26,7 +26,6 @@ struct EventsState {
 #[derive(serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct LabelerEventInfo {
-    id: String,
     name: String,
     date: String,
     address: String,
@@ -356,6 +355,7 @@ async fn fetch_events(
 
 const EXTRA_DATA_POST_RKEY: &str = "fbl_postRkey";
 const EXTRA_DATA_EVENT_INFO: &str = "fbl_eventInfo";
+const EXTRA_DATA_EVENT_ID: &str = "fbl_eventId";
 
 #[derive(Debug)]
 struct OldEvent {
@@ -706,11 +706,14 @@ async fn sync_labels(
                                         ipld_core::ipld::Ipld::Null
                                     },
                                 );
+                                extra_data.insert(
+                                    EXTRA_DATA_EVENT_ID.to_string(),
+                                    ipld_core::serde::to_ipld(&event.id).unwrap()
+                                );
 
                                 extra_data.insert(
                                     EXTRA_DATA_EVENT_INFO.to_string(),
                                     ipld_core::serde::to_ipld(LabelerEventInfo {
-                                        id: event.id.clone(),
                                         name: event.name.clone(),
                                         date: format!(
                                             "{}/{}",

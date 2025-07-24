@@ -113,7 +113,6 @@ export function useCons() {
         (def) => {
           const fullDef = def as typeof def & {
             fbl_eventInfo: {
-              id: string;
               date: string;
               address: string;
               country: string;
@@ -121,6 +120,7 @@ export function useCons() {
               timezone: string | null;
               url: string;
             };
+            fbl_eventId: string;
             fbl_postRkey: string;
           };
 
@@ -156,7 +156,7 @@ export function useCons() {
           return [
             {
               labelId: def.identifier,
-              id: fullDef.fbl_eventInfo.id,
+              id: fullDef.fbl_eventId,
               name: strings.name,
               start: startDate,
               end: endDate,
@@ -258,8 +258,8 @@ function useFollowedConAttendeesGlobalMemo(data: Profile[] | undefined) {
       const conIdByLabelId: Record<string, string> = {};
       for (const def of labelerView.policies!.labelValueDefinitions!) {
         conIdByLabelId[def.identifier] = (
-          def as typeof def & { fbl_eventInfo: { id: string } }
-        ).fbl_eventInfo.id;
+          def as typeof def & { fbl_eventId: string }
+        ).fbl_eventId;
       }
 
       const followedCons: Record<string, Profile[]> = {};
