@@ -39,15 +39,6 @@ pub fn to_lower<'a>(
     })
 }
 
-pub fn slugify(s: &str, langid: &icu_locale::LanguageIdentifier) -> String {
-    static RE: std::sync::LazyLock<regex::Regex> =
-        std::sync::LazyLock::new(|| regex::Regex::new(r"[^\p{L}\p{N}\s-]+").unwrap());
-    RE.replace_all(&to_lower(&s.replace("&", "and"), langid), "")
-        .split_whitespace()
-        .collect::<Vec<_>>()
-        .join("-")
-}
-
 pub fn slugify_for_label(s: &str, langid: &icu_locale::LanguageIdentifier) -> String {
     static NUMBERS_RE: std::sync::LazyLock<regex::Regex> =
         std::sync::LazyLock::new(|| regex::Regex::new(r"\d+").unwrap());
@@ -75,33 +66,6 @@ pub fn slugify_for_label(s: &str, langid: &icu_locale::LanguageIdentifier) -> St
 #[cfg(test)]
 mod test {
     use super::*;
-
-    #[test]
-    fn test_slugify() {
-        assert_eq!(
-            slugify("Anthrocon", &icu_locale::langid!("en-US")),
-            "anthrocon"
-        );
-
-        assert_eq!(slugify("2Dance", &icu_locale::langid!("en-DE")), "2dance");
-
-        assert_eq!(
-            slugify("Futrołajki", &icu_locale::langid!("pl-PL")),
-            "futrołajki"
-        );
-
-        assert_eq!(
-            slugify("Örli Försztivál", &icu_locale::langid!("hu-HU")),
-            "örli-försztivál"
-        );
-
-        assert_eq!(
-            slugify("んなモフ", &icu_locale::langid!("ja-JP")),
-            "んなモフ"
-        );
-
-        assert_eq!(slugify("Fur-Eh!", &icu_locale::langid!("en-CA")), "fur-eh");
-    }
 
     #[test]
     fn test_slugify_for_label() {
