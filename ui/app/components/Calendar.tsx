@@ -206,6 +206,17 @@ function EventSegment({ segment }: { segment: Segment }) {
   );
 }
 
+const WEEKEND = (() => {
+  // Use the locale of the browser rather than the set locale.
+  const locale = new Intl.Locale(navigator.language);
+  const weekInfo = (
+    locale as {
+      getWeekInfo?(): { weekend: number[] };
+    }
+  ).getWeekInfo?.() ?? { weekend: [6, 7] };
+  return weekInfo.weekend.map((d) => (d % 7) as Day);
+})();
+
 export default function Calendar({
   events,
   firstDay,
@@ -226,17 +237,6 @@ export default function Calendar({
       end: reinterpretAsLocalDate(e.end),
     }));
   }
-
-  const weekend = useMemo(() => {
-    // Use the locale of the browser rather than the set locale.
-    const locale = new Intl.Locale(navigator.language);
-    const weekInfo = (
-      locale as {
-        getWeekInfo?(): { weekend: number[] };
-      }
-    ).getWeekInfo?.() ?? { weekend: [6, 7] };
-    return weekInfo.weekend.map((d) => (d % 7) as Day);
-  }, []);
 
   const checkpointRefs = useRef<Record<number, HTMLDivElement>>({});
   checkpointRefs.current = {};
@@ -389,7 +389,7 @@ export default function Calendar({
                     <Table.Th
                       key={i}
                       bg={
-                        weekend.includes(getDay(d) as Day)
+                        WEEKEND.includes(getDay(d) as Day)
                           ? "var(--mantine-color-gray-light)"
                           : ""
                       }
@@ -463,7 +463,7 @@ export default function Calendar({
                             valign="top"
                             pos="relative"
                             bg={
-                              weekend.includes(getDay(d) as Day)
+                              WEEKEND.includes(getDay(d) as Day)
                                 ? "var(--mantine-color-gray-light)"
                                 : ""
                             }
