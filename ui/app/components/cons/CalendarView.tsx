@@ -199,8 +199,8 @@ export default function CalendarView({
               inYourTimeZone={layout.timezone == "yours"}
               includeToday={!filter.attending && filter.q == ""}
               events={filteredCons.map((con) => ({
-                id: con.identifier,
-                anchor: con.slug,
+                id: con.id,
+                anchor: con.id,
                 label: (
                   <>
                     <Flag country={con.country} size={8} me={4} />
@@ -221,7 +221,7 @@ export default function CalendarView({
                     ? "filled"
                     : "light",
                 title: con.name,
-                link: `/${con.slug}`,
+                link: `/${con.id}`,
                 start: con.start,
                 end: con.end,
               }))}

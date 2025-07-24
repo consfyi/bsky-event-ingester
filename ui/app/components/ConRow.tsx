@@ -85,10 +85,8 @@ export default function ConRow({
 
   const follows = useMemo(
     () =>
-      followedConAttendees != null
-        ? followedConAttendees[con.identifier] ?? []
-        : null,
-    [followedConAttendees, con.identifier]
+      followedConAttendees != null ? followedConAttendees[con.id] ?? [] : null,
+    [followedConAttendees, con.id]
   );
 
   const sampledFollows = useMemo(
@@ -104,9 +102,9 @@ export default function ConRow({
   );
 
   return (
-    <Group gap="xs" wrap="nowrap" id={withId ? con.slug : undefined}>
+    <Group gap="xs" wrap="nowrap" id={withId ? con.id : undefined}>
       {density == "comfortable" ? (
-        <Anchor component={Link} to={`/${con.slug}`}>
+        <Anchor component={Link} to={`/${con.id}`}>
           <Indicator
             position="top-start"
             color="green"
@@ -165,7 +163,7 @@ export default function ConRow({
 
           <Text size="sm" truncate>
             <Flag country={con.country} size={10} me={6} />
-            <Anchor fw={500} component={Link} to={`/${con.slug}`}>
+            <Anchor fw={500} component={Link} to={`/${con.id}`}>
               {con.name}
             </Anchor>
           </Text>
@@ -271,7 +269,7 @@ export default function ConRow({
               <IconMapPin title={t`Location`} size={12} />{" "}
               <Anchor
                 component={Link}
-                to={`/map#${con.slug}`}
+                to={`/map#${con.id}`}
                 c="var(--mantine-color-text)"
               >
                 {con.address}

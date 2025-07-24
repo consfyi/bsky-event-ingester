@@ -87,8 +87,8 @@ function useConPosts() {
 }
 
 export interface Con {
-  identifier: string;
-  slug: string;
+  labelId: string;
+  id: string;
   name: string;
   start: TZDate;
   end: TZDate;
@@ -113,7 +113,7 @@ export function useCons() {
         (def) => {
           const fullDef = def as typeof def & {
             fbl_eventInfo: {
-              slug: string;
+              id: string;
               date: string;
               address: string;
               country: string;
@@ -155,8 +155,8 @@ export function useCons() {
 
           return [
             {
-              identifier: def.identifier,
-              slug: fullDef.fbl_eventInfo.slug,
+              labelId: def.identifier,
+              id: fullDef.fbl_eventInfo.id,
               name: strings.name,
               start: startDate,
               end: endDate,

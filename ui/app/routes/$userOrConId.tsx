@@ -4,7 +4,7 @@ import { useEffect } from "react";
 import ConDetails from "~/components/ConDetails";
 import UserDetails from "~/components/UserDetails";
 import { useConsWithPosts, useProfile } from "~/hooks";
-import type { Route } from "./+types/$slug";
+import type { Route } from "./+types/$userOrConId";
 
 function UserPage({ actor }: { actor: string }) {
   const profile = useProfile(actor as ActorIdentifier);
@@ -31,20 +31,20 @@ function UserPage({ actor }: { actor: string }) {
   );
 }
 
-function ConPage({ slug }: { slug: string }) {
+function ConPage({ id }: { id: string }) {
   const cons = useConsWithPosts();
 
-  const con = cons != null ? cons.find((con) => con.slug == slug) : null;
+  const con = cons != null ? cons.find((con) => con.id == id) : null;
 
   useEffect(() => {
     if (con == null) {
       return;
     }
     document.title = con != null ? con.name : "";
-    if (slug != con.slug) {
-      window.history.replaceState(null, "", `/${con.slug}`);
+    if (id != con.id) {
+      window.history.replaceState(null, "", `/${con.id}`);
     }
-  }, [con, slug]);
+  }, [con, id]);
 
   if (con == null) {
     throw new Response(null, {
@@ -59,10 +59,12 @@ function ConPage({ slug }: { slug: string }) {
   );
 }
 
-export default function Index({ params: { slug } }: Route.ComponentProps) {
-  return slug[0] == "@" ? (
-    <UserPage actor={slug.substring(1)} />
+export default function Index({
+  params: { userOrConId },
+}: Route.ComponentProps) {
+  return userOrConId[0] == "@" ? (
+    <UserPage actor={userOrConId.substring(1)} />
   ) : (
-    <ConPage slug={slug} />
+    <ConPage id={userOrConId} />
   );
 }

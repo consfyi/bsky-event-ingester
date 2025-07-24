@@ -84,7 +84,7 @@ async fn list_all_records(
 
 #[derive(Debug)]
 struct Event {
-    slug: String,
+    id: String,
     url: String,
     name: String,
     address: String,
@@ -307,7 +307,7 @@ async fn fetch_events(
                 .map(|region| slug::guess_language_for_region(region))
                 .unwrap_or(icu_locale::LanguageIdentifier::UNKNOWN);
 
-            let slug = slug::slugify(&event.name, &langid);
+            let id = slug::slugify(&event.name, &langid);
 
             static ID_REGEX: std::sync::LazyLock<regex::Regex> =
                 std::sync::LazyLock::new(|| regex::Regex::new(r#"/event/(\d+)/"#).unwrap());
@@ -320,12 +320,15 @@ async fn fetch_events(
                 .parse()?;
 
             let lat_lng = markers.get(&fc_id).cloned();
+            if lat_lng.is_none() {
+                log::warn!("No marker for: {}", id);
+            }
             let timezone = lat_lng
                 .and_then(|[lat, lng]| geotz::lookup([lng, lat]).ok())
                 .and_then(|tz| tz.first().and_then(|tz| tz.parse().ok()));
 
             events.insert(
-                slug.clone(),
+                id.clone(),
                 Event {
                     url: event.url.to_string(),
                     name: event.name.to_string(),
@@ -333,7 +336,7 @@ async fn fetch_events(
                     country: country.to_string(),
                     start_date,
                     end_date,
-                    slug,
+                    id,
                     lat_lng,
                     timezone,
                     rkey: None,
@@ -589,7 +592,7 @@ async fn sync_labels(
                                 atrium_api::app::bsky::richtext::facet::MainFeaturesItem::Link(
                                     Box::new(
                                         atrium_api::app::bsky::richtext::facet::LinkData {
-                                            uri: format!("{}/{}", ui_endpoint, event.slug),
+                                            uri: format!("{}/{}", ui_endpoint, event.id),
                                         }
                                         .into(),
                                     ),
@@ -707,7 +710,7 @@ async fn sync_labels(
                                 extra_data.insert(
                                     EXTRA_DATA_EVENT_INFO.to_string(),
                                     ipld_core::serde::to_ipld(LabelerEventInfo {
-                                        slug: event.slug.clone(),
+                                        slug: event.id.clone(),
                                         name: event.name.clone(),
                                         date: format!(
                                             "{}/{}",

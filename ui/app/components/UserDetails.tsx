@@ -29,16 +29,16 @@ function Attending({ profile }: { profile: Profile }) {
   const labelsSet = new Set(labels!.map((label) => label.val));
 
   const cons = useConsWithPosts();
-  const filteredCons = cons.filter((con) => labelsSet.has(con.identifier));
+  const filteredCons = cons.filter((con) => labelsSet.has(con.id));
 
   const knownCons =
     selfLabelsSet != null
-      ? filteredCons.filter((con) => selfLabelsSet.has(con.identifier))
+      ? filteredCons.filter((con) => selfLabelsSet.has(con.id))
       : filteredCons;
 
   const unknownCons =
     selfLabelsSet != null
-      ? filteredCons.filter((con) => !selfLabelsSet.has(con.identifier))
+      ? filteredCons.filter((con) => !selfLabelsSet.has(con.id))
       : [];
 
   return (
@@ -54,7 +54,7 @@ function Attending({ profile }: { profile: Profile }) {
         <SimpleGrid cols={{ base: 1, lg: 3 }} mb="sm">
           {knownCons.map((con) => (
             <ConRow
-              key={con.identifier}
+              key={con.id}
               con={con}
               showMonthInIcon
               showEndDateOnly
@@ -84,7 +84,7 @@ function Attending({ profile }: { profile: Profile }) {
           <SimpleGrid cols={{ base: 1, lg: 3 }} mb="sm">
             {unknownCons.map((con) => (
               <ConRow
-                key={con.identifier}
+                key={con.id}
                 con={con}
                 showMonthInIcon
                 showEndDateOnly

@@ -95,7 +95,7 @@ function FlatList({
       <Box px="xs">
         {sortedCons.map((con) => {
           return (
-            <Box key={con.identifier} mb={density == "compact" ? "xs" : "sm"}>
+            <Box key={con.id} mb={density == "compact" ? "xs" : "sm"}>
               <ConRow
                 con={con}
                 showMonthInIcon={false}
@@ -265,7 +265,7 @@ function ConsByFollowed({
           comparing((con) =>
             followedConAttendees == null
               ? con.post.likeCount
-              : (followedConAttendees[con.identifier] ?? []).length
+              : (followedConAttendees[con.id] ?? []).length
           ),
           comparing((con) => con.post.likeCount)
         )

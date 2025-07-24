@@ -221,9 +221,8 @@ export function Body({ con }: { con: ConWithPost }) {
 
   const knownLikeCount =
     self != null
-      ? (followedConAttendees != null &&
-        followedConAttendees[con.identifier] != null
-          ? followedConAttendees[con.identifier].length
+      ? (followedConAttendees != null && followedConAttendees[con.id] != null
+          ? followedConAttendees[con.id].length
           : 0) + (isAttending ? 1 : 0)
       : likeCount;
 
@@ -271,7 +270,7 @@ export function Body({ con }: { con: ConWithPost }) {
             <Text size="sm" mb={5}>
               <Anchor
                 component={Link}
-                to={`/map#${con.slug}`}
+                to={`/map#${con.id}`}
                 c="var(--mantine-color-text)"
               >
                 {con.address}

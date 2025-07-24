@@ -652,7 +652,7 @@ export function useFilterPredicate(filter: FilterOptions) {
         // Followed filter
         (!filter.followed ||
           followedConAttendees == null ||
-          (followedConAttendees[con.identifier] ?? []).length > 0)
+          (followedConAttendees[con.id] ?? []).length > 0)
       );
     },
     [t, filter, followedConAttendees, queryRe]

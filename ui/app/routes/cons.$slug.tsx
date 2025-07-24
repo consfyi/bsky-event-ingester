@@ -6,7 +6,7 @@ export default function Index({ params: { slug } }: Route.ComponentProps) {
   const cons = useConsWithPosts();
   const con =
     cons != null
-      ? cons.find((con) => con.slug == slug || con.identifier == slug)
+      ? cons.find((con) => con.id == slug || con.labelId == slug)
       : null;
   if (con == null) {
     throw new Response(null, {
@@ -14,5 +14,5 @@ export default function Index({ params: { slug } }: Route.ComponentProps) {
     });
   }
 
-  return <Navigate replace to={`/${con.slug}`} />;
+  return <Navigate replace to={`/${con.id}`} />;
 }

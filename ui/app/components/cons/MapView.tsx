@@ -37,7 +37,7 @@ export default function MapView({
   const slug = location.hash != "" ? location.hash.slice(1) : null;
 
   const selected = useMemo(
-    () => (slug != null ? cons.find((con) => con.slug == slug) ?? null : null),
+    () => (slug != null ? cons.find((con) => con.id == slug) ?? null : null),
     [slug, cons]
   );
 
@@ -104,11 +104,11 @@ export default function MapView({
                 top: 0,
                 left: 0,
               }}
-              selected={selected != null ? selected.identifier : null}
+              selected={selected != null ? selected.labelId : null}
               setSelected={(identifier) => {
                 const con =
                   identifier != null
-                    ? cons.find((con) => con.identifier == identifier)
+                    ? cons.find((con) => con.id == identifier)
                     : null;
                 setLayout({
                   ...layout,
@@ -117,7 +117,7 @@ export default function MapView({
                   {
                     pathname: location.pathname,
                     search: location.search,
-                    hash: con != null ? con.slug : "",
+                    hash: con != null ? con.id : "",
                   },
                   { replace: true }
                 );
@@ -148,7 +148,7 @@ export default function MapView({
 
                 return [
                   {
-                    id: con.identifier,
+                    id: con.id,
                     lat,
                     lng,
                     active,
