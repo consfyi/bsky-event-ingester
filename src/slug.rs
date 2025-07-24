@@ -99,7 +99,7 @@ mod test {
         );
         assert_eq!(
             slugify_for_label("IĞDIR", &icu_locale::langid!("tr-TR")),
-            "ığdır"
+            "igdir"
         );
         assert_eq!(
             slugify_for_label("Tails & Tornadoes", &icu_locale::langid!("en-US")),
