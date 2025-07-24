@@ -119,7 +119,7 @@ export const FilterOptions = qp.schema({
   minDays: qp.default_(qp.int, 1),
   maxDays: qp.default_(qp.int, 7),
 });
-export type FilterOptions = qp.InferSchema<typeof FilterOptions>;
+export type FilterOptions = qp.Infer<typeof FilterOptions>;
 export const DEFAULT_FILTER_OPTIONS = qp.defaults(FilterOptions);
 
 const CONTINENT_NAMES: Record<Continent, MessageDescriptor> = {

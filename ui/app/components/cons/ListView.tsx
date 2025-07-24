@@ -270,7 +270,7 @@ export const LayoutOptions = qp.schema({
   sort: qp.default_(qp.literal(SORT_BY), "date"),
   desc: qp.default_(qp.boolean, false),
 });
-export type LayoutOptions = qp.InferSchema<typeof LayoutOptions>;
+export type LayoutOptions = qp.Infer<typeof LayoutOptions>;
 
 const SORT_BY_DISPLAYS: Record<
   SortBy,

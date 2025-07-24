@@ -62,7 +62,7 @@ function useFirstDayOfWeek() {
 export const LayoutOptions = qp.schema({
   timezone: qp.default_(qp.literal(["theirs", "yours"]), "theirs"),
 });
-export type LayoutOptions = qp.InferSchema<typeof LayoutOptions>;
+export type LayoutOptions = qp.Infer<typeof LayoutOptions>;
 
 const FIRST_DAYS_OF_WEEK: Day[] = [0, 1, 6];
 

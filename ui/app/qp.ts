@@ -180,7 +180,7 @@ type InferField<F extends Field<unknown>> = F extends MultipleField<infer T>
   ? T | undefined
   : never;
 
-export type InferSchema<T extends Schema> = {
+export type Infer<T extends Schema> = {
   [K in keyof T]: InferField<T[K]>;
 };
 
@@ -196,8 +196,8 @@ function isScalarField<T>(f: Field<T>): f is ScalarField<T> {
   return !isDefaultField(f) && !isMultipleField(f);
 }
 
-export function defaults<T extends Schema>(schema: T): InferSchema<T> {
-  const result = {} as InferSchema<T>;
+export function defaults<T extends Schema>(schema: T): Infer<T> {
+  const result = {} as Infer<T>;
 
   for (const key in schema) {
     const field = schema[key];
@@ -217,8 +217,8 @@ export function defaults<T extends Schema>(schema: T): InferSchema<T> {
 export function parse<T extends Schema>(
   schema: T,
   searchParams: URLSearchParams
-): InferSchema<T> {
-  const result = {} as InferSchema<T>;
+): Infer<T> {
+  const result = {} as Infer<T>;
 
   for (const key in schema) {
     const field = schema[key];
@@ -245,7 +245,7 @@ export function parse<T extends Schema>(
 
 export function serialize<T extends Schema>(
   schema: T,
-  record: InferSchema<T>,
+  record: Infer<T>,
   searchParams: URLSearchParams
 ) {
   for (const key in schema) {
@@ -272,8 +272,8 @@ export function serialize<T extends Schema>(
 
 export function equals<T extends Schema>(
   schema: T,
-  x: InferSchema<T>,
-  y: InferSchema<T>
+  x: Infer<T>,
+  y: Infer<T>
 ): boolean {
   for (const key in schema) {
     const field = schema[key];

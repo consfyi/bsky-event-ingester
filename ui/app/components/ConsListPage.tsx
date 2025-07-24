@@ -20,8 +20,8 @@ export default function ConsListPage<T extends qp.Schema>({
   LayoutOptions: T;
   Component(props: {
     cons: ConWithPost[];
-    layout: qp.InferSchema<typeof LayoutOptions>;
-    setLayout(layout: qp.InferSchema<typeof LayoutOptions>): void;
+    layout: qp.Infer<typeof LayoutOptions>;
+    setLayout(layout: qp.Infer<typeof LayoutOptions>): void;
     filter: FilterOptions;
     setFilter(filter: FilterOptions): void;
   }): ReactNode;
@@ -43,7 +43,7 @@ export default function ConsListPage<T extends qp.Schema>({
 
   const [viewInternal, setViewInternal] = useState<{
     filter: FilterOptions;
-    layout: qp.InferSchema<typeof LayoutOptions>;
+    layout: qp.Infer<typeof LayoutOptions>;
   }>(pendingView);
 
   useEffect(() => {
