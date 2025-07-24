@@ -168,7 +168,7 @@ export default function MapView({
                         showLocation="break"
                         showFollowed
                         showLikeButton
-                        showBigIcon={false}
+                        density="cozy"
                         showDuration={false}
                         withId={false}
                       />

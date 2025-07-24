@@ -61,7 +61,7 @@ function Attending({ profile }: { profile: Profile }) {
               showLocation="hide"
               showFollowed={false}
               showLikeButton={false}
-              showBigIcon
+              density="comfortable"
               showDuration
               withId={false}
             />
@@ -91,7 +91,7 @@ function Attending({ profile }: { profile: Profile }) {
                 showLocation="hide"
                 showFollowed={false}
                 showLikeButton={false}
-                showBigIcon
+                density="comfortable"
                 showDuration
                 withId={false}
               />

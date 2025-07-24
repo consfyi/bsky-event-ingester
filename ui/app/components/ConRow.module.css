@@ -1,3 +1,7 @@
 .itemDetails > span:not(:first-child)::before {
-  content: " • ";
+  content: "\00a0•\00a0";
+}
+
+.compact > p > span:first-child::before {
+  content: "\00a0•\00a0";
 }

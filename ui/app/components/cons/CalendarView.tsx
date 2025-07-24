@@ -84,7 +84,6 @@ export default function CalendarView({
 
   const { i18n, t } = useLingui();
 
-  const compact = filter.attending || filter.q != "";
   const [firstDayOfWeek, setFirstDayOfWeek] = useFirstDayOfWeek();
   const [open, setOpen] = useState(false);
 
@@ -198,7 +197,7 @@ export default function CalendarView({
             <Calendar
               firstDay={firstDayOfWeek}
               inYourTimeZone={layout.timezone == "yours"}
-              includeToday={!compact}
+              includeToday={!filter.attending && filter.q == ""}
               events={filteredCons.map((con) => ({
                 id: con.identifier,
                 anchor: con.slug,

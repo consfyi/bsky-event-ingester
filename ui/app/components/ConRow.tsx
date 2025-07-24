@@ -37,7 +37,7 @@ export default function ConRow({
   showLocation,
   showFollowed,
   showLikeButton,
-  showBigIcon,
+  density,
   showDuration,
   withId,
 }: {
@@ -47,7 +47,7 @@ export default function ConRow({
   showLocation: "inline" | "break" | "hide";
   showFollowed: boolean;
   showLikeButton: boolean;
-  showBigIcon: boolean;
+  density: "comfortable" | "cozy" | "compact";
   showDuration: boolean;
   withId: boolean;
 }) {
@@ -105,7 +105,7 @@ export default function ConRow({
 
   return (
     <Group gap="xs" wrap="nowrap" id={withId ? con.slug : undefined}>
-      {showBigIcon ? (
+      {density == "comfortable" ? (
         <Anchor component={Link} to={`/${con.slug}`}>
           <Indicator
             position="top-start"
@@ -151,7 +151,13 @@ export default function ConRow({
           </Indicator>
         </Anchor>
       ) : null}
-      <Box style={{ minWidth: 0 }}>
+      <Box
+        style={{
+          minWidth: 0,
+          display: density == "compact" ? "flex" : "block",
+        }}
+        className={density == "compact" ? classes.compact : ""}
+      >
         <Group gap={7} wrap="nowrap">
           {showLikeButton && con.post.viewer != null ? (
             <LikeButton size="xs" post={con.post} />
@@ -218,7 +224,7 @@ export default function ConRow({
               </>
             ) : null}
           </Text>
-          {!showEndDateOnly ? (
+          {density != "comfortable" || !showEndDateOnly ? (
             <Text span>
               <IconCalendar title={t`Date`} size={12} />{" "}
               {showDuration ? (

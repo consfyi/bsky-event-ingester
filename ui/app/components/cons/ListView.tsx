@@ -50,10 +50,12 @@ function ConsByDate({
   cons,
   hideEmptyGroups,
   sortDesc,
+  density,
 }: {
   cons: ConWithPost[];
   hideEmptyGroups: boolean;
   sortDesc: boolean;
+  density: Density;
 }) {
   const { i18n } = useLingui();
 
@@ -134,7 +136,7 @@ function ConsByDate({
         <Box px="xs">
           {(consByMonth[groupKey] ?? []).map((con) => {
             return (
-              <Box key={con.identifier} mb="sm">
+              <Box key={con.identifier} mb={density == "compact" ? "xs" : "sm"}>
                 <ConRow
                   con={con}
                   showMonthInIcon={false}
@@ -142,7 +144,7 @@ function ConsByDate({
                   showLocation="inline"
                   showFollowed
                   showLikeButton
-                  showBigIcon
+                  density={density}
                   showDuration
                   withId
                 />
@@ -158,9 +160,11 @@ function ConsByDate({
 function ConsByAttendees({
   cons,
   sortDesc,
+  density,
 }: {
   cons: ConWithPost[];
   sortDesc: boolean;
+  density: Density;
 }) {
   const sortedCons = useMemo(() => {
     const sortedCons = sorted(
@@ -173,15 +177,17 @@ function ConsByAttendees({
     return sortedCons;
   }, [cons, sortDesc]);
 
-  return <ConsBy cons={sortedCons} />;
+  return <ConsBy cons={sortedCons} density={density} />;
 }
 
 function ConsByFollowed({
   cons,
   sortDesc,
+  density,
 }: {
   cons: ConWithPost[];
   sortDesc: boolean;
+  density: Density;
 }) {
   const followedConAttendees = useFollowedConAttendees();
 
@@ -203,15 +209,17 @@ function ConsByFollowed({
     return sortedCons;
   }, [cons, followedConAttendees, sortDesc]);
 
-  return <ConsBy cons={sortedCons} />;
+  return <ConsBy cons={sortedCons} density={density} />;
 }
 
 function ConsByName({
   cons,
   sortDesc,
+  density,
 }: {
   cons: ConWithPost[];
   sortDesc: boolean;
+  density: Density;
 }) {
   const { i18n, t } = useLingui();
   const collator = useMemo(
@@ -229,15 +237,15 @@ function ConsByName({
     return sorted;
   }, [cons, sortDesc, collator]);
 
-  return <ConsBy cons={sortedCons} />;
+  return <ConsBy cons={sortedCons} density={density} />;
 }
 
-function ConsBy({ cons }: { cons: ConWithPost[] }) {
+function ConsBy({ cons, density }: { cons: ConWithPost[]; density: Density }) {
   return (
     <Box px="xs">
       {cons.map((con) => {
         return (
-          <Box key={con.identifier} mb="sm">
+          <Box key={con.identifier} mb={density == "compact" ? "xs" : "sm"}>
             <ConRow
               con={con}
               showMonthInIcon
@@ -245,7 +253,7 @@ function ConsBy({ cons }: { cons: ConWithPost[] }) {
               showLocation="inline"
               showFollowed
               showLikeButton
-              showBigIcon
+              density={density}
               showDuration
               withId
             />
@@ -259,6 +267,9 @@ function ConsBy({ cons }: { cons: ConWithPost[] }) {
 const SORT_BY = ["date", "name", "attendees", "followed"] as const;
 type SortBy = (typeof SORT_BY)[number];
 
+const DENSITY = ["comfortable", "cozy", "compact"] as const;
+type Density = (typeof DENSITY)[number];
+
 const DEFAULT_SORT_DESC_OPTIONS: Record<SortBy, boolean> = {
   date: false,
   name: false,
@@ -269,6 +280,7 @@ const DEFAULT_SORT_DESC_OPTIONS: Record<SortBy, boolean> = {
 export const LayoutOptions = qp.schema({
   sort: qp.default_(qp.literal(SORT_BY), "date"),
   desc: qp.flag,
+  density: qp.default_(qp.literal(DENSITY), "comfortable"),
 });
 export type LayoutOptions = qp.Infer<typeof LayoutOptions>;
 
@@ -335,8 +347,6 @@ export default function ListView({
 
   const { data: followedConAttendees } = useFollowedConAttendeesDLE();
 
-  const compact = filter.attending || filter.q != "";
-
   return (
     <Box style={{ position: "relative" }}>
       <Container size="lg" px={0}>
@@ -401,6 +411,7 @@ export default function ListView({
                         aria-selected={selected}
                         onClick={() => {
                           setLayout({
+                            ...layout,
                             sort: sortBy,
                             desc: DEFAULT_SORT_DESC_OPTIONS[sortBy],
                           });
@@ -492,16 +503,29 @@ export default function ListView({
         {filteredCons.length > 0 ? (
           <Container size="lg" px={0}>
             {layout.sort == "attendees" ? (
-              <ConsByAttendees cons={filteredCons} sortDesc={layout.desc} />
+              <ConsByAttendees
+                cons={filteredCons}
+                sortDesc={layout.desc}
+                density={layout.density}
+              />
             ) : layout.sort == "followed" ? (
-              <ConsByFollowed cons={filteredCons} sortDesc={layout.desc} />
+              <ConsByFollowed
+                cons={filteredCons}
+                sortDesc={layout.desc}
+                density={layout.density}
+              />
             ) : layout.sort == "name" ? (
-              <ConsByName cons={filteredCons} sortDesc={layout.desc} />
+              <ConsByName
+                cons={filteredCons}
+                sortDesc={layout.desc}
+                density={layout.density}
+              />
             ) : layout.sort == "date" ? (
               <ConsByDate
                 cons={filteredCons}
                 sortDesc={layout.desc}
-                hideEmptyGroups={compact}
+                density={layout.density}
+                hideEmptyGroups={filter.attending || filter.q != ""}
               />
             ) : (
               absurd(layout.sort)
