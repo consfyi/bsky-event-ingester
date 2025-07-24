@@ -19,8 +19,8 @@ struct Config {
 }
 
 struct EventsState {
-    rkeys_to_ids: std::collections::HashMap<atrium_api::types::string::RecordKey, u64>,
-    events: std::collections::HashMap<u64, Event>,
+    rkeys_to_labeler_ids: std::collections::HashMap<atrium_api::types::string::RecordKey, String>,
+    events: std::collections::HashMap<String, Event>,
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -87,7 +87,6 @@ struct Event {
     slug: String,
     url: String,
     name: String,
-    full_name: String,
     address: String,
     country: String,
     start_date: chrono::NaiveDate,
@@ -95,6 +94,8 @@ struct Event {
     lat_lng: Option<[f64; 2]>,
     timezone: Option<chrono_tz::Tz>,
     rkey: Option<atrium_api::types::string::RecordKey>,
+    label_id: String,
+    legacy_label_id: String,
 }
 
 impl Event {
@@ -175,7 +176,7 @@ async fn fetch_events(
     reqwest_client: &reqwest::Client,
     calendar_url: &str,
     map_url: &str,
-) -> Result<std::collections::HashMap<u64, Event>, anyhow::Error> {
+) -> Result<std::collections::HashMap<String, Event>, anyhow::Error> {
     let (raw_map, raw_calendar) = tokio::try_join!(
         async {
             Ok::<_, anyhow::Error>(
@@ -273,12 +274,6 @@ async fn fetch_events(
                 continue;
             }
 
-            let (name, year) = event
-                .name
-                .rsplit_once(" ")
-                .ok_or(anyhow::anyhow!("could not split year"))?;
-            let year: u32 = year.parse()?;
-
             let start_date = chrono::NaiveDate::parse_from_str(&event.start_date, "%Y-%m-%d")?;
             let end_date = chrono::NaiveDate::parse_from_str(&event.end_date, "%Y-%m-%d")?;
 
@@ -312,11 +307,11 @@ async fn fetch_events(
                 .map(|region| slug::guess_language_for_region(region))
                 .unwrap_or(icu_locale::LanguageIdentifier::UNKNOWN);
 
-            let slug = format!("{}-{}", slug::slugify(&name, &langid), year);
+            let slug = slug::slugify(&event.name, &langid);
 
             static ID_REGEX: std::sync::LazyLock<regex::Regex> =
                 std::sync::LazyLock::new(|| regex::Regex::new(r#"/event/(\d+)/"#).unwrap());
-            let id: u64 = ID_REGEX
+            let fc_id: u64 = ID_REGEX
                 .captures(&event.url)
                 .ok_or(anyhow::anyhow!("could not get ID"))?
                 .get(1)
@@ -324,17 +319,16 @@ async fn fetch_events(
                 .as_str()
                 .parse()?;
 
-            let lat_lng = markers.get(&id).cloned();
+            let lat_lng = markers.get(&fc_id).cloned();
             let timezone = lat_lng
                 .and_then(|[lat, lng]| geotz::lookup([lng, lat]).ok())
                 .and_then(|tz| tz.first().and_then(|tz| tz.parse().ok()));
 
             events.insert(
-                id,
+                slug.clone(),
                 Event {
                     url: event.url.to_string(),
-                    name: name.to_string(),
-                    full_name: format!("{} {}", name, year),
+                    name: event.name.to_string(),
                     address,
                     country: country.to_string(),
                     start_date,
@@ -343,6 +337,8 @@ async fn fetch_events(
                     lat_lng,
                     timezone,
                     rkey: None,
+                    label_id: slug::slugify_for_label(&event.name, &langid),
+                    legacy_label_id: base26::encode(fc_id),
                 },
             );
         }
@@ -373,7 +369,7 @@ async fn fetch_old_events(
             atrium_xrpc_client::reqwest::ReqwestClient,
         >,
     >,
-) -> Result<Option<std::collections::HashMap<u64, OldEvent>>, anyhow::Error> {
+) -> Result<Option<std::collections::HashMap<String, OldEvent>>, anyhow::Error> {
     let Some(record) = match agent
         .api
         .com
@@ -426,7 +422,7 @@ async fn fetch_old_events(
                         }
                     };
 
-                    Some((base26::decode(&v.identifier).unwrap(), OldEvent { rkey }))
+                    Some((v.identifier.clone(), OldEvent { rkey }))
                 })
                 .collect::<std::collections::HashMap<_, _>>()
         }))
@@ -511,9 +507,22 @@ async fn sync_labels(
         .collect();
 
     // Delete old events if we don't see them in our retrieved events.
+    let events_key_by_labeler_id = events
+        .iter()
+        .flat_map(|(key, event)| {
+            [
+                (event.label_id.clone(), key.clone()),
+                (event.legacy_label_id.clone(), key.clone()),
+            ]
+        })
+        .collect::<std::collections::HashMap<_, _>>();
     for (id, oe) in old_events.into_iter() {
-        if let Some(event) = events.get_mut(&id) {
+        if let Some(key) = events_key_by_labeler_id.get(&id) {
+            let event = events.get_mut(key).unwrap();
             event.rkey = oe.rkey.clone();
+            if id == event.legacy_label_id {
+                event.label_id = id;
+            }
             continue;
         }
 
@@ -559,7 +568,7 @@ async fn sync_labels(
             event.rkey = Some(rkey.clone());
 
             {
-                let text = format!("{}", event.full_name);
+                let text = format!("{}", event.name);
 
                 let record: atrium_api::app::bsky::feed::post::Record =
                     atrium_api::app::bsky::feed::post::RecordData {
@@ -654,21 +663,21 @@ async fn sync_labels(
                 policies: atrium_api::app::bsky::labeler::defs::LabelerPoliciesData {
                     label_values: sorted_events.iter().filter(|(_, event)| {
                         event.rkey.as_ref().is_some()
-                    }).map(|(id, _)| base26::encode(**id)).collect(),
+                    }).map(|(_, event)| event.label_id.clone()).collect(),
                     label_value_definitions: Some(
                         sorted_events.iter()
-                            .map(|(id, event)| {
+                            .map(|(_, event)| {
                                 let mut def: atrium_api::com::atproto::label::defs::LabelValueDefinition = atrium_api::com::atproto::label::defs::LabelValueDefinitionData {
                                     adult_only: Some(false),
                                     blurs: "none".to_string(),
                                     default_setting: Some("warn".to_string()),
-                                    identifier: base26::encode(**id),
+                                    identifier: event.label_id.clone(),
                                     locales: vec![atrium_api::com::atproto::label::defs::LabelValueDefinitionStringsData {
                                         lang: atrium_api::types::string::Language::new(
                                             "en".to_string(),
                                         )
                                         .unwrap(),
-                                        name: event.full_name.clone(),
+                                        name: event.name.clone(),
                                         description: format!(
                                             "📅 {start_date} – {end_date}\n📍 {location}",
                                             location = event.address,
@@ -760,9 +769,14 @@ async fn sync_labels(
             .await?;
     }
 
-    events_state.rkeys_to_ids = sorted_events
+    events_state.rkeys_to_labeler_ids = sorted_events
         .iter()
-        .flat_map(|(id, event)| event.rkey.as_ref().map(|rkey| (rkey.clone(), **id)))
+        .flat_map(|(_, event)| {
+            event
+                .rkey
+                .as_ref()
+                .map(|rkey| (rkey.clone(), event.label_id.clone()))
+        })
         .collect();
 
     events_state.events = events;
@@ -868,7 +882,7 @@ async fn service_jetstream_once(
                     let events_state = events_state.lock().await;
 
                     let Some(id) = events_state
-                        .rkeys_to_ids
+                        .rkeys_to_labeler_ids
                         .get(&atrium_api::types::string::RecordKey::new(rkey.to_string()).unwrap())
                         .cloned()
                     else {
@@ -893,7 +907,7 @@ async fn service_jetstream_once(
                             cid: None,
                             neg: None,
                             uri: info.did.to_string(),
-                            val: base26::encode(id),
+                            val: event.label_id.clone(),
                             sig: None,
                             ver: Some(1),
                         }
@@ -1010,7 +1024,7 @@ async fn main() -> Result<(), anyhow::Error> {
         atrium_crypto::keypair::Secp256k1Keypair::import(&std::fs::read(&config.keypair_path)?)?;
 
     let events_state = std::sync::Arc::new(tokio::sync::Mutex::new(EventsState {
-        rkeys_to_ids: std::collections::HashMap::new(),
+        rkeys_to_labeler_ids: std::collections::HashMap::new(),
         events: std::collections::HashMap::new(),
     }));
 
