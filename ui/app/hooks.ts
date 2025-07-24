@@ -244,31 +244,39 @@ export function useSelfFollowsDLE() {
 }
 
 function useFollowedConAttendeesGlobalMemo(data: Profile[] | undefined) {
+  const cons = useCons();
+
   return useGlobalMemo(
     "followedConAttendees",
     () => {
       if (data == null) {
         return null;
       }
-      const cons: Record<string, Profile[]> = {};
+
+      const conIdByLabelId: Record<string, string> = {};
+      for (const con of cons) {
+        conIdByLabelId[con.labelId] = con.id;
+      }
+
+      const followedCons: Record<string, Profile[]> = {};
       for (const follow of data) {
         for (const label of follow.labels!) {
           if (label.src != LABELER_DID) {
             continue;
           }
-          const followed = (cons[label.val] ??= []);
+          const followed = (followedCons[conIdByLabelId[label.val]] ??= []);
           followed.push(follow);
         }
       }
-      for (const k in cons) {
-        cons[k] = sorted(
-          cons[k],
+      for (const k in followedCons) {
+        followedCons[k] = sorted(
+          followedCons[k],
           comparing((v) => v.handle)
         );
       }
-      return cons;
+      return followedCons;
     },
-    [data]
+    [cons, data]
   );
 }
 

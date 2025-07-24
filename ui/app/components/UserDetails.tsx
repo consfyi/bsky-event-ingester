@@ -29,16 +29,16 @@ function Attending({ profile }: { profile: Profile }) {
   const labelsSet = new Set(labels!.map((label) => label.val));
 
   const cons = useConsWithPosts();
-  const filteredCons = cons.filter((con) => labelsSet.has(con.id));
+  const filteredCons = cons.filter((con) => labelsSet.has(con.labelId));
 
   const knownCons =
     selfLabelsSet != null
-      ? filteredCons.filter((con) => selfLabelsSet.has(con.id))
+      ? filteredCons.filter((con) => selfLabelsSet.has(con.labelId))
       : filteredCons;
 
   const unknownCons =
     selfLabelsSet != null
-      ? filteredCons.filter((con) => !selfLabelsSet.has(con.id))
+      ? filteredCons.filter((con) => !selfLabelsSet.has(con.labelId))
       : [];
 
   return (

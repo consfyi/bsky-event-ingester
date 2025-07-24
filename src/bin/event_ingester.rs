@@ -26,7 +26,7 @@ struct EventsState {
 #[derive(serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct LabelerEventInfo {
-    slug: String,
+    id: String,
     name: String,
     date: String,
     address: String,
@@ -710,7 +710,7 @@ async fn sync_labels(
                                 extra_data.insert(
                                     EXTRA_DATA_EVENT_INFO.to_string(),
                                     ipld_core::serde::to_ipld(LabelerEventInfo {
-                                        slug: event.id.clone(),
+                                        id: event.id.clone(),
                                         name: event.name.clone(),
                                         date: format!(
                                             "{}/{}",

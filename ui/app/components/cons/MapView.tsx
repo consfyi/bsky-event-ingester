@@ -104,7 +104,7 @@ export default function MapView({
                 top: 0,
                 left: 0,
               }}
-              selected={selected != null ? selected.labelId : null}
+              selected={selected != null ? selected.id : null}
               setSelected={(identifier) => {
                 const con =
                   identifier != null
