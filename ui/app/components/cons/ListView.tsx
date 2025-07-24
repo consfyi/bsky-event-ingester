@@ -20,7 +20,7 @@ import {
   IconSortDescendingNumbers,
 } from "@tabler/icons-react";
 import { addMonths, getMonth, getYear, setDate } from "date-fns";
-import { compareMany, comparing, groupBy, sorted } from "iter-fns";
+import { compareMany, comparing, group, sorted } from "iter-fns";
 import { ReactNode, Suspense, useMemo, useState } from "react";
 import absurd from "~/absurd";
 import { reinterpretAsLocalDate } from "~/date";
@@ -170,9 +170,14 @@ function ConsByDate({
         return [];
       }
 
-      const grouped = groupBy(cons, (con) => {
-        return yearMonthKey(reinterpretAsLocalDate(con.start));
-      });
+      const grouped: Record<number, ConWithPost[]> = {};
+      for (const g of group(
+        cons,
+        comparing((con) => yearMonthKey(reinterpretAsLocalDate(con.start)))
+      )) {
+        const k = yearMonthKey(reinterpretAsLocalDate(g[0].start));
+        grouped[k] = g;
+      }
 
       const groups = [];
       for (
