@@ -97,5 +97,13 @@ mod test {
             slugify_for_label("Fur-Eh!", &icu_locale::langid!("hu-HU")),
             "fur-eh"
         );
+        assert_eq!(
+            slugify_for_label("IĞDIR", &icu_locale::langid!("tr-TR")),
+            "ığdır"
+        );
+        assert_eq!(
+            slugify_for_label("Tails & Tornadoes", &icu_locale::langid!("en-US")),
+            "tails-and-tornadoes"
+        );
     }
 }
