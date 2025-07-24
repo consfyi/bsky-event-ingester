@@ -60,7 +60,7 @@ function useFirstDayOfWeek() {
 }
 
 export const LayoutOptions = qp.schema({
-  timezone: qp.default_(qp.enum_(["theirs", "yours"]), "theirs"),
+  timezone: qp.default_(qp.literal(["theirs", "yours"]), "theirs"),
 });
 export type LayoutOptions = qp.InferSchema<typeof LayoutOptions>;
 

@@ -111,7 +111,7 @@ export function array<T>(type: ScalarField<T>, sep: string): ScalarField<T[]> {
   };
 }
 
-export function enum_<const T extends string | number>(
+export function literal<const T extends string | number>(
   values: readonly T[]
 ): ScalarField<T> {
   const type = (

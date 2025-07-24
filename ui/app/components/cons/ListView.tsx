@@ -267,7 +267,7 @@ const DEFAULT_SORT_DESC_OPTIONS: Record<SortBy, boolean> = {
 };
 
 export const LayoutOptions = qp.schema({
-  sort: qp.default_(qp.enum_(SORT_BY), "date"),
+  sort: qp.default_(qp.literal(SORT_BY), "date"),
   desc: qp.default_(qp.boolean, false),
 });
 export type LayoutOptions = qp.InferSchema<typeof LayoutOptions>;
