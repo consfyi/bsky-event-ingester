@@ -176,7 +176,7 @@ function ConsByDate({
         comparing((con) => yearMonthKey(reinterpretAsLocalDate(con.start)))
       )) {
         const k = yearMonthKey(reinterpretAsLocalDate(g[0].start));
-        grouped[k] = g;
+        (grouped[k] ??= []).push(...g);
       }
 
       const groups = [];
