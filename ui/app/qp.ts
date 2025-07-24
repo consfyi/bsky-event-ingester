@@ -168,7 +168,7 @@ export function multiple<T>(type: ScalarField<T>): MultipleField<T> {
 
 export type Schema = Record<string, Field<unknown>>;
 
-export function schema<T extends Schema>(schema: T): T {
+export function schema<const T extends Schema>(schema: T): T {
   return schema;
 }
 
