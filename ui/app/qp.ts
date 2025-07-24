@@ -132,24 +132,22 @@ export function enum_<const T extends string | number>(
 }
 
 export interface MultipleField<T> {
+  kind: "multiple";
   type: Type<T>;
   multiple: true;
 }
 
-export type ScalarField<T, HasDefault extends boolean> = {
+export interface DefaultField<T> {
+  kind: "default";
   type: Type<T>;
-  default: HasDefault extends true ? T : undefined;
-};
+  default: T;
+}
 
-export type Field<T> = ScalarField<T, boolean> | MultipleField<T>;
+export type Field<T> = Type<T> | DefaultField<T> | MultipleField<T>;
 
-export function scalar<T>(type: Type<T>): ScalarField<T, false>;
-export function scalar<T>(type: Type<T>, defaultValue: T): ScalarField<T, true>;
-export function scalar<T>(
-  type: Type<T>,
-  defaultValue?: T
-): ScalarField<T, boolean> {
+export function default_<T>(type: Type<T>, defaultValue: T): DefaultField<T> {
   return {
+    kind: "default",
     type,
     default: defaultValue,
   };
@@ -157,6 +155,7 @@ export function scalar<T>(
 
 export function multiple<T>(type: Type<T>): MultipleField<T> {
   return {
+    kind: "multiple",
     type,
     multiple: true,
   };
@@ -168,20 +167,28 @@ export function schema<T extends Schema>(schema: T): T {
   return schema;
 }
 
-type InferField<F extends Field<unknown>> = F["type"] extends Type<infer T>
-  ? F extends MultipleField<unknown>
-    ? T[]
-    : F extends ScalarField<unknown, true>
-    ? T
-    : T | undefined
+type InferField<F extends Field<unknown>> = F extends MultipleField<infer T>
+  ? T[]
+  : F extends DefaultField<infer T>
+  ? T
+  : F extends Type<infer T>
+  ? T | undefined
   : never;
 
 export type InferSchema<T extends Schema> = {
   [K in keyof T]: InferField<T[K]>;
 };
 
-function isMultipleField<T>(field: Field<T>): field is MultipleField<T> {
-  return "multiple" in field && field.multiple;
+function isDefaultField<T>(f: Field<T>): f is DefaultField<T> {
+  return "kind" in f && f.kind === "default";
+}
+
+function isMultipleField<T>(f: Field<T>): f is MultipleField<T> {
+  return "kind" in f && f.kind === "multiple";
+}
+
+function isType<T>(f: Field<T>): f is Type<T> {
+  return !isDefaultField(f) && !isMultipleField(f);
 }
 
 export function defaults<T extends Schema>(schema: T): InferSchema<T> {
@@ -190,9 +197,13 @@ export function defaults<T extends Schema>(schema: T): InferSchema<T> {
   for (const key in schema) {
     const field = schema[key];
 
-    result[key] = (isMultipleField(field) ? [] : field.default) as InferField<
-      typeof field
-    >;
+    result[key] = (
+      isMultipleField(field)
+        ? []
+        : isDefaultField(field)
+        ? field.default
+        : undefined
+    ) as InferField<typeof field>;
   }
 
   return result;
@@ -212,17 +223,21 @@ export function parse<T extends Schema>(
       result[key] = (
         parsed.every((v) => v !== undefined) && parsed.length > 0 ? parsed : []
       ) as InferField<typeof field>;
-    } else {
-      const defaultValue = field.default ?? undefined;
+    } else if (isDefaultField(field)) {
       const param = searchParams.get(key);
       if (param !== null) {
         const parsed = field.type.parse(param);
         result[key] = (
-          parsed !== undefined ? parsed : defaultValue
+          parsed !== undefined ? parsed : field.default
         ) as InferField<typeof field>;
       } else {
-        result[key] = defaultValue as InferField<typeof field>;
+        result[key] = undefined as InferField<typeof field>;
       }
+    } else {
+      const param = searchParams.get(key);
+      result[key] = (
+        param !== null ? field.parse(param) : undefined
+      ) as InferField<typeof field>;
     }
   }
 
@@ -248,7 +263,7 @@ export function serialize<T extends Schema>(
         searchParams.append(key, field.type.serialize(item));
       }
     } else if (
-      field.default === undefined ||
+      isDefaultField(field) &&
       !field.type.equals(value, field.default)
     ) {
       searchParams.set(key, field.type.serialize(value));
@@ -263,7 +278,8 @@ export function equals<T extends Schema>(
 ): boolean {
   for (const key in schema) {
     const field = schema[key];
-    if (!field.type.equals(x[key], y[key])) {
+    const type = isType(field) ? field : field.type;
+    if (!type.equals(x[key], y[key])) {
       return false;
     }
   }

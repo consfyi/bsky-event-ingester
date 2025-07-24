@@ -14,9 +14,7 @@ import FilterBar, {
 import Map from "../Map";
 
 export const LayoutOptions = qp.schema({
-  center: qp.scalar(
-    qp.tuple({ lat: qp.float, lng: qp.float, zoom: qp.float }, " ")
-  ),
+  center: qp.tuple({ lat: qp.float, lng: qp.float, zoom: qp.float }, " "),
 });
 export type LayoutOptions = qp.InferSchema<typeof LayoutOptions>;
 

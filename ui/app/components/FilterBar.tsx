@@ -110,12 +110,12 @@ export function LayoutSwitcher({
 }
 
 export const FilterOptions = qp.schema({
-  q: qp.scalar(qp.string, ""),
-  attending: qp.scalar(qp.boolean, false),
-  followed: qp.scalar(qp.boolean, false),
-  continents: qp.scalar(qp.array(qp.enum_(CONTINENTS), " "), [...CONTINENTS]),
-  minDays: qp.scalar(qp.int, 1),
-  maxDays: qp.scalar(qp.int, 7),
+  q: qp.default_(qp.string, ""),
+  attending: qp.default_(qp.boolean, false),
+  followed: qp.default_(qp.boolean, false),
+  continents: qp.default_(qp.array(qp.enum_(CONTINENTS), " "), [...CONTINENTS]),
+  minDays: qp.default_(qp.int, 1),
+  maxDays: qp.default_(qp.int, 7),
 });
 export type FilterOptions = qp.InferSchema<typeof FilterOptions>;
 export const DEFAULT_FILTER_OPTIONS = qp.defaults(FilterOptions);
