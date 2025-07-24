@@ -23,7 +23,7 @@ import {
 } from "@tabler/icons-react";
 import { addMonths, getMonth, getYear, setDate } from "date-fns";
 import { compareMany, comparing, groupBy, sorted } from "iter-fns";
-import { Fragment, Suspense, useMemo, useState } from "react";
+import { ReactNode, Suspense, useMemo, useState } from "react";
 import absurd from "~/absurd";
 import { reinterpretAsLocalDate } from "~/date";
 import {
@@ -46,6 +46,79 @@ function yearMonthKey(d: Date) {
   return getYear(d) * 12 + getMonth(d);
 }
 
+function ListGroup({
+  title,
+  cons,
+  sortDesc,
+  density,
+}: {
+  title: ReactNode;
+  cons: ConWithPost[];
+  sortDesc: boolean;
+  density: Density;
+}) {
+  const sortedCons = useMemo(() => {
+    const sortedCons = cons.slice();
+    if (sortDesc) {
+      sortedCons.reverse();
+    }
+    return sortedCons;
+  }, [cons, sortDesc]);
+
+  return (
+    <>
+      <Title
+        mb="sm"
+        px={{ base: 0, lg: "xs" }}
+        mt={{ base: -4, lg: -8 }}
+        order={2}
+        size="h5"
+        fw={500}
+        pos="sticky"
+        top={50}
+        style={{
+          zIndex: 3,
+          background:
+            "color-mix(in srgb, var(--mantine-color-body), transparent 15%)",
+          backdropFilter: "blur(5px)",
+        }}
+      >
+        <Text
+          fw={500}
+          px={{ base: "xs", lg: 0 }}
+          pt={{ base: 4, lg: 8 }}
+          pb={4}
+          style={{
+            borderBottom:
+              "calc(0.0625rem * var(--mantine-scale)) solid var(--mantine-color-default-border)",
+          }}
+        >
+          {title}
+        </Text>
+      </Title>
+      <Box px="xs">
+        {sortedCons.map((con) => {
+          return (
+            <Box key={con.identifier} mb={density == "compact" ? "xs" : "sm"}>
+              <ConRow
+                con={con}
+                showMonthInIcon={false}
+                showEndDateOnly
+                showLocation="inline"
+                showFollowed
+                showLikeButton
+                density={density}
+                showDuration
+                withId
+              />
+            </Box>
+          );
+        })}
+      </Box>
+    </>
+  );
+}
+
 function ConsByDate({
   cons,
   hideEmptyGroups,
@@ -59,17 +132,13 @@ function ConsByDate({
 }) {
   const { i18n } = useLingui();
 
-  const consByMonth = useMemo(() => {
-    const groups = groupBy(cons, (con) => {
-      return yearMonthKey(reinterpretAsLocalDate(con.start));
-    });
-    if (sortDesc) {
-      for (const k in groups) {
-        groups[k]!.reverse();
-      }
-    }
-    return groups;
-  }, [cons, sortDesc]);
+  const consByMonth = useMemo(
+    () =>
+      groupBy(cons, (con) => {
+        return yearMonthKey(reinterpretAsLocalDate(con.start));
+      }),
+    [cons]
+  );
 
   const months = useMemo(() => {
     if (cons.length == 0) {
@@ -94,65 +163,23 @@ function ConsByDate({
     if (sortDesc) {
       months.reverse();
     }
+
     return months;
   }, [cons, hideEmptyGroups, consByMonth, sortDesc]);
 
   return months.map((date) => {
     const groupKey = yearMonthKey(date);
     return (
-      <Fragment key={groupKey}>
-        <Title
-          mb="sm"
-          px={{ base: 0, lg: "xs" }}
-          mt={{ base: -4, lg: -8 }}
-          order={2}
-          size="h5"
-          fw={500}
-          pos="sticky"
-          top={50}
-          style={{
-            zIndex: 3,
-            background:
-              "color-mix(in srgb, var(--mantine-color-body), transparent 15%)",
-            backdropFilter: "blur(5px)",
-          }}
-        >
-          <Text
-            fw={500}
-            px={{ base: "xs", lg: 0 }}
-            pt={{ base: 4, lg: 8 }}
-            pb={4}
-            style={{
-              borderBottom:
-                "calc(0.0625rem * var(--mantine-scale)) solid var(--mantine-color-default-border)",
-            }}
-          >
-            {i18n.date(date, {
-              month: "long",
-              year: "numeric",
-            })}
-          </Text>
-        </Title>
-        <Box px="xs">
-          {(consByMonth[groupKey] ?? []).map((con) => {
-            return (
-              <Box key={con.identifier} mb={density == "compact" ? "xs" : "sm"}>
-                <ConRow
-                  con={con}
-                  showMonthInIcon={false}
-                  showEndDateOnly
-                  showLocation="inline"
-                  showFollowed
-                  showLikeButton
-                  density={density}
-                  showDuration
-                  withId
-                />
-              </Box>
-            );
-          })}
-        </Box>
-      </Fragment>
+      <ListGroup
+        cons={consByMonth[groupKey] ?? []}
+        key={groupKey}
+        title={i18n.date(date, {
+          month: "long",
+          year: "numeric",
+        })}
+        sortDesc={sortDesc}
+        density={density}
+      />
     );
   });
 }
