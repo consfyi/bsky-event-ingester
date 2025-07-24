@@ -111,18 +111,16 @@ export function array<T>(type: Type<T>, sep: string): Type<T[]> {
   };
 }
 
-export function enumImpl<T, U extends T>(
-  type: Type<T>,
-  values: readonly U[]
-): Type<U> {
-  const set = new Set<T>(values);
+export function enum_<const T extends string | number>(
+  values: readonly T[]
+): Type<T> {
+  const type = (typeof values[0] === "number" ? float : string) as Type<T>;
 
+  const allowed = new Set(values);
   return {
     parse(v) {
       const parsed = type.parse(v);
-      return parsed !== undefined && set.has(parsed)
-        ? (parsed as U)
-        : undefined;
+      return parsed !== undefined && allowed.has(parsed) ? parsed : undefined;
     },
     serialize(v) {
       return type.serialize(v);
@@ -131,18 +129,6 @@ export function enumImpl<T, U extends T>(
       return type.equals(x, y);
     },
   };
-}
-
-export function enum_<const T extends string | number>(
-  values: readonly T[]
-): Type<T> {
-  if (values.every((v) => typeof v === "string")) {
-    return enumImpl(string, values);
-  }
-  if (values.every((v) => typeof v === "number")) {
-    return enumImpl(float, values);
-  }
-  throw "unreachable";
 }
 
 export interface MultipleField<T> {
