@@ -46,7 +46,7 @@ function yearMonthKey(d: Date) {
   return getYear(d) * 12 + getMonth(d);
 }
 
-function ListGroup({
+function FlatList({
   title,
   cons,
   sortDesc,
@@ -121,6 +121,40 @@ function ListGroup({
   );
 }
 
+function GroupedList({
+  groups,
+  hideEmptyGroups,
+  sortDesc,
+  density,
+}: {
+  groups: { key: string; title: ReactNode; cons: ConWithPost[] }[];
+  hideEmptyGroups: boolean;
+  sortDesc: boolean;
+  density: Density;
+}) {
+  const sortedGroups = useMemo(() => {
+    const sortedGroups = groups.slice();
+    if (sortDesc) {
+      sortedGroups.reverse();
+    }
+    return sortedGroups;
+  }, [groups, sortDesc]);
+
+  return sortedGroups.flatMap(({ key, title, cons }) => {
+    return !hideEmptyGroups || cons.length > 0
+      ? [
+          <FlatList
+            cons={cons}
+            key={key}
+            title={title}
+            sortDesc={sortDesc}
+            density={density}
+          />,
+        ]
+      : [];
+  });
+}
+
 function ConsByDate({
   cons,
   hideEmptyGroups,
@@ -132,58 +166,56 @@ function ConsByDate({
   sortDesc: boolean;
   density: Density;
 }) {
-  const { i18n } = useLingui();
+  const { i18n, t } = useLingui();
 
-  const consByMonth = useMemo(
-    () =>
-      groupBy(cons, (con) => {
+  const groups = useMemo(
+    () => {
+      if (cons.length == 0) {
+        return [];
+      }
+
+      const grouped = groupBy(cons, (con) => {
         return yearMonthKey(reinterpretAsLocalDate(con.start));
-      }),
-    [cons]
+      });
+
+      const groups = [];
+      for (
+        let d = setDate(reinterpretAsLocalDate(cons![0].start), 1),
+          endDate = addMonths(
+            setDate(reinterpretAsLocalDate(cons![cons!.length - 1].start), 1),
+            1
+          );
+        d < endDate;
+        d = addMonths(d, 1)
+      ) {
+        const key = yearMonthKey(d);
+        groups.push({
+          key: key.toString(),
+          cons: grouped[key] ?? [],
+          title: (
+            <>
+              {i18n.date(d, {
+                month: "long",
+                year: "numeric",
+              })}
+            </>
+          ),
+        });
+      }
+      return groups;
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [cons, t]
   );
 
-  const months = useMemo(() => {
-    if (cons.length == 0) {
-      return [];
-    }
-    const months = [];
-    for (
-      let d = setDate(reinterpretAsLocalDate(cons![0].start), 1),
-        endDate = addMonths(
-          setDate(reinterpretAsLocalDate(cons![cons!.length - 1].start), 1),
-          1
-        );
-      d < endDate;
-      d = addMonths(d, 1)
-    ) {
-      if (hideEmptyGroups && (consByMonth[yearMonthKey(d)] ?? []).length == 0) {
-        continue;
-      }
-      months.push(d);
-    }
-
-    if (sortDesc) {
-      months.reverse();
-    }
-
-    return months;
-  }, [cons, hideEmptyGroups, consByMonth, sortDesc]);
-
-  return months.map((date) => {
-    const groupKey = yearMonthKey(date);
-    return (
-      <ListGroup
-        cons={consByMonth[groupKey] ?? []}
-        key={groupKey}
-        title={i18n.date(date, {
-          month: "long",
-          year: "numeric",
-        })}
-        sortDesc={sortDesc}
-        density={density}
-      />
-    );
-  });
+  return (
+    <GroupedList
+      groups={groups}
+      hideEmptyGroups={hideEmptyGroups}
+      sortDesc={sortDesc}
+      density={density}
+    />
+  );
 }
 
 function ConsByAttendees({
@@ -205,7 +237,7 @@ function ConsByAttendees({
   );
 
   return (
-    <ListGroup
+    <FlatList
       title={null}
       cons={sortedCons}
       density={density}
@@ -242,7 +274,7 @@ function ConsByFollowed({
   );
 
   return (
-    <ListGroup
+    <FlatList
       title={null}
       cons={sortedCons}
       density={density}
@@ -261,19 +293,18 @@ function ConsByName({
   density: Density;
 }) {
   const { i18n, t } = useLingui();
-  const collator = useMemo(
-    () => new Intl.Collator(i18n.locale),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [t]
-  );
 
   const sortedCons = useMemo(
-    () => sorted(cons, (x, y) => collator.compare(x.name, y.name)),
-    [cons, collator]
+    () => {
+      const collator = new Intl.Collator(i18n.locale);
+      return sorted(cons, (x, y) => collator.compare(x.name, y.name));
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [cons, t]
   );
 
   return (
-    <ListGroup
+    <FlatList
       title={null}
       cons={sortedCons}
       density={density}
