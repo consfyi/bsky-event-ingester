@@ -10,8 +10,7 @@ struct Config {
     bsky_endpoint: String,
     ui_endpoint: String,
     jetstream_endpoint: String,
-    calendar_url: String,
-    map_url: String,
+    events_url: String,
     postgres_url: String,
     keypair_path: String,
     label_sync_delay_secs: u64,
@@ -20,7 +19,7 @@ struct Config {
 
 struct EventsState {
     rkeys_to_ids: std::collections::HashMap<atrium_api::types::string::RecordKey, String>,
-    events: std::collections::HashMap<String, Event>,
+    events: std::collections::HashMap<String, AssociatedEvent>,
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -81,8 +80,9 @@ async fn list_all_records(
     Ok(records)
 }
 
-#[derive(Debug)]
-struct Event {
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct IngestedEvent {
     id: String,
     url: String,
     name: String,
@@ -91,16 +91,24 @@ struct Event {
     start_date: chrono::NaiveDate,
     end_date: chrono::NaiveDate,
     lat_lng: Option<[f64; 2]>,
-    timezone: Option<chrono_tz::Tz>,
-    rkey: Option<atrium_api::types::string::RecordKey>,
+    timezone: Option<String>,
+}
 
+#[derive(Debug)]
+struct AssociatedEvent {
+    event: IngestedEvent,
+    rkey: Option<atrium_api::types::string::RecordKey>,
     label_id: String,
 }
 
-impl Event {
+impl IngestedEvent {
     fn end_time(&self) -> chrono::DateTime<chrono::Utc> {
         let date = self.end_date + chrono::Days::new(1);
-        let tz = self.timezone.unwrap_or(chrono_tz::UTC);
+        let tz = self
+            .timezone
+            .as_ref()
+            .and_then(|tz| tz.parse().ok())
+            .unwrap_or(chrono_tz::UTC);
 
         date.and_time(chrono::NaiveTime::MIN)
             .and_local_timezone(tz)
@@ -117,239 +125,36 @@ impl Event {
     }
 }
 
-#[derive(serde::Deserialize, Debug)]
-struct JsonLd {
-    #[serde(rename = "@context")]
-    context: Option<serde_json::Value>,
-
-    #[serde(rename = "@type")]
-    r#type: Option<serde_json::Value>,
-
-    #[serde(flatten)]
-    properties: serde_json::Value,
-}
-
-#[derive(serde::Deserialize, Debug)]
-#[serde(rename_all = "camelCase")]
-struct SchemaOrgEvent {
-    name: String,
-    event_status: String,
-    url: String,
-    start_date: String,
-    end_date: String,
-    location: SchemaOrgEventLocation,
-}
-
-#[derive(serde::Deserialize, Debug)]
-#[serde(rename_all = "camelCase")]
-struct SchemaOrgEventLocation {
-    name: String,
-    address: SchemaOrgEventLocationAddress,
-}
-
-#[derive(serde::Deserialize, Debug)]
-#[serde(rename_all = "camelCase")]
-struct SchemaOrgEventLocationAddress {
-    address_locality: Option<String>,
-    address_region: Option<String>,
-    address_country: String,
-}
-
-#[derive(serde::Deserialize, Debug)]
-#[serde(untagged)]
-enum JsonLdInput {
-    Single(JsonLd),
-    Multiple(Vec<JsonLd>),
-}
-
-impl JsonLdInput {
-    fn into_vec(self) -> Vec<JsonLd> {
-        match self {
-            JsonLdInput::Single(item) => vec![item],
-            JsonLdInput::Multiple(items) => items,
-        }
-    }
-}
-
 async fn fetch_events(
     reqwest_client: &reqwest::Client,
-    calendar_url: &str,
-    map_url: &str,
-) -> Result<std::collections::HashMap<String, Event>, anyhow::Error> {
-    let (raw_map, raw_calendar) = tokio::try_join!(
-        async {
-            Ok::<_, anyhow::Error>(
-                reqwest_client
-                    .get(map_url)
-                    .send()
-                    .await?
-                    .error_for_status()?
-                    .bytes()
-                    .await?,
-            )
-        },
-        async {
-            Ok::<_, anyhow::Error>(
-                reqwest_client
-                    .get(calendar_url)
-                    .send()
-                    .await?
-                    .error_for_status()?
-                    .bytes()
-                    .await?,
-            )
-        }
-    )?;
-
-    let mut markers = std::collections::HashMap::<u64, [f64; 2]>::new();
-    for event in xml::reader::EventReader::new(std::io::Cursor::new(raw_map)) {
-        match event? {
-            xml::reader::XmlEvent::StartElement {
-                name, attributes, ..
-            } => {
-                if name.local_name != "marker" {
-                    continue;
-                }
-
-                let mut id = None;
-                let mut lat = None;
-                let mut lng = None;
-                for attr in attributes {
-                    match attr.name.local_name.as_str() {
-                        "id" => {
-                            id = attr.value.parse().ok();
-                        }
-                        "lat" => {
-                            lat = attr.value.parse().ok();
-                        }
-                        "lng" => {
-                            lng = attr.value.parse().ok();
-                        }
-                        _ => {}
-                    }
-                }
-
-                let (Some(id), Some(lat), Some(lng)) = (id, lat, lng) else {
-                    continue;
-                };
-
-                markers.insert(id, [lat, lng]);
-            }
-            _ => {}
-        }
-    }
-
-    let mut events = std::collections::HashMap::new();
-
-    for element in scraper::Html::parse_document(&String::from_utf8(raw_calendar.to_vec())?)
-        .select(&scraper::Selector::parse("script[type=\"application/ld+json\"]").unwrap())
-    {
-        for doc in serde_json::from_str::<JsonLdInput>(
-            &htmlize::unescape(element.text().collect::<String>()).replace("\n", " "),
-        )?
-        .into_vec()
-        {
-            if !doc
-                .context
-                .as_ref()
-                .and_then(|t| t.as_str())
-                .map(|s| s == "http://schema.org")
-                .unwrap_or(false)
-                || !doc
-                    .r#type
-                    .as_ref()
-                    .and_then(|t| t.as_str())
-                    .map(|s| s == "Event")
-                    .unwrap_or(false)
-            {
-                continue;
-            }
-
-            let event = serde_json::from_value::<SchemaOrgEvent>(doc.properties)?;
-
-            if event.event_status != "https://schema.org/EventScheduled"
-                && event.event_status != "https://schema.org/EventRescheduled"
-            {
-                continue;
-            }
-
-            let start_date = chrono::NaiveDate::parse_from_str(&event.start_date, "%Y-%m-%d")?;
-            let end_date = chrono::NaiveDate::parse_from_str(&event.end_date, "%Y-%m-%d")?;
-
-            let country = countries::find(&event.location.address.address_country)
-                .ok_or(anyhow::anyhow!("could not find country code"))?;
-
-            let address = vec![
-                event.location.name.clone(),
-                event
-                    .location
-                    .address
-                    .address_locality
-                    .clone()
-                    .unwrap_or_default(),
-                event
-                    .location
-                    .address
-                    .address_region
-                    .clone()
-                    .unwrap_or_default(),
-                event.location.address.address_country.clone(),
-            ]
-            .into_iter()
-            .filter(|v| !v.is_empty())
-            .collect::<Vec<_>>()
-            .join(", ");
-
-            let langid = country
+    events_url: &str,
+) -> Result<std::collections::HashMap<String, AssociatedEvent>, anyhow::Error> {
+    Ok(reqwest_client
+        .get(events_url)
+        .send()
+        .await?
+        .error_for_status()?
+        .json::<Vec<IngestedEvent>>()
+        .await?
+        .into_iter()
+        .map(|event| {
+            let langid = event
+                .country
                 .parse()
                 .ok()
                 .map(|region| slug::guess_language_for_region(region))
                 .unwrap_or(icu_locale::LanguageIdentifier::UNKNOWN);
 
-            let id = slug::slugify(&event.name, &langid);
-
-            static ID_REGEX: std::sync::LazyLock<regex::Regex> =
-                std::sync::LazyLock::new(|| regex::Regex::new(r#"/event/(\d+)/"#).unwrap());
-            let fc_id: u64 = ID_REGEX
-                .captures(&event.url)
-                .ok_or(anyhow::anyhow!("could not get ID"))?
-                .get(1)
-                .unwrap()
-                .as_str()
-                .parse()?;
-
-            let lat_lng = markers.get(&fc_id).cloned();
-            if lat_lng.is_none() {
-                log::warn!("No marker for: {}", id);
-            }
-            let timezone = lat_lng
-                .and_then(|[lat, lng]| geotz::lookup([lng, lat]).ok())
-                .and_then(|tz| tz.first().and_then(|tz| tz.parse().ok()));
-
-            events.insert(
-                id.clone(),
-                Event {
-                    url: event.url.to_string(),
-                    name: event.name.to_string(),
-                    address,
-                    country: country.to_string(),
-                    start_date,
-                    end_date,
-                    id,
-                    lat_lng,
-                    timezone,
+            (
+                event.id.clone(),
+                AssociatedEvent {
                     rkey: None,
                     label_id: slug::slugify_for_label(&event.name, &langid),
+                    event,
                 },
-            );
-        }
-    }
-
-    if events.is_empty() {
-        return Err(anyhow::format_err!("no events found"));
-    }
-
-    Ok(events)
+            )
+        })
+        .collect())
 }
 
 const EXTRA_DATA_POST_RKEY: &str = "fbl_postRkey";
@@ -443,8 +248,7 @@ async fn fetch_old_events(
 
 async fn sync_labels(
     reqwest_client: &reqwest::Client,
-    calendar_url: &str,
-    map_url: &str,
+    events_url: &str,
     ui_endpoint: &str,
     did: &atrium_api::types::string::Did,
     agent: &atrium_api::agent::Agent<
@@ -463,12 +267,12 @@ async fn sync_labels(
 
     let now = chrono::Utc::now();
 
-    let mut events = fetch_events(reqwest_client, calendar_url, map_url).await?;
+    let mut events = fetch_events(reqwest_client, events_url).await?;
 
     // Remove expired events.
     events = events
         .into_iter()
-        .filter(|(_, event)| now < event.end_time() + EXPIRY_DATE_GRACE_PERIOD)
+        .filter(|(_, assoc_event)| now < assoc_event.event.end_time() + EXPIRY_DATE_GRACE_PERIOD)
         .collect();
 
     let mut writes = vec![];
@@ -551,12 +355,13 @@ async fn sync_labels(
 
     // Create new events.
     let mut sorted_events = events.iter_mut().collect::<Vec<_>>();
-    sorted_events.sort_by_key(|(_, event)| (event.start_date, event.end_date));
+    sorted_events
+        .sort_by_key(|(_, assoc_event)| (assoc_event.event.start_date, assoc_event.event.end_date));
     {
         let mut created_at = now;
 
-        for (_, event) in sorted_events.iter_mut() {
-            if event.rkey.is_some() {
+        for (_, assoc_event) in sorted_events.iter_mut() {
+            if assoc_event.rkey.is_some() {
                 continue;
             }
 
@@ -566,10 +371,10 @@ async fn sync_labels(
             )
             .unwrap();
 
-            event.rkey = Some(rkey.clone());
+            assoc_event.rkey = Some(rkey.clone());
 
             {
-                let text = format!("{}", event.name);
+                let text = format!("{}", assoc_event.event.name);
 
                 let record: atrium_api::app::bsky::feed::post::Record =
                     atrium_api::app::bsky::feed::post::RecordData {
@@ -590,7 +395,10 @@ async fn sync_labels(
                                 atrium_api::app::bsky::richtext::facet::MainFeaturesItem::Link(
                                     Box::new(
                                         atrium_api::app::bsky::richtext::facet::LinkData {
-                                            uri: format!("{}/{}", ui_endpoint, event.id),
+                                            uri: format!(
+                                                "{}/{}",
+                                                ui_endpoint, assoc_event.event.id
+                                            ),
                                         }
                                         .into(),
                                     ),
@@ -667,23 +475,23 @@ async fn sync_labels(
                     }).map(|(_, event)| event.label_id.clone()).collect(),
                     label_value_definitions: Some(
                         sorted_events.iter()
-                            .map(|(_, event)| {
+                            .map(|(_, assoc_event)| {
                                 let mut def: atrium_api::com::atproto::label::defs::LabelValueDefinition = atrium_api::com::atproto::label::defs::LabelValueDefinitionData {
                                     adult_only: Some(false),
                                     blurs: "none".to_string(),
                                     default_setting: Some("warn".to_string()),
-                                    identifier: event.label_id.clone(),
+                                    identifier: assoc_event.label_id.clone(),
                                     locales: vec![atrium_api::com::atproto::label::defs::LabelValueDefinitionStringsData {
                                         lang: atrium_api::types::string::Language::new(
                                             "en".to_string(),
                                         )
                                         .unwrap(),
-                                        name: event.name.clone(),
+                                        name: assoc_event.event.name.clone(),
                                         description: format!(
                                             "📅 {start_date} – {end_date}\n📍 {location}",
-                                            location = event.address,
-                                            start_date = event.start_date,
-                                            end_date = event.end_date
+                                            location = assoc_event.event.address,
+                                            start_date = assoc_event.event.start_date,
+                                            end_date = assoc_event.event.end_date
                                         ),
                                     }
                                     .into()],
@@ -698,7 +506,7 @@ async fn sync_labels(
 
                                 extra_data.insert(
                                     EXTRA_DATA_POST_RKEY.to_string(),
-                                    if let Some(rkey) = event.rkey.as_ref() {
+                                    if let Some(rkey) = assoc_event.rkey.as_ref() {
                                         ipld_core::serde::to_ipld(rkey.to_string()).unwrap()
                                     } else {
                                         ipld_core::ipld::Ipld::Null
@@ -706,23 +514,23 @@ async fn sync_labels(
                                 );
                                 extra_data.insert(
                                     EXTRA_DATA_EVENT_ID.to_string(),
-                                    ipld_core::serde::to_ipld(&event.id).unwrap()
+                                    ipld_core::serde::to_ipld(&assoc_event.event.id).unwrap()
                                 );
 
                                 extra_data.insert(
                                     EXTRA_DATA_EVENT_INFO.to_string(),
                                     ipld_core::serde::to_ipld(LabelerEventInfo {
-                                        name: event.name.clone(),
+                                        name: assoc_event.event.name.clone(),
                                         date: format!(
                                             "{}/{}",
-                                            event.start_date.format("%Y-%m-%d"),
-                                            event.end_date.format("%Y-%m-%d")
+                                            assoc_event.event.start_date.format("%Y-%m-%d"),
+                                            assoc_event.event.end_date.format("%Y-%m-%d")
                                         ),
-                                        address: event.address.clone(),
-                                        country: event.country.clone(),
-                                        url: event.url.clone(),
-                                        lat_lng: event.lat_lng.map(|[lat, lng]| [lat.to_string(), lng.to_string()]),
-                                        timezone: event.timezone.map(|tz| tz.to_string()),
+                                        address: assoc_event.event.address.clone(),
+                                        country: assoc_event.event.country.clone(),
+                                        url: assoc_event.event.url.clone(),
+                                        lat_lng: assoc_event.event.lat_lng.map(|[lat, lng]| [lat.to_string(), lng.to_string()]),
+                                        timezone: assoc_event.event.timezone.clone(),
                                     }).unwrap(),
                                 );
 
@@ -893,7 +701,7 @@ async fn service_jetstream_once(
                         return Ok(());
                     };
 
-                    let event = events_state.events.get(&id).unwrap();
+                    let assoc_event = events_state.events.get(&id).unwrap();
 
                     let label: atrium_api::com::atproto::label::defs::Label =
                         atrium_api::com::atproto::label::defs::LabelData {
@@ -903,7 +711,7 @@ async fn service_jetstream_once(
                                     .fixed_offset(),
                             ),
                             exp: Some(atrium_api::types::string::Datetime::new(
-                                (event.end_time() + EXPIRY_DATE_GRACE_PERIOD)
+                                (assoc_event.event.end_time() + EXPIRY_DATE_GRACE_PERIOD)
                                     .to_utc()
                                     .fixed_offset(),
                             )),
@@ -911,7 +719,7 @@ async fn service_jetstream_once(
                             cid: None,
                             neg: None,
                             uri: info.did.to_string(),
-                            val: event.label_id.clone(),
+                            val: assoc_event.label_id.clone(),
                             sig: None,
                             ver: Some(1),
                         }
@@ -1005,11 +813,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let config: Config = config::Config::builder()
         .add_source(config::File::with_name("config.toml"))
         .set_default("bsky_endpoint", "https://bsky.social")?
-        .set_default("calendar_url", "https://furrycons.com/calendar/")?
-        .set_default(
-            "map_url",
-            "https://furrycons.com/calendar/map/yc-maps/map-upcoming.xml",
-        )?
+        .set_default("events_url", "https://data.cons.fyi/active.json")?
         .set_default("keypair_path", "signing.key")?
         .set_default("ui_endpoint", "https://cons.fyi")?
         .set_default(
@@ -1018,7 +822,6 @@ async fn main() -> Result<(), anyhow::Error> {
         )?
         .set_default("label_sync_delay_secs", 60 * 60)?
         .set_default("ingester_bind", "127.0.0.1:3002")?
-        .set_default("google_maps_api_key", "")?
         .set_default("commit_firehose_cursor_every_secs", 5)?
         .build()?
         .try_deserialize()?;
@@ -1053,8 +856,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     sync_labels(
         &reqwest_client,
-        &config.calendar_url,
-        &config.map_url,
+        &config.events_url,
         &config.ui_endpoint,
         &did,
         &agent,
@@ -1072,8 +874,7 @@ async fn main() -> Result<(), anyhow::Error> {
                 log::info!("syncing labels");
                 if let Err(e) = sync_labels(
                     &reqwest_client,
-                    &config.calendar_url,
-                    &config.map_url,
+                    &config.events_url,
                     &config.ui_endpoint,
                     &did,
                     &agent,
