@@ -42,7 +42,7 @@ pub fn to_lower<'a>(
 pub fn slugify(s: &str, langid: &icu_locale::LanguageIdentifier) -> String {
     static RE: std::sync::LazyLock<regex::Regex> =
         std::sync::LazyLock::new(|| regex::Regex::new(r"[^\p{L}\p{N}\s-]+").unwrap());
-    RE.replace_all(&to_lower(&s.replace("&", "and"), langid), "")
+    RE.replace_all(&to_lower(&s.replace("&", " and "), langid), "")
         .split_whitespace()
         .collect::<Vec<_>>()
         .join("-")
@@ -56,7 +56,7 @@ pub fn slugify_for_label(s: &str, langid: &icu_locale::LanguageIdentifier) -> St
     ALLOWED_CHARS_RE
         .replace_all(
             &NUMBERS_RE.replace_all(
-                &deunicode::deunicode(&to_lower(&s.replace("&", "and"), langid))
+                &deunicode::deunicode(&to_lower(&s.replace("&", " and "), langid))
                     .to_ascii_lowercase(),
                 |caps: &regex::Captures| {
                     format!(
