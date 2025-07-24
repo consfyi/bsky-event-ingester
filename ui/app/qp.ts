@@ -244,9 +244,9 @@ export function parse<T extends Schema>(
         parsed.every((v) => v !== undefined) && parsed.length > 0 ? parsed : []
       ) as InferField<typeof field>;
     } else {
-      const [type, defaultValue] = isDefaultField(field)
-        ? [field.type, field.default]
-        : [field, undefined];
+      const [type, defaultValue] = isScalarField(field)
+        ? [field, undefined]
+        : [field.type, field.default];
 
       const param = searchParams.get(key);
       result[key] = (
@@ -276,11 +276,11 @@ export function serialize<T extends Schema>(
       for (const item of values) {
         searchParams.append(key, field.type.serialize(item));
       }
-    } else if (
-      isDefaultField(field) &&
-      !field.type.equals(value, field.default)
-    ) {
-      searchParams.set(key, field.type.serialize(value));
+    } else {
+      const type = isScalarField(field) ? field : field.type;
+      if (!isDefaultField(field) || !type.equals(value, field.default)) {
+        searchParams.set(key, type.serialize(value));
+      }
     }
   }
 }
