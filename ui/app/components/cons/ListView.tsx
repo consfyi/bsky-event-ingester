@@ -52,7 +52,7 @@ function ListGroup({
   sortDesc,
   density,
 }: {
-  title: ReactNode;
+  title: ReactNode | null;
   cons: ConWithPost[];
   sortDesc: boolean;
   density: Density;
@@ -67,35 +67,37 @@ function ListGroup({
 
   return (
     <>
-      <Title
-        mb="sm"
-        px={{ base: 0, lg: "xs" }}
-        mt={{ base: -4, lg: -8 }}
-        order={2}
-        size="h5"
-        fw={500}
-        pos="sticky"
-        top={50}
-        style={{
-          zIndex: 3,
-          background:
-            "color-mix(in srgb, var(--mantine-color-body), transparent 15%)",
-          backdropFilter: "blur(5px)",
-        }}
-      >
-        <Text
+      {title != null ? (
+        <Title
+          mb="sm"
+          px={{ base: 0, lg: "xs" }}
+          mt={{ base: -4, lg: -8 }}
+          order={2}
+          size="h5"
           fw={500}
-          px={{ base: "xs", lg: 0 }}
-          pt={{ base: 4, lg: 8 }}
-          pb={4}
+          pos="sticky"
+          top={50}
           style={{
-            borderBottom:
-              "calc(0.0625rem * var(--mantine-scale)) solid var(--mantine-color-default-border)",
+            zIndex: 3,
+            background:
+              "color-mix(in srgb, var(--mantine-color-body), transparent 15%)",
+            backdropFilter: "blur(5px)",
           }}
         >
-          {title}
-        </Text>
-      </Title>
+          <Text
+            fw={500}
+            px={{ base: "xs", lg: 0 }}
+            pt={{ base: 4, lg: 8 }}
+            pb={4}
+            style={{
+              borderBottom:
+                "calc(0.0625rem * var(--mantine-scale)) solid var(--mantine-color-default-border)",
+            }}
+          >
+            {title}
+          </Text>
+        </Title>
+      ) : null}
       <Box px="xs">
         {sortedCons.map((con) => {
           return (
@@ -193,18 +195,23 @@ function ConsByAttendees({
   sortDesc: boolean;
   density: Density;
 }) {
-  const sortedCons = useMemo(() => {
-    const sortedCons = sorted(
-      cons,
-      comparing((con) => con.post.likeCount)
-    );
-    if (sortDesc) {
-      sortedCons.reverse();
-    }
-    return sortedCons;
-  }, [cons, sortDesc]);
+  const sortedCons = useMemo(
+    () =>
+      sorted(
+        cons,
+        comparing((con) => con.post.likeCount)
+      ),
+    [cons]
+  );
 
-  return <ConsBy cons={sortedCons} density={density} />;
+  return (
+    <ListGroup
+      title={null}
+      cons={sortedCons}
+      density={density}
+      sortDesc={sortDesc}
+    />
+  );
 }
 
 function ConsByFollowed({
@@ -218,25 +225,30 @@ function ConsByFollowed({
 }) {
   const followedConAttendees = useFollowedConAttendees();
 
-  const sortedCons = useMemo(() => {
-    const sortedCons = sorted(
-      cons,
-      compareMany(
-        comparing((con) =>
-          followedConAttendees == null
-            ? con.post.likeCount
-            : (followedConAttendees[con.identifier] ?? []).length
-        ),
-        comparing((con) => con.post.likeCount)
-      )
-    );
-    if (sortDesc) {
-      sortedCons.reverse();
-    }
-    return sortedCons;
-  }, [cons, followedConAttendees, sortDesc]);
+  const sortedCons = useMemo(
+    () =>
+      sorted(
+        cons,
+        compareMany(
+          comparing((con) =>
+            followedConAttendees == null
+              ? con.post.likeCount
+              : (followedConAttendees[con.identifier] ?? []).length
+          ),
+          comparing((con) => con.post.likeCount)
+        )
+      ),
+    [cons, followedConAttendees]
+  );
 
-  return <ConsBy cons={sortedCons} density={density} />;
+  return (
+    <ListGroup
+      title={null}
+      cons={sortedCons}
+      density={density}
+      sortDesc={sortDesc}
+    />
+  );
 }
 
 function ConsByName({
@@ -255,39 +267,18 @@ function ConsByName({
     [t]
   );
 
-  const sortedCons = useMemo(() => {
-    const sorted = cons.slice();
-    sorted.sort((x, y) => collator.compare(x.name, y.name));
-    if (sortDesc) {
-      sorted.reverse();
-    }
-    return sorted;
-  }, [cons, sortDesc, collator]);
+  const sortedCons = useMemo(
+    () => sorted(cons, (x, y) => collator.compare(x.name, y.name)),
+    [cons, collator]
+  );
 
-  return <ConsBy cons={sortedCons} density={density} />;
-}
-
-function ConsBy({ cons, density }: { cons: ConWithPost[]; density: Density }) {
   return (
-    <Box px="xs">
-      {cons.map((con) => {
-        return (
-          <Box key={con.identifier} mb={density == "compact" ? "xs" : "sm"}>
-            <ConRow
-              con={con}
-              showMonthInIcon
-              showEndDateOnly={false}
-              showLocation="inline"
-              showFollowed
-              showLikeButton
-              density={density}
-              showDuration
-              withId
-            />
-          </Box>
-        );
-      })}
-    </Box>
+    <ListGroup
+      title={null}
+      cons={sortedCons}
+      density={density}
+      sortDesc={sortDesc}
+    />
   );
 }
 
