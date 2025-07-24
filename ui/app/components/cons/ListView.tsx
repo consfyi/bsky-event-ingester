@@ -1,4 +1,3 @@
-import { MessageDescriptor } from "@lingui/core";
 import { msg } from "@lingui/core/macro";
 import { Trans, useLingui } from "@lingui/react/macro";
 import {
@@ -13,7 +12,6 @@ import {
   Title,
 } from "@mantine/core";
 import {
-  Icon,
   IconCheck,
   IconChevronDown,
   IconSortAscendingLetters,
@@ -41,10 +39,6 @@ import FilterBar, {
   LayoutSwitcher,
   useFilterPredicate,
 } from "../FilterBar";
-
-function yearMonthKey(d: Date) {
-  return getYear(d) * 12 + getMonth(d);
-}
 
 function FlatList({
   title,
@@ -123,12 +117,10 @@ function FlatList({
 
 function GroupedList({
   groups,
-  hideEmptyGroups,
   sortDesc,
   density,
 }: {
   groups: { key: string; title: ReactNode; cons: ConWithPost[] }[];
-  hideEmptyGroups: boolean;
   sortDesc: boolean;
   density: Density;
 }) {
@@ -140,19 +132,23 @@ function GroupedList({
     return sortedGroups;
   }, [groups, sortDesc]);
 
-  return sortedGroups.flatMap(({ key, title, cons }) => {
-    return !hideEmptyGroups || cons.length > 0
-      ? [
-          <FlatList
-            cons={cons}
-            key={key}
-            title={title}
-            sortDesc={sortDesc}
-            density={density}
-          />,
-        ]
-      : [];
-  });
+  return (
+    <>
+      {sortedGroups.map(({ key, title, cons }) => (
+        <FlatList
+          cons={cons}
+          key={key}
+          title={title}
+          sortDesc={sortDesc}
+          density={density}
+        />
+      ))}
+    </>
+  );
+}
+
+function yearMonthKey(d: Date) {
+  return getYear(d) * 12 + getMonth(d);
 }
 
 function ConsByDate({
@@ -189,9 +185,15 @@ function ConsByDate({
         d = addMonths(d, 1)
       ) {
         const key = yearMonthKey(d);
+        const cons = grouped[key] ?? [];
+
+        if (hideEmptyGroups && cons.length == 0) {
+          continue;
+        }
+
         groups.push({
           key: key.toString(),
-          cons: grouped[key] ?? [],
+          cons,
           title: (
             <>
               {i18n.date(d, {
@@ -208,14 +210,7 @@ function ConsByDate({
     [cons, t]
   );
 
-  return (
-    <GroupedList
-      groups={groups}
-      hideEmptyGroups={hideEmptyGroups}
-      sortDesc={sortDesc}
-      density={density}
-    />
-  );
+  return <GroupedList groups={groups} sortDesc={sortDesc} density={density} />;
 }
 
 function ConsByAttendees({
@@ -313,42 +308,17 @@ function ConsByName({
   );
 }
 
-const SORT_BY = ["date", "name", "attendees", "followed"] as const;
-type SortBy = (typeof SORT_BY)[number];
-
 const DENSITY = ["comfortable", "cozy", "compact"] as const;
 type Density = (typeof DENSITY)[number];
 
-const DEFAULT_SORT_DESC_OPTIONS: Record<SortBy, boolean> = {
-  date: false,
-  name: false,
-  attendees: true,
-  followed: true,
-};
-
-export const LayoutOptions = qp.schema({
-  sort: qp.default_(qp.literal(SORT_BY), "date"),
-  desc: qp.flag,
-  density: qp.default_(qp.literal(DENSITY), "comfortable"),
-});
-export type LayoutOptions = qp.Infer<typeof LayoutOptions>;
-
-const SORT_BY_DISPLAYS: Record<
-  SortBy,
-  {
-    name: MessageDescriptor;
-    asc: MessageDescriptor;
-    AscIcon: Icon;
-    desc: MessageDescriptor;
-    DescIcon: Icon;
-  }
-> = {
+const SORT_BY_OPTIONS = {
   date: {
     name: msg`Date`,
     asc: msg`Soonest to latest`,
     AscIcon: IconSortAscendingNumbers,
     desc: msg`Latest to soonest`,
     DescIcon: IconSortDescendingNumbers,
+    defaultDesc: false,
   },
   name: {
     name: msg`Name`,
@@ -356,6 +326,7 @@ const SORT_BY_DISPLAYS: Record<
     AscIcon: IconSortAscendingLetters,
     desc: msg`Z to A`,
     DescIcon: IconSortDescendingLetters,
+    defaultDesc: false,
   },
   attendees: {
     name: msg({ message: `People going`, context: "number of people going" }),
@@ -363,6 +334,7 @@ const SORT_BY_DISPLAYS: Record<
     AscIcon: IconSortAscendingNumbers,
     desc: msg`Most to fewest`,
     DescIcon: IconSortDescendingNumbers,
+    defaultDesc: true,
   },
   followed: {
     name: msg`People you follow going`,
@@ -370,8 +342,20 @@ const SORT_BY_DISPLAYS: Record<
     AscIcon: IconSortAscendingNumbers,
     desc: msg`Most to fewest`,
     DescIcon: IconSortDescendingNumbers,
+    defaultDesc: true,
   },
 };
+
+const SORT_BY = Object.keys(
+  SORT_BY_OPTIONS
+) as (keyof typeof SORT_BY_OPTIONS)[];
+
+export const LayoutOptions = qp.schema({
+  sort: qp.default_(qp.literal(SORT_BY), "date"),
+  desc: qp.flag,
+  density: qp.default_(qp.literal(DENSITY), "comfortable"),
+});
+export type LayoutOptions = qp.Infer<typeof LayoutOptions>;
 
 export default function ListView({
   cons,
@@ -421,8 +405,7 @@ export default function ListView({
                     color="var(--mantine-color-dimmed)"
                     style={{ zIndex: 4, flexShrink: 0 }}
                     leftSection={(() => {
-                      const currentSortByDisplay =
-                        SORT_BY_DISPLAYS[layout.sort];
+                      const currentSortByDisplay = SORT_BY_OPTIONS[layout.sort];
                       return layout.desc ? (
                         <currentSortByDisplay.DescIcon
                           title={t(currentSortByDisplay.desc)}
@@ -437,7 +420,7 @@ export default function ListView({
                     })()}
                     rightSection={<IconChevronDown size={14} />}
                   >
-                    {t(SORT_BY_DISPLAYS[layout.sort].name)}
+                    {t(SORT_BY_OPTIONS[layout.sort].name)}
                   </Button>
                 </Menu.Target>
 
@@ -462,7 +445,7 @@ export default function ListView({
                           setLayout({
                             ...layout,
                             sort: sortBy,
-                            desc: DEFAULT_SORT_DESC_OPTIONS[sortBy],
+                            desc: SORT_BY_OPTIONS[sortBy].defaultDesc,
                           });
                         }}
                         key={sortBy}
@@ -479,7 +462,7 @@ export default function ListView({
                           )
                         }
                       >
-                        {t(SORT_BY_DISPLAYS[sortBy].name)}
+                        {t(SORT_BY_OPTIONS[sortBy].name)}
                       </Menu.Item>
                     );
                   })}
@@ -502,13 +485,13 @@ export default function ListView({
                           <EmptyIcon size={14} />
                         )}
                         {(() => {
-                          const Icon = SORT_BY_DISPLAYS[layout.sort].AscIcon;
+                          const Icon = SORT_BY_OPTIONS[layout.sort].AscIcon;
                           return <Icon size={14} />;
                         })()}
                       </Group>
                     }
                   >
-                    {t(SORT_BY_DISPLAYS[layout.sort].asc)}
+                    {t(SORT_BY_OPTIONS[layout.sort].asc)}
                   </Menu.Item>
                   <Menu.Item
                     aria-selected={layout.desc}
@@ -526,13 +509,13 @@ export default function ListView({
                           <EmptyIcon size={14} />
                         )}
                         {(() => {
-                          const Icon = SORT_BY_DISPLAYS[layout.sort].DescIcon;
+                          const Icon = SORT_BY_OPTIONS[layout.sort].DescIcon;
                           return <Icon size={14} />;
                         })()}
                       </Group>
                     }
                   >
-                    {t(SORT_BY_DISPLAYS[layout.sort].desc)}
+                    {t(SORT_BY_OPTIONS[layout.sort].desc)}
                   </Menu.Item>
                 </Menu.Dropdown>
               </Menu>

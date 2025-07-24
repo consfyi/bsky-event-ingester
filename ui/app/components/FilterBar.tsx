@@ -111,8 +111,8 @@ export function LayoutSwitcher({
 
 export const FilterOptions = qp.schema({
   q: qp.default_(qp.string, ""),
-  attending: qp.flag,
-  followed: qp.flag,
+  attending: qp.default_(qp.boolean, false),
+  followed: qp.default_(qp.boolean, false),
   continents: qp.default_(qp.array(qp.literal(CONTINENTS), " "), [
     ...CONTINENTS,
   ]),
@@ -122,7 +122,7 @@ export const FilterOptions = qp.schema({
 export type FilterOptions = qp.Infer<typeof FilterOptions>;
 export const DEFAULT_FILTER_OPTIONS = qp.defaults(FilterOptions);
 
-const CONTINENT_NAMES: Record<Continent, MessageDescriptor> = {
+export const CONTINENT_NAMES: Record<Continent, MessageDescriptor> = {
   NA: msg`North America`,
   EU: msg`Europe`,
   AS: msg`Asia`,
