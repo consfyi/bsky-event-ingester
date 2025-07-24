@@ -192,7 +192,7 @@ function isMultipleField<T>(f: Field<T>): f is MultipleField<T> {
   return "kind" in f && f.kind === "multiple";
 }
 
-function isType<T>(f: Field<T>): f is ScalarField<T> {
+function isScalarField<T>(f: Field<T>): f is ScalarField<T> {
   return !isDefaultField(f) && !isMultipleField(f);
 }
 
@@ -277,7 +277,7 @@ export function equals<T extends Schema>(
 ): boolean {
   for (const key in schema) {
     const field = schema[key];
-    const type = isType(field) ? field : field.type;
+    const type = isScalarField(field) ? field : field.type;
     if (!type.equals(x[key], y[key])) {
       return false;
     }
