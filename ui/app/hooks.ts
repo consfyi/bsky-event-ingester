@@ -244,18 +244,22 @@ export function useSelfFollowsDLE() {
 }
 
 function useFollowedConAttendeesGlobalMemo(data: Profile[] | undefined) {
-  const cons = useCons();
+  const { data: labelerView } = useDLE(useGetLabelerView(), {
+    did: LABELER_DID,
+  });
 
   return useGlobalMemo(
     "followedConAttendees",
     () => {
-      if (data == null) {
+      if (data == null || labelerView == null) {
         return null;
       }
 
       const conIdByLabelId: Record<string, string> = {};
-      for (const con of cons) {
-        conIdByLabelId[con.labelId] = con.id;
+      for (const def of labelerView.policies!.labelValueDefinitions!) {
+        conIdByLabelId[def.identifier] = (
+          def as typeof def & { fbl_eventInfo: { id: string } }
+        ).fbl_eventInfo.id;
       }
 
       const followedCons: Record<string, Profile[]> = {};
@@ -276,7 +280,7 @@ function useFollowedConAttendeesGlobalMemo(data: Profile[] | undefined) {
       }
       return followedCons;
     },
-    [cons, data]
+    [labelerView, data]
   );
 }
 
