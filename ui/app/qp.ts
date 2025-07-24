@@ -44,7 +44,16 @@ export const float: ScalarField<number> = {
 
 export const boolean: ScalarField<boolean> = {
   parse(v) {
-    return v === "true" || v === "1";
+    switch (v) {
+      case "true":
+      case "1":
+        return true;
+
+      case "false":
+      case "0":
+        return false;
+    }
+    return undefined;
   },
   serialize(v) {
     return v ? "1" : "0";
