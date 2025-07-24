@@ -93,8 +93,8 @@ struct Event {
     lat_lng: Option<[f64; 2]>,
     timezone: Option<chrono_tz::Tz>,
     rkey: Option<atrium_api::types::string::RecordKey>,
+
     label_id: String,
-    legacy_label_id: String,
 }
 
 impl Event {
@@ -340,7 +340,6 @@ async fn fetch_events(
                     timezone,
                     rkey: None,
                     label_id: slug::slugify_for_label(&event.name, &langid),
-                    legacy_label_id: base26::encode(fc_id),
                 },
             );
         }
@@ -360,6 +359,7 @@ const EXTRA_DATA_EVENT_ID: &str = "fbl_eventId";
 #[derive(Debug)]
 struct OldEvent {
     rkey: Option<atrium_api::types::string::RecordKey>,
+    id: String,
 }
 
 const EXPIRY_DATE_GRACE_PERIOD: chrono::Days = chrono::Days::new(7);
@@ -425,7 +425,17 @@ async fn fetch_old_events(
                         }
                     };
 
-                    Some((v.identifier.clone(), OldEvent { rkey }))
+                    let id = match v.extra_data.get(EXTRA_DATA_EVENT_ID).unwrap().unwrap() {
+                        ipld_core::ipld::Ipld::Null => {
+                            return None;
+                        }
+                        ipld_core::ipld::Ipld::String(s) => s.clone(),
+                        _ => {
+                            unreachable!();
+                        }
+                    };
+
+                    Some((v.identifier.clone(), OldEvent { rkey, id }))
                 })
                 .collect::<std::collections::HashMap<_, _>>()
         }))
@@ -510,22 +520,10 @@ async fn sync_labels(
         .collect();
 
     // Delete old events if we don't see them in our retrieved events.
-    let events_key_by_label_id = events
-        .iter()
-        .flat_map(|(key, event)| {
-            [
-                (event.label_id.clone(), key.clone()),
-                (event.legacy_label_id.clone(), key.clone()),
-            ]
-        })
-        .collect::<std::collections::HashMap<_, _>>();
-    for (id, oe) in old_events.into_iter() {
-        if let Some(key) = events_key_by_label_id.get(&id) {
-            let event = events.get_mut(key).unwrap();
+    for (label_id, oe) in old_events.into_iter() {
+        if let Some(event) = events.get_mut(&oe.id) {
             event.rkey = oe.rkey.clone();
-            if id == event.legacy_label_id {
-                event.label_id = id;
-            }
+            event.label_id = label_id;
             continue;
         }
 
