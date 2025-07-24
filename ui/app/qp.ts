@@ -166,6 +166,21 @@ export function multiple<T>(type: ScalarField<T>): MultipleField<T> {
   };
 }
 
+export const flag: DefaultField<boolean> = default_(
+  {
+    parse() {
+      return true;
+    },
+    serialize() {
+      return "";
+    },
+    equals(x, y) {
+      return x === y;
+    },
+  },
+  false
+);
+
 export type Schema = Record<string, Field<unknown>>;
 
 export function schema<const T extends Schema>(schema: T): T {

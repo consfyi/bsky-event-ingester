@@ -111,8 +111,8 @@ export function LayoutSwitcher({
 
 export const FilterOptions = qp.schema({
   q: qp.default_(qp.string, ""),
-  attending: qp.default_(qp.boolean, false),
-  followed: qp.default_(qp.boolean, false),
+  attending: qp.flag,
+  followed: qp.flag,
   continents: qp.default_(qp.array(qp.literal(CONTINENTS), " "), [
     ...CONTINENTS,
   ]),
