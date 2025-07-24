@@ -1,7 +1,8 @@
 [package]
-name = "consfyi"
+name = "event-ingester"
 version = "0.1.0"
 edition = "2021"
+default-run = "event-ingester"
 
 [dependencies]
 anyhow = "1"

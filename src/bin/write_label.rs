@@ -1,4 +1,4 @@
-use consfyi::*;
+use event_ingester::*;
 use sqlx::Connection as _;
 
 #[derive(serde::Deserialize)]

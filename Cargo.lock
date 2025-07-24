@@ -599,44 +599,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "consfyi"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "atrium-api",
- "atrium-crypto",
- "atrium-xrpc-client",
- "axum",
- "axum-extra",
- "chrono",
- "chrono-tz",
- "config",
- "deunicode",
- "env_logger",
- "futures",
- "icu_casemap",
- "icu_locale",
- "icu_normalizer",
- "ipld-core",
- "jetstream-oxide",
- "log",
- "metrics",
- "metrics-exporter-prometheus",
- "minicbor",
- "num-traits",
- "rand 0.8.5",
- "regex",
- "reqwest",
- "serde",
- "serde_ipld_dagcbor",
- "serde_json",
- "serde_with",
- "sqlx",
- "thiserror 1.0.69",
- "tokio",
-]
-
-[[package]]
 name = "const-oid"
 version = "0.9.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1045,6 +1007,44 @@ dependencies = [
  "cfg-if",
  "home",
  "windows-sys 0.48.0",
+]
+
+[[package]]
+name = "event-ingester"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "atrium-api",
+ "atrium-crypto",
+ "atrium-xrpc-client",
+ "axum",
+ "axum-extra",
+ "chrono",
+ "chrono-tz",
+ "config",
+ "deunicode",
+ "env_logger",
+ "futures",
+ "icu_casemap",
+ "icu_locale",
+ "icu_normalizer",
+ "ipld-core",
+ "jetstream-oxide",
+ "log",
+ "metrics",
+ "metrics-exporter-prometheus",
+ "minicbor",
+ "num-traits",
+ "rand 0.8.5",
+ "regex",
+ "reqwest",
+ "serde",
+ "serde_ipld_dagcbor",
+ "serde_json",
+ "serde_with",
+ "sqlx",
+ "thiserror 1.0.69",
+ "tokio",
 ]
 
 [[package]]
