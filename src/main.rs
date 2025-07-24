@@ -269,12 +269,6 @@ async fn sync_labels(
 
     let mut events = fetch_events(reqwest_client, events_url).await?;
 
-    // Remove expired events.
-    events = events
-        .into_iter()
-        .filter(|(_, assoc_event)| now < assoc_event.event.end_time() + EXPIRY_DATE_GRACE_PERIOD)
-        .collect();
-
     let mut writes = vec![];
 
     let mut old_events = if let Some(old_events) = fetch_old_events(did, agent).await? {
