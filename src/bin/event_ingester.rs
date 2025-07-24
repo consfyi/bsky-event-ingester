@@ -19,7 +19,7 @@ struct Config {
 }
 
 struct EventsState {
-    rkeys_to_labeler_ids: std::collections::HashMap<atrium_api::types::string::RecordKey, String>,
+    rkeys_to_ids: std::collections::HashMap<atrium_api::types::string::RecordKey, String>,
     events: std::collections::HashMap<String, Event>,
 }
 
@@ -507,7 +507,7 @@ async fn sync_labels(
         .collect();
 
     // Delete old events if we don't see them in our retrieved events.
-    let events_key_by_labeler_id = events
+    let events_key_by_label_id = events
         .iter()
         .flat_map(|(key, event)| {
             [
@@ -517,7 +517,7 @@ async fn sync_labels(
         })
         .collect::<std::collections::HashMap<_, _>>();
     for (id, oe) in old_events.into_iter() {
-        if let Some(key) = events_key_by_labeler_id.get(&id) {
+        if let Some(key) = events_key_by_label_id.get(&id) {
             let event = events.get_mut(key).unwrap();
             event.rkey = oe.rkey.clone();
             if id == event.legacy_label_id {
@@ -769,13 +769,13 @@ async fn sync_labels(
             .await?;
     }
 
-    events_state.rkeys_to_labeler_ids = sorted_events
+    events_state.rkeys_to_ids = sorted_events
         .iter()
-        .flat_map(|(_, event)| {
+        .flat_map(|(key, event)| {
             event
                 .rkey
                 .as_ref()
-                .map(|rkey| (rkey.clone(), event.label_id.clone()))
+                .map(|rkey| (rkey.clone(), (*key).clone()))
         })
         .collect();
 
@@ -882,7 +882,7 @@ async fn service_jetstream_once(
                     let events_state = events_state.lock().await;
 
                     let Some(id) = events_state
-                        .rkeys_to_labeler_ids
+                        .rkeys_to_ids
                         .get(&atrium_api::types::string::RecordKey::new(rkey.to_string()).unwrap())
                         .cloned()
                     else {
@@ -1024,7 +1024,7 @@ async fn main() -> Result<(), anyhow::Error> {
         atrium_crypto::keypair::Secp256k1Keypair::import(&std::fs::read(&config.keypair_path)?)?;
 
     let events_state = std::sync::Arc::new(tokio::sync::Mutex::new(EventsState {
-        rkeys_to_labeler_ids: std::collections::HashMap::new(),
+        rkeys_to_ids: std::collections::HashMap::new(),
         events: std::collections::HashMap::new(),
     }));
 
