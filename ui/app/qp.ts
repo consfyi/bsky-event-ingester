@@ -228,20 +228,14 @@ export function parse<T extends Schema>(
       result[key] = (
         parsed.every((v) => v !== undefined) && parsed.length > 0 ? parsed : []
       ) as InferField<typeof field>;
-    } else if (isDefaultField(field)) {
-      const param = searchParams.get(key);
-      if (param !== null) {
-        const parsed = field.type.parse(param);
-        result[key] = (
-          parsed !== undefined ? parsed : field.default
-        ) as InferField<typeof field>;
-      } else {
-        result[key] = undefined as InferField<typeof field>;
-      }
     } else {
+      const [type, defaultValue] = isDefaultField(field)
+        ? [field.type, field.default]
+        : [field, undefined];
+
       const param = searchParams.get(key);
       result[key] = (
-        param !== null ? field.parse(param) : undefined
+        param != null ? type.parse(param) ?? defaultValue : defaultValue
       ) as InferField<typeof field>;
     }
   }
