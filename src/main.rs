@@ -22,18 +22,6 @@ struct EventsState {
     events: std::collections::HashMap<String, AssociatedEvent>,
 }
 
-#[derive(serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct LabelerEventInfo {
-    name: String,
-    date: String,
-    address: String,
-    country: String,
-    url: String,
-    lat_lng: Option<[String; 2]>,
-    timezone: Option<String>,
-}
-
 async fn list_all_records(
     agent: &atrium_api::agent::Agent<
         atrium_api::agent::atp_agent::CredentialSession<
@@ -84,13 +72,11 @@ async fn list_all_records(
 #[serde(rename_all = "camelCase")]
 struct IngestedEvent {
     id: String,
-    url: String,
     name: String,
     address: String,
     country: String,
     start_date: chrono::NaiveDate,
     end_date: chrono::NaiveDate,
-    lat_lng: Option<[f64; 2]>,
     timezone: Option<String>,
 }
 
@@ -158,7 +144,6 @@ async fn fetch_events(
 }
 
 const EXTRA_DATA_POST_RKEY: &str = "fbl_postRkey";
-const EXTRA_DATA_EVENT_INFO: &str = "fbl_eventInfo";
 const EXTRA_DATA_EVENT_ID: &str = "fbl_eventId";
 
 #[derive(Debug)]
@@ -509,23 +494,6 @@ async fn sync_labels(
                                 extra_data.insert(
                                     EXTRA_DATA_EVENT_ID.to_string(),
                                     ipld_core::serde::to_ipld(&assoc_event.event.id).unwrap()
-                                );
-
-                                extra_data.insert(
-                                    EXTRA_DATA_EVENT_INFO.to_string(),
-                                    ipld_core::serde::to_ipld(LabelerEventInfo {
-                                        name: assoc_event.event.name.clone(),
-                                        date: format!(
-                                            "{}/{}",
-                                            assoc_event.event.start_date.format("%Y-%m-%d"),
-                                            assoc_event.event.end_date.format("%Y-%m-%d")
-                                        ),
-                                        address: assoc_event.event.address.clone(),
-                                        country: assoc_event.event.country.clone(),
-                                        url: assoc_event.event.url.clone(),
-                                        lat_lng: assoc_event.event.lat_lng.map(|[lat, lng]| [lat.to_string(), lng.to_string()]),
-                                        timezone: assoc_event.event.timezone.clone(),
-                                    }).unwrap(),
                                 );
 
                                 def
