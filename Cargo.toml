@@ -23,8 +23,6 @@ icu_normalizer = "2"
 ipld-core = { version = "0.4", features = ["serde"] }
 jetstream-oxide = "0.1"
 log = "0.4"
-metrics = "0.24"
-metrics-exporter-prometheus = "0.17"
 regex = { version = "1", features = ["unicode"] }
 reqwest = { version = "0.12", features = ["json"] }
 serde = { version = "1", features = ["derive"] }

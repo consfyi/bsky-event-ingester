@@ -13,7 +13,7 @@ struct Config {
     events_url: String,
     postgres_url: String,
     keypair_path: String,
-    label_sync_delay_secs: u64,
+    ingester_bind: std::net::SocketAddr,
     commit_firehose_cursor_every_secs: u64,
 }
 
@@ -816,34 +816,41 @@ async fn main() -> Result<(), anyhow::Error> {
 
     log::info!("syncing initial labels");
 
-    sync_labels(
-        &reqwest_client,
-        &config.events_url,
-        &config.ui_endpoint,
-        &did,
-        &agent,
-        events_state.clone(),
-    )
-    .await?;
+    let sync_labels_cb = || async {
+        Ok::<_, anyhow::Error>(
+            sync_labels(
+                &reqwest_client,
+                &config.events_url,
+                &config.ui_endpoint,
+                &did,
+                &agent,
+                events_state.clone(),
+            )
+            .await?,
+        )
+    };
+    sync_labels_cb().await?;
+
+    let listener = tokio::net::TcpListener::bind(&config.ingester_bind).await?;
+
+    let (notify_send, mut notify_recv) = tokio::sync::watch::channel(());
+
+    let app = axum::Router::new().route(
+        "/trigger",
+        axum::routing::post(|| async move {
+            let _ = notify_send.send(());
+            "ok"
+        }),
+    );
 
     tokio::try_join!(
         async {
             // Sync labels.
             loop {
-                tokio::time::sleep(std::time::Duration::from_secs(config.label_sync_delay_secs))
-                    .await;
+                notify_recv.changed().await?;
 
                 log::info!("syncing labels");
-                if let Err(e) = sync_labels(
-                    &reqwest_client,
-                    &config.events_url,
-                    &config.ui_endpoint,
-                    &did,
-                    &agent,
-                    events_state.clone(),
-                )
-                .await
-                {
+                if let Err(e) = sync_labels_cb().await {
                     log::error!("could not sync labels: {e}");
                 }
             }
@@ -867,6 +874,14 @@ async fn main() -> Result<(), anyhow::Error> {
                 std::time::Duration::from_secs(config.commit_firehose_cursor_every_secs),
             )
             .await?;
+            unreachable!();
+
+            #[allow(unreachable_code)]
+            Ok::<_, anyhow::Error>(())
+        },
+        async {
+            // Serve labeler.
+            axum::serve(listener, app).await?;
             unreachable!();
 
             #[allow(unreachable_code)]
