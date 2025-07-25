@@ -1,4 +1,5 @@
 use atrium_api::types::{Collection as _, TryFromUnknown as _, TryIntoUnknown as _};
+use axum::response::IntoResponse as _;
 use event_ingester::*;
 use futures::StreamExt as _;
 use sqlx::Acquire as _;
@@ -816,48 +817,51 @@ async fn main() -> Result<(), anyhow::Error> {
 
     log::info!("syncing initial labels");
 
-    let sync_labels_cb = || async {
-        Ok::<_, anyhow::Error>(
-            sync_labels(
-                &reqwest_client,
-                &config.events_url,
-                &config.ui_endpoint,
-                &did,
-                &agent,
-                events_state.clone(),
-            )
-            .await?,
-        )
-    };
-    sync_labels_cb().await?;
+    sync_labels(
+        &reqwest_client,
+        &config.events_url,
+        &config.ui_endpoint,
+        &did,
+        &agent,
+        events_state.clone(),
+    )
+    .await?;
 
     let listener = tokio::net::TcpListener::bind(&config.ingester_bind).await?;
 
-    let (notify_send, mut notify_recv) = tokio::sync::watch::channel(());
-
     let app = axum::Router::new().route(
         "/trigger",
-        axum::routing::post(|| async move {
-            let _ = notify_send.send(());
-            "ok"
+        axum::routing::post({
+            let did = did.clone();
+            let events_state = events_state.clone();
+            let triggering = std::sync::Arc::new(tokio::sync::Mutex::new(()));
+            || async move {
+                let Ok(_guard) = triggering.try_lock() else {
+                    return (axum::http::StatusCode::CONFLICT, "already in progress!")
+                        .into_response();
+                };
+
+                match sync_labels(
+                    &reqwest_client,
+                    &config.events_url,
+                    &config.ui_endpoint,
+                    &did,
+                    &agent,
+                    events_state,
+                )
+                .await
+                {
+                    Ok(_) => (axum::http::StatusCode::OK, "ok :)").into_response(),
+                    Err(e) => {
+                        log::error!("Failed to sync labels: {e}");
+                        (axum::http::StatusCode::INTERNAL_SERVER_ERROR, "uh oh :(").into_response()
+                    }
+                }
+            }
         }),
     );
 
     tokio::try_join!(
-        async {
-            // Sync labels.
-            loop {
-                notify_recv.changed().await?;
-
-                log::info!("syncing labels");
-                if let Err(e) = sync_labels_cb().await {
-                    log::error!("could not sync labels: {e}");
-                }
-            }
-
-            #[allow(unreachable_code)]
-            Ok::<_, anyhow::Error>(())
-        },
         async {
             if config.jetstream_endpoint.is_empty() {
                 log::warn!("no jetstream endpoint configured, won't service jetstream events");
