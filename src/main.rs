@@ -74,7 +74,7 @@ async fn list_all_records(
 struct IngestedEvent {
     id: String,
     name: String,
-    address: String,
+    location: String,
     country: String,
     start_date: chrono::NaiveDate,
     end_date: chrono::NaiveDate,
@@ -474,7 +474,7 @@ async fn sync_labels(
                                         name: assoc_event.event.name.clone(),
                                         description: format!(
                                             "📅 {start_date} – {end_date}\n📍 {location}",
-                                            location = assoc_event.event.address,
+                                            location = assoc_event.event.location,
                                             start_date = assoc_event.event.start_date,
                                             end_date = assoc_event.event.end_date
                                         ),
