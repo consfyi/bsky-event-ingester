@@ -257,21 +257,7 @@ async fn sync_labels(
 
     let mut writes = vec![];
 
-    let mut old_events = if let Some(old_events) = fetch_old_events(did, agent).await? {
-        writes.push(
-            atrium_api::com::atproto::repo::apply_writes::InputWritesItem::Delete(Box::new(
-                atrium_api::com::atproto::repo::apply_writes::DeleteData {
-                    collection: atrium_api::app::bsky::labeler::Service::nsid(),
-                    rkey: atrium_api::types::string::RecordKey::new("self".to_string()).unwrap(),
-                }
-                .into(),
-            )),
-        );
-
-        old_events
-    } else {
-        std::collections::HashMap::new()
-    };
+    let mut old_events = fetch_old_events(did, agent).await?.unwrap_or_default();
 
     let record_rkeys = list_all_records(agent, did)
         .await?
@@ -515,12 +501,10 @@ async fn sync_labels(
             .into();
 
         writes.push(
-            atrium_api::com::atproto::repo::apply_writes::InputWritesItem::Create(Box::new(
-                atrium_api::com::atproto::repo::apply_writes::CreateData {
+            atrium_api::com::atproto::repo::apply_writes::InputWritesItem::Update(Box::new(
+                atrium_api::com::atproto::repo::apply_writes::UpdateData {
                     collection: atrium_api::app::bsky::labeler::Service::nsid(),
-                    rkey: Some(
-                        atrium_api::types::string::RecordKey::new("self".to_string()).unwrap(),
-                    ),
+                    rkey: atrium_api::types::string::RecordKey::new("self".to_string()).unwrap(),
                     value: record.try_into_unknown().unwrap(),
                 }
                 .into(),
