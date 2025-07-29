@@ -765,7 +765,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let config: Config = config::Config::builder()
         .add_source(config::File::with_name("config.toml"))
         .set_default("bsky_endpoint", "https://bsky.social")?
-        .set_default("events_url", "https://data.cons.fyi/active.json")?
+        .set_default("events_url", "https://data.cons.fyi/current.json")?
         .set_default("keypair_path", "signing.key")?
         .set_default("ui_endpoint", "https://cons.fyi")?
         .set_default(
