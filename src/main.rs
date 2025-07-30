@@ -74,8 +74,9 @@ async fn list_all_records(
 struct IngestedEvent {
     id: String,
     name: String,
-    location: Vec<String>,
-    country: String,
+    venue: String,
+    address: Option<String>,
+    country: Option<String>,
     start_date: chrono::NaiveDate,
     end_date: chrono::NaiveDate,
     timezone: Option<String>,
@@ -127,8 +128,8 @@ async fn fetch_events(
         .map(|event| {
             let langid = event
                 .country
-                .parse()
-                .ok()
+                .as_ref()
+                .and_then(|c| c.parse().ok())
                 .map(|region| slug::guess_language_for_region(region))
                 .unwrap_or(icu_locale::LanguageIdentifier::UNKNOWN);
 
@@ -447,6 +448,11 @@ async fn sync_labels(
                     label_value_definitions: Some(
                         sorted_events.iter()
                             .map(|(_, assoc_event)| {
+                                let mut location = assoc_event.event.venue.clone();
+                                if let Some(address) = &assoc_event.event.address {
+                                    location.push_str(", ");
+                                    location.push_str(address);
+                                }
                                 let mut def: atrium_api::com::atproto::label::defs::LabelValueDefinition = atrium_api::com::atproto::label::defs::LabelValueDefinitionData {
                                     adult_only: Some(false),
                                     blurs: "none".to_string(),
@@ -460,7 +466,7 @@ async fn sync_labels(
                                         name: assoc_event.event.name.clone(),
                                         description: format!(
                                             "📅 {start_date} – {end_date}\n📍 {location}",
-                                            location = assoc_event.event.location.join(", "),
+                                            location = location,
                                             start_date = assoc_event.event.start_date,
                                             end_date = assoc_event.event.end_date
                                         ),
