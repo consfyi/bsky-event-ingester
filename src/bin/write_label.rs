@@ -1,4 +1,4 @@
-use event_ingester::*;
+use bsky_event_ingester::*;
 use sqlx::Connection as _;
 
 #[derive(serde::Deserialize)]

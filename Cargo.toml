@@ -1,8 +1,8 @@
 [package]
-name = "event-ingester"
+name = "bsky-event-ingester"
 version = "0.1.0"
 edition = "2021"
-default-run = "event-ingester"
+default-run = "bsky-event-ingester"
 
 [dependencies]
 anyhow = "1"

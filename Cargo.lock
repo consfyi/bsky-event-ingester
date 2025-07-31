@@ -384,6 +384,38 @@ dependencies = [
 ]
 
 [[package]]
+name = "bsky-event-ingester"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "atrium-api",
+ "atrium-crypto",
+ "atrium-xrpc-client",
+ "axum",
+ "axum-extra",
+ "chrono",
+ "chrono-tz",
+ "config",
+ "deunicode",
+ "env_logger",
+ "futures",
+ "icu_casemap",
+ "icu_locale",
+ "icu_normalizer",
+ "ipld-core",
+ "jetstream-oxide",
+ "log",
+ "regex",
+ "reqwest",
+ "serde",
+ "serde_ipld_dagcbor",
+ "serde_json",
+ "sqlx",
+ "thiserror 1.0.69",
+ "tokio",
+]
+
+[[package]]
 name = "bumpalo"
 version = "3.17.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -859,38 +891,6 @@ dependencies = [
  "cfg-if",
  "home",
  "windows-sys 0.48.0",
-]
-
-[[package]]
-name = "event-ingester"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "atrium-api",
- "atrium-crypto",
- "atrium-xrpc-client",
- "axum",
- "axum-extra",
- "chrono",
- "chrono-tz",
- "config",
- "deunicode",
- "env_logger",
- "futures",
- "icu_casemap",
- "icu_locale",
- "icu_normalizer",
- "ipld-core",
- "jetstream-oxide",
- "log",
- "regex",
- "reqwest",
- "serde",
- "serde_ipld_dagcbor",
- "serde_json",
- "sqlx",
- "thiserror 1.0.69",
- "tokio",
 ]
 
 [[package]]
