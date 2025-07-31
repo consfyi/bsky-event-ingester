@@ -1,6 +1,6 @@
 use atrium_api::types::{Collection as _, TryFromUnknown as _, TryIntoUnknown as _};
 use axum::response::IntoResponse as _;
-use event_ingester::*;
+use bsky_event_ingester::*;
 use futures::StreamExt as _;
 use sqlx::Acquire as _;
 
