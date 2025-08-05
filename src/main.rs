@@ -91,24 +91,16 @@ struct AssociatedEvent {
 
 impl IngestedEvent {
     fn end_time(&self) -> chrono::DateTime<chrono::Utc> {
-        let date = self.end_date + chrono::Days::new(1);
-        let tz = self
-            .timezone
-            .as_ref()
-            .and_then(|tz| tz.parse().ok())
-            .unwrap_or(chrono_tz::UTC);
-
-        date.and_time(chrono::NaiveTime::MIN)
-            .and_local_timezone(tz)
+        self.end_date
+            .and_time(chrono::NaiveTime::from_hms_opt(12, 0, 0).unwrap())
+            .and_local_timezone(
+                self.timezone
+                    .as_ref()
+                    .and_then(|tz| tz.parse().ok())
+                    .unwrap_or(chrono_tz::UTC),
+            )
             .earliest()
-            .unwrap_or_else(|| {
-                // Some timezones (e.g. America/Santiago going into DST have no
-                // midnight, so we pick 1am here)
-                date.and_time(chrono::NaiveTime::MIN + chrono::Duration::hours(1))
-                    .and_local_timezone(tz)
-                    .earliest()
-                    .unwrap()
-            })
+            .unwrap()
             .to_utc()
     }
 }
