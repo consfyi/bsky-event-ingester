@@ -114,10 +114,14 @@ async fn fetch_events(
         .send()
         .await?
         .error_for_status()?
-        .json::<Vec<IngestedEvent>>()
+        .text()
         .await?
+        .lines()
+        .map(|line| serde_json::from_str::<IngestedEvent>(line))
         .into_iter()
         .map(|event| {
+            let event = event?;
+
             let langid = event
                 .country
                 .as_ref()
@@ -125,16 +129,16 @@ async fn fetch_events(
                 .map(|region| slug::guess_language_for_region(region))
                 .unwrap_or(icu_locale::LanguageIdentifier::UNKNOWN);
 
-            (
+            Ok::<_, anyhow::Error>((
                 event.id.clone(),
                 AssociatedEvent {
                     rkey: None,
                     label_id: slug::slugify_for_label(&event.name, &langid),
                     event,
                 },
-            )
+            ))
         })
-        .collect())
+        .collect::<Result<_, _>>()?)
 }
 
 const EXTRA_DATA_POST_RKEY: &str = "fbl_postRkey";
@@ -763,7 +767,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let config: Config = config::Config::builder()
         .add_source(config::File::with_name("config.toml"))
         .set_default("bsky_endpoint", "https://bsky.social")?
-        .set_default("events_url", "https://data.cons.fyi/current.json")?
+        .set_default("events_url", "https://data.cons.fyi/current.jsonl")?
         .set_default("keypair_path", "signing.key")?
         .set_default("ui_endpoint", "https://cons.fyi")?
         .set_default(
