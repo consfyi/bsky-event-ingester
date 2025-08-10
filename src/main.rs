@@ -117,10 +117,8 @@ async fn fetch_events(
         .text()
         .await?
         .lines()
-        .map(|line| serde_json::from_str::<IngestedEvent>(line))
-        .into_iter()
-        .map(|event| {
-            let event = event?;
+        .map(|line| {
+            let event = serde_json::from_str::<IngestedEvent>(line)?;
 
             let langid = event
                 .country
