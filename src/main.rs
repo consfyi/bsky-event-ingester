@@ -74,9 +74,9 @@ async fn list_all_records(
 struct IngestedEvent {
     id: String,
     name: String,
-    locale: String,
     venue: String,
     address: Option<String>,
+    locale: String,
     start_date: chrono::NaiveDate,
     end_date: chrono::NaiveDate,
     timezone: Option<String>,
