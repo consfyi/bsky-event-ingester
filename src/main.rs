@@ -23,6 +23,21 @@ struct EventsState {
     events: std::collections::HashMap<String, AssociatedEvent>,
 }
 
+fn id_to_label(s: &str) -> String {
+    static NUMBERS_RE: std::sync::LazyLock<regex::Regex> =
+        std::sync::LazyLock::new(|| regex::Regex::new(r"\d+").unwrap());
+    NUMBERS_RE
+        .replace_all(&s.to_ascii_lowercase(), |caps: &regex::Captures| {
+            format!(
+                " {} ",
+                roman::to_roman(caps[0].parse().unwrap()).to_lowercase()
+            )
+        })
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join("-")
+}
+
 async fn list_all_records(
     agent: &atrium_api::agent::Agent<
         atrium_api::agent::atp_agent::CredentialSession<
@@ -76,7 +91,6 @@ struct IngestedEvent {
     name: String,
     venue: String,
     address: Option<String>,
-    locale: String,
     start_date: chrono::NaiveDate,
     end_date: chrono::NaiveDate,
     timezone: Option<String>,
@@ -119,13 +133,11 @@ async fn fetch_events(
         .lines()
         .map(|line| {
             let event = serde_json::from_str::<IngestedEvent>(line)?;
-
-            let locale = event.locale.parse().unwrap();
             Ok::<_, anyhow::Error>((
                 event.id.clone(),
                 AssociatedEvent {
                     rkey: None,
-                    label_id: slug::slugify_for_label(&event.name, &locale),
+                    label_id: id_to_label(&event.id),
                     event,
                 },
             ))
