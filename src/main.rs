@@ -90,6 +90,7 @@ struct IngestedEvent {
     id: String,
     name: String,
     venue: String,
+    locale: String,
     address: Option<String>,
     start_date: chrono::NaiveDate,
     end_date: chrono::NaiveDate,
@@ -460,7 +461,7 @@ async fn sync_labels(
                                     identifier: assoc_event.label_id.clone(),
                                     locales: vec![atrium_api::com::atproto::label::defs::LabelValueDefinitionStringsData {
                                         lang: atrium_api::types::string::Language::new(
-                                            "en".to_string(),
+                                            assoc_event.event.locale.clone()
                                         )
                                         .unwrap(),
                                         name: assoc_event.event.name.clone(),
