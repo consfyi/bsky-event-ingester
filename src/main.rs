@@ -28,14 +28,9 @@ fn id_to_label(s: &str) -> String {
         std::sync::LazyLock::new(|| regex::Regex::new(r"\d+").unwrap());
     NUMBERS_RE
         .replace_all(&s.to_ascii_lowercase(), |caps: &regex::Captures| {
-            format!(
-                " {} ",
-                roman::to_roman(caps[0].parse().unwrap()).to_lowercase()
-            )
+            roman::to_roman(caps[0].parse().unwrap()).to_ascii_lowercase()
         })
-        .split_whitespace()
-        .collect::<Vec<_>>()
-        .join("-")
+        .to_string()
 }
 
 async fn list_all_records(
