@@ -14,12 +14,8 @@ axum-extra = { version = "0.10", features = ["query"] }
 chrono = "0.4"
 chrono-tz = "0.10"
 config = "0.15"
-deunicode = "1"
 env_logger = "0.11"
 futures = "0.3"
-icu_casemap = "2"
-icu_locale = "2"
-icu_normalizer = "2"
 ipld-core = { version = "0.4", features = ["serde"] }
 jetstream-oxide = "0.1"
 log = "0.4"
