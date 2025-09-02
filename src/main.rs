@@ -102,7 +102,7 @@ struct AssociatedEvent {
 impl IngestedEvent {
     fn end_time(&self) -> chrono::DateTime<chrono::Utc> {
         self.end_date
-            .and_time(chrono::NaiveTime::from_hms_opt(23, 59, 59).unwrap())
+            .and_time(chrono::NaiveTime::from_hms_nano_opt(23, 59, 59, 999_999_999).unwrap())
             .and_local_timezone(
                 self.timezone
                     .as_ref()
