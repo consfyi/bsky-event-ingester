@@ -101,15 +101,22 @@ struct AssociatedEvent {
 
 impl IngestedEvent {
     fn end_time(&self) -> chrono::DateTime<chrono::Utc> {
-        self.end_date
-            .and_time(chrono::NaiveTime::from_hms_opt(12, 0, 0).unwrap())
-            .and_local_timezone(
-                self.timezone
-                    .as_ref()
-                    .and_then(|tz| tz.parse().ok())
-                    .unwrap_or(chrono_tz::UTC),
-            )
+        let timezone = self
+            .timezone
+            .as_ref()
+            .and_then(|tz| tz.parse().ok())
+            .unwrap_or(chrono_tz::UTC);
+
+        (self.end_date + chrono::Days::new(1))
+            .and_time(chrono::NaiveTime::from_hms_opt(0, 0, 0).unwrap())
+            .and_local_timezone(timezone)
             .earliest()
+            .or_else(|| {
+                self.end_date
+                    .and_time(chrono::NaiveTime::from_hms_opt(23, 0, 0).unwrap())
+                    .and_local_timezone(timezone)
+                    .earliest()
+            })
             .unwrap()
             .to_utc()
     }
