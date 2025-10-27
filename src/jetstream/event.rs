@@ -2,56 +2,57 @@
 
 #[derive(serde::Deserialize, Debug)]
 #[serde(tag = "kind", rename_all = "snake_case")]
-pub enum Event {
-    Commit(CommitEvent),
-    Identity(IdentityEvent),
-    Account(AccountEvent),
+pub struct Event {
+    pub did: atrium_api::types::string::Did,
+    pub time_us: u64,
+    #[serde(flatten)]
+    pub body: EventBody,
 }
 
 #[derive(serde::Deserialize, Debug)]
-pub struct CommitEvent {
-    pub did: atrium_api::types::string::Did,
-    pub time_us: u64,
-    pub commit: Commit,
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum EventBody {
+    Commit(Commit),
+    Identity(Identity),
+    Account(Account),
 }
 
 #[derive(serde::Deserialize, Debug)]
 #[serde(tag = "operation", rename_all = "snake_case")]
-pub enum Commit {
-    Create {
-        rev: String,
-        rkey: String,
-        collection: atrium_api::types::string::Nsid,
-        cid: atrium_api::types::string::Cid,
-        record: atrium_api::record::KnownRecord,
-    },
-    Update {
-        rev: String,
-        rkey: String,
-        collection: atrium_api::types::string::Nsid,
-        record: atrium_api::record::KnownRecord,
-    },
-    Delete {
-        rev: String,
-        rkey: String,
-        collection: atrium_api::types::string::Nsid,
-    },
+pub struct Commit {
+    pub rev: String,
+    pub collection: atrium_api::types::string::Nsid,
+    pub rkey: String,
+    #[serde(flatten)]
+    pub body: CommitBody,
 }
 
 #[derive(serde::Deserialize, Debug)]
-pub struct IdentityEvent {
+#[serde(tag = "operation", rename_all = "snake_case")]
+pub enum CommitBody {
+    Create {
+        record: atrium_api::record::KnownRecord,
+        cid: atrium_api::types::string::Cid,
+    },
+    Update {
+        record: atrium_api::record::KnownRecord,
+        cid: atrium_api::types::string::Cid,
+    },
+    Delete {},
+}
+
+#[derive(serde::Deserialize, Debug)]
+pub struct Identity {
     pub did: atrium_api::types::string::Did,
-    pub time_us: u64,
     pub handle: Option<atrium_api::types::string::Handle>,
     pub seq: u64,
     pub time: chrono::DateTime<chrono::Utc>,
 }
 
 #[derive(serde::Deserialize, Debug)]
-pub struct AccountEvent {
+pub struct Account {
     pub active: bool,
     pub did: atrium_api::types::string::Did,
-    pub time_us: u64,
     pub seq: u64,
     pub time: chrono::DateTime<chrono::Utc>,
     pub status: Option<AccountStatus>,

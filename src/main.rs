@@ -617,7 +617,7 @@ async fn service_jetstream_once(
     let mut last_firehose_commit_time = std::time::SystemTime::now();
 
     while let Some(event) = ws.next().await {
-        let event = match event? {
+        let event: jetstream::event::Event = match event? {
             tokio_tungstenite::tungstenite::Message::Binary(body) => {
                 serde_json::from_reader(zstd::stream::Decoder::with_prepared_dictionary(
                     std::io::Cursor::new(body),
@@ -634,15 +634,15 @@ async fn service_jetstream_once(
             }
         };
 
-        let jetstream::event::Event::Commit(commit_event) = event else {
+        let jetstream::event::EventBody::Commit(commit) = event.body else {
             continue;
         };
 
         let mut db_conn = db_pool.acquire().await?;
 
         async {
-            match commit_event.commit {
-                jetstream::event::Commit::Create { record, rkey, .. } => {
+            match commit.body {
+                jetstream::event::CommitBody::Create { record, .. } => {
                     let atrium_api::record::KnownRecord::AppBskyFeedLike(like) = record else {
                         return Ok(());
                     };
@@ -685,11 +685,9 @@ async fn service_jetstream_once(
                     let label: atrium_api::com::atproto::label::defs::Label =
                         atrium_api::com::atproto::label::defs::LabelData {
                             cts: atrium_api::types::string::Datetime::new(
-                                chrono::DateTime::from_timestamp_micros(
-                                    commit_event.time_us as i64,
-                                )
-                                .unwrap()
-                                .fixed_offset(),
+                                chrono::DateTime::from_timestamp_micros(event.time_us as i64)
+                                    .unwrap()
+                                    .fixed_offset(),
                             ),
                             exp: Some(atrium_api::types::string::Datetime::new(
                                 (assoc_event.event.end_time() + EXPIRY_DATE_GRACE_PERIOD)
@@ -699,7 +697,7 @@ async fn service_jetstream_once(
                             src: did.clone(),
                             cid: None,
                             neg: None,
-                            uri: commit_event.did.to_string(),
+                            uri: event.did.to_string(),
                             val: assoc_event.label_id.clone(),
                             sig: None,
                             ver: Some(1),
@@ -709,11 +707,11 @@ async fn service_jetstream_once(
                     log::info!("applying label: {:?}", label);
 
                     let mut tx = db_conn.begin().await?;
-                    labels::emit(keypair, &mut tx, &label, &rkey).await?;
+                    labels::emit(keypair, &mut tx, &label, &commit.rkey).await?;
                     tx.commit().await?;
                 }
-                jetstream::event::Commit::Delete { rkey, .. } => {
-                    let uri = commit_event.did.to_string();
+                jetstream::event::CommitBody::Delete { .. } => {
+                    let uri = event.did.to_string();
 
                     let Some(val) = sqlx::query_scalar!(
                         r#"
@@ -722,7 +720,7 @@ async fn service_jetstream_once(
                         ORDER BY seq DESC
                         LIMIT 1
                         "#,
-                        rkey,
+                        commit.rkey,
                         uri
                     )
                     .fetch_optional(&mut *db_conn)
@@ -734,11 +732,9 @@ async fn service_jetstream_once(
                     let label: atrium_api::com::atproto::label::defs::Label =
                         atrium_api::com::atproto::label::defs::LabelData {
                             cts: atrium_api::types::string::Datetime::new(
-                                chrono::DateTime::from_timestamp_micros(
-                                    commit_event.time_us as i64,
-                                )
-                                .unwrap()
-                                .fixed_offset(),
+                                chrono::DateTime::from_timestamp_micros(event.time_us as i64)
+                                    .unwrap()
+                                    .fixed_offset(),
                             ),
                             exp: None,
                             src: did.clone(),
@@ -754,7 +750,7 @@ async fn service_jetstream_once(
                     log::info!("removing label: {:?}", label);
 
                     let mut tx = db_conn.begin().await?;
-                    labels::emit(keypair, &mut tx, &label, &rkey).await?;
+                    labels::emit(keypair, &mut tx, &label, &commit.rkey).await?;
                     tx.commit().await?;
                 }
                 _ => {}
@@ -775,7 +771,7 @@ async fn service_jetstream_once(
                 INSERT INTO jetstream_cursor (cursor) VALUES ($1)
                 ON CONFLICT ((true)) DO UPDATE SET cursor = excluded.cursor
                 "#,
-                commit_event.time_us as i64,
+                event.time_us as i64,
             )
             .execute(&mut *tx)
             .await?;
@@ -783,7 +779,7 @@ async fn service_jetstream_once(
             last_firehose_commit_time = now;
         }
 
-        cursor = Some(commit_event.time_us as i64);
+        cursor = Some(event.time_us as i64);
     }
 
     Ok(cursor)
