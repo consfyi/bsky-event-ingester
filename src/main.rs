@@ -1,7 +1,7 @@
 use atrium_api::types::{Collection as _, TryFromUnknown as _, TryIntoUnknown as _};
 use axum::response::IntoResponse as _;
 use bsky_event_ingester::*;
-use futures::StreamExt as _;
+use futures::{SinkExt, StreamExt as _};
 use sqlx::Acquire as _;
 
 #[derive(serde::Deserialize, Debug)]
@@ -587,6 +587,11 @@ async fn service_jetstream(
     }
 }
 
+const JETSTREAM_ZSTD_DICTIONARY: std::sync::LazyLock<zstd::dict::DecoderDictionary<'static>> =
+    std::sync::LazyLock::new(|| {
+        zstd::dict::DecoderDictionary::copy(include_bytes!("./zstd_dictionary"))
+    });
+
 async fn service_jetstream_once(
     db_pool: &sqlx::PgPool,
     did: &atrium_api::types::string::Did,
@@ -598,21 +603,35 @@ async fn service_jetstream_once(
 ) -> Result<Option<i64>, anyhow::Error> {
     let mut last_firehose_commit_time = std::time::SystemTime::now();
 
-    let jetstream = jetstream_oxide::JetstreamConnector::new(jetstream_oxide::JetstreamConfig {
+    let config = jetstream_oxide::JetstreamConfig {
         endpoint: jetstream_endpoint.to_string(),
         compression: jetstream_oxide::JetstreamCompression::Zstd,
         wanted_collections: vec![atrium_api::app::bsky::feed::Like::nsid()],
         cursor: cursor.map(|cursor| chrono::DateTime::from_timestamp_micros(cursor).unwrap()),
-
-        // Do NOT let jetstream_oxide retry: this results in wonky cursor behavior!
-        max_retries: 0,
-
         ..Default::default()
-    })?;
+    };
 
-    let mut stream = jetstream.connect().await?.into_stream();
+    let (mut ws, _) =
+        tokio_tungstenite::connect_async(config.construct_endpoint(jetstream_endpoint)?).await?;
 
-    while let Some(event) = stream.next().await {
+    while let Some(event) = ws.next().await {
+        let event = match event? {
+            tokio_tungstenite::tungstenite::Message::Binary(body) => {
+                serde_json::from_reader(zstd::stream::Decoder::with_prepared_dictionary(
+                    std::io::Cursor::new(body),
+                    &JETSTREAM_ZSTD_DICTIONARY,
+                )?)?
+            }
+            tokio_tungstenite::tungstenite::Message::Ping(body) => {
+                ws.send(tokio_tungstenite::tungstenite::Message::Pong(body))
+                    .await?;
+                continue;
+            }
+            _ => {
+                continue;
+            }
+        };
+
         let jetstream_oxide::events::JetstreamEvent::Commit(commit) = event else {
             continue;
         };
