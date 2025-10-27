@@ -1,3 +1,5 @@
+mod jetstream;
+
 use atrium_api::types::{Collection as _, TryFromUnknown as _, TryIntoUnknown as _};
 use axum::response::IntoResponse as _;
 use bsky_event_ingester::*;
@@ -10,7 +12,7 @@ struct Config {
     bsky_password: String,
     bsky_endpoint: String,
     ui_endpoint: String,
-    jetstream_endpoint: String,
+    jetstream_endpoint: Option<url::Url>,
     events_url: String,
     postgres_url: String,
     keypair_path: String,
@@ -562,7 +564,7 @@ async fn service_jetstream(
     did: &atrium_api::types::string::Did,
     keypair: &atrium_crypto::keypair::Secp256k1Keypair,
     events_state: std::sync::Arc<tokio::sync::Mutex<EventsState>>,
-    jetstream_endpoint: &str,
+    jetstream_endpoint: &url::Url,
     commit_firehose_cursor_every: std::time::Duration,
 ) -> Result<(), anyhow::Error> {
     let mut cursor = {
@@ -587,39 +589,39 @@ async fn service_jetstream(
     }
 }
 
-const JETSTREAM_ZSTD_DICTIONARY: std::sync::LazyLock<zstd::dict::DecoderDictionary<'static>> =
-    std::sync::LazyLock::new(|| {
-        zstd::dict::DecoderDictionary::copy(include_bytes!("./zstd_dictionary"))
-    });
-
 async fn service_jetstream_once(
     db_pool: &sqlx::PgPool,
     did: &atrium_api::types::string::Did,
     keypair: &atrium_crypto::keypair::Secp256k1Keypair,
     events_state: std::sync::Arc<tokio::sync::Mutex<EventsState>>,
-    jetstream_endpoint: &str,
+    jetstream_endpoint: &url::Url,
     commit_firehose_cursor_every: std::time::Duration,
     mut cursor: Option<i64>,
 ) -> Result<Option<i64>, anyhow::Error> {
+    let mut url = jetstream_endpoint.clone();
+
+    url.query_pairs_mut()
+        .append_pair("compress", "true")
+        .append_pair(
+            "wantedCollections",
+            &atrium_api::app::bsky::feed::Like::nsid(),
+        );
+
+    if let Some(cursor) = cursor {
+        url.query_pairs_mut()
+            .append_pair("cursor", &cursor.to_string());
+    }
+
+    let (mut ws, _) = tokio_tungstenite::connect_async(url).await?;
+
     let mut last_firehose_commit_time = std::time::SystemTime::now();
-
-    let config = jetstream_oxide::JetstreamConfig {
-        endpoint: jetstream_endpoint.to_string(),
-        compression: jetstream_oxide::JetstreamCompression::Zstd,
-        wanted_collections: vec![atrium_api::app::bsky::feed::Like::nsid()],
-        cursor: cursor.map(|cursor| chrono::DateTime::from_timestamp_micros(cursor).unwrap()),
-        ..Default::default()
-    };
-
-    let (mut ws, _) =
-        tokio_tungstenite::connect_async(config.construct_endpoint(jetstream_endpoint)?).await?;
 
     while let Some(event) = ws.next().await {
         let event = match event? {
             tokio_tungstenite::tungstenite::Message::Binary(body) => {
                 serde_json::from_reader(zstd::stream::Decoder::with_prepared_dictionary(
                     std::io::Cursor::new(body),
-                    &JETSTREAM_ZSTD_DICTIONARY,
+                    &jetstream::ZSTD_DICTIONARY,
                 )?)?
             }
             tokio_tungstenite::tungstenite::Message::Ping(body) => {
@@ -632,23 +634,16 @@ async fn service_jetstream_once(
             }
         };
 
-        let jetstream_oxide::events::JetstreamEvent::Commit(commit) = event else {
+        let jetstream::event::Event::Commit(commit_event) = event else {
             continue;
         };
-
-        let next_cursor = match &commit {
-            jetstream_oxide::events::commit::CommitEvent::Create { info, .. }
-            | jetstream_oxide::events::commit::CommitEvent::Update { info, .. }
-            | jetstream_oxide::events::commit::CommitEvent::Delete { info, .. } => info.time_us,
-        } as i64;
 
         let mut db_conn = db_pool.acquire().await?;
 
         async {
-            match commit {
-                jetstream_oxide::events::commit::CommitEvent::Create { info, commit } => {
-                    let atrium_api::record::KnownRecord::AppBskyFeedLike(like) = commit.record
-                    else {
+            match commit_event.commit {
+                jetstream::event::Commit::Create { record, rkey, .. } => {
+                    let atrium_api::record::KnownRecord::AppBskyFeedLike(like) = record else {
                         return Ok(());
                     };
 
@@ -658,7 +653,8 @@ async fn service_jetstream_once(
                         .strip_prefix("at://")
                         .map(|v| v.splitn(3, '/').collect::<Vec<_>>());
 
-                    let Some(&[record_did, collection, rkey]) = parts.as_ref().map(|v| &v[..])
+                    let Some(&[record_did, collection, target_rkey]) =
+                        parts.as_ref().map(|v| &v[..])
                     else {
                         return Ok(());
                     };
@@ -675,7 +671,10 @@ async fn service_jetstream_once(
 
                     let Some(id) = events_state
                         .rkeys_to_ids
-                        .get(&atrium_api::types::string::RecordKey::new(rkey.to_string()).unwrap())
+                        .get(
+                            &atrium_api::types::string::RecordKey::new(target_rkey.to_string())
+                                .unwrap(),
+                        )
                         .cloned()
                     else {
                         return Ok(());
@@ -686,9 +685,11 @@ async fn service_jetstream_once(
                     let label: atrium_api::com::atproto::label::defs::Label =
                         atrium_api::com::atproto::label::defs::LabelData {
                             cts: atrium_api::types::string::Datetime::new(
-                                chrono::DateTime::from_timestamp_micros(info.time_us as i64)
-                                    .unwrap()
-                                    .fixed_offset(),
+                                chrono::DateTime::from_timestamp_micros(
+                                    commit_event.time_us as i64,
+                                )
+                                .unwrap()
+                                .fixed_offset(),
                             ),
                             exp: Some(atrium_api::types::string::Datetime::new(
                                 (assoc_event.event.end_time() + EXPIRY_DATE_GRACE_PERIOD)
@@ -698,7 +699,7 @@ async fn service_jetstream_once(
                             src: did.clone(),
                             cid: None,
                             neg: None,
-                            uri: info.did.to_string(),
+                            uri: commit_event.did.to_string(),
                             val: assoc_event.label_id.clone(),
                             sig: None,
                             ver: Some(1),
@@ -708,11 +709,11 @@ async fn service_jetstream_once(
                     log::info!("applying label: {:?}", label);
 
                     let mut tx = db_conn.begin().await?;
-                    labels::emit(keypair, &mut tx, &label, &commit.info.rkey).await?;
+                    labels::emit(keypair, &mut tx, &label, &rkey).await?;
                     tx.commit().await?;
                 }
-                jetstream_oxide::events::commit::CommitEvent::Delete { info, commit } => {
-                    let uri = info.did.to_string();
+                jetstream::event::Commit::Delete { rkey, .. } => {
+                    let uri = commit_event.did.to_string();
 
                     let Some(val) = sqlx::query_scalar!(
                         r#"
@@ -721,7 +722,7 @@ async fn service_jetstream_once(
                         ORDER BY seq DESC
                         LIMIT 1
                         "#,
-                        commit.rkey,
+                        rkey,
                         uri
                     )
                     .fetch_optional(&mut *db_conn)
@@ -733,15 +734,17 @@ async fn service_jetstream_once(
                     let label: atrium_api::com::atproto::label::defs::Label =
                         atrium_api::com::atproto::label::defs::LabelData {
                             cts: atrium_api::types::string::Datetime::new(
-                                chrono::DateTime::from_timestamp_micros(info.time_us as i64)
-                                    .unwrap()
-                                    .fixed_offset(),
+                                chrono::DateTime::from_timestamp_micros(
+                                    commit_event.time_us as i64,
+                                )
+                                .unwrap()
+                                .fixed_offset(),
                             ),
                             exp: None,
                             src: did.clone(),
                             cid: None,
                             neg: Some(true),
-                            uri: info.did.to_string(),
+                            uri: did.to_string(),
                             val,
                             sig: None,
                             ver: Some(1),
@@ -751,7 +754,7 @@ async fn service_jetstream_once(
                     log::info!("removing label: {:?}", label);
 
                     let mut tx = db_conn.begin().await?;
-                    labels::emit(keypair, &mut tx, &label, &commit.rkey).await?;
+                    labels::emit(keypair, &mut tx, &label, &rkey).await?;
                     tx.commit().await?;
                 }
                 _ => {}
@@ -772,7 +775,7 @@ async fn service_jetstream_once(
                 INSERT INTO jetstream_cursor (cursor) VALUES ($1)
                 ON CONFLICT ((true)) DO UPDATE SET cursor = excluded.cursor
                 "#,
-                next_cursor as i64,
+                commit_event.time_us as i64,
             )
             .execute(&mut *tx)
             .await?;
@@ -780,7 +783,7 @@ async fn service_jetstream_once(
             last_firehose_commit_time = now;
         }
 
-        cursor = Some(next_cursor);
+        cursor = Some(commit_event.time_us as i64);
     }
 
     Ok(cursor)
@@ -798,7 +801,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .set_default("ui_endpoint", "https://cons.fyi")?
         .set_default(
             "jetstream_endpoint",
-            String::from(jetstream_oxide::DefaultJetstreamEndpoints::USEastOne),
+            "wss://jetstream1.us-east.bsky.network/subscribe",
         )?
         .set_default("label_sync_delay_secs", 60 * 60)?
         .set_default("ingester_bind", "127.0.0.1:3002")?
@@ -880,10 +883,10 @@ async fn main() -> Result<(), anyhow::Error> {
 
     tokio::try_join!(
         async {
-            if config.jetstream_endpoint.is_empty() {
+            let Some(jetstream_endpoint) = config.jetstream_endpoint else {
                 log::warn!("no jetstream endpoint configured, won't service jetstream events");
                 return Ok(());
-            }
+            };
 
             // Wait on events.
             service_jetstream(
@@ -891,7 +894,7 @@ async fn main() -> Result<(), anyhow::Error> {
                 &did,
                 &keypair,
                 events_state.clone(),
-                &config.jetstream_endpoint,
+                &jetstream_endpoint,
                 std::time::Duration::from_secs(config.commit_firehose_cursor_every_secs),
             )
             .await?;
