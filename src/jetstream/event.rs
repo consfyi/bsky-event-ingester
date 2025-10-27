@@ -1,7 +1,6 @@
 #![allow(dead_code)]
 
 #[derive(serde::Deserialize, Debug)]
-#[serde(tag = "kind", rename_all = "snake_case")]
 pub struct Event {
     pub did: atrium_api::types::string::Did,
     pub time_us: u64,
@@ -18,25 +17,21 @@ pub enum EventBody {
 }
 
 #[derive(serde::Deserialize, Debug)]
-#[serde(tag = "operation", rename_all = "snake_case")]
 pub struct CommitEvent {
     pub commit: Commit,
 }
 
 #[derive(serde::Deserialize, Debug)]
-#[serde(tag = "operation", rename_all = "snake_case")]
 pub struct IdentityEvent {
     pub identity: Identity,
 }
 
 #[derive(serde::Deserialize, Debug)]
-#[serde(tag = "operation", rename_all = "snake_case")]
 pub struct AccountEvent {
     pub account: Account,
 }
 
 #[derive(serde::Deserialize, Debug)]
-#[serde(tag = "operation", rename_all = "snake_case")]
 pub struct Commit {
     pub rev: String,
     pub collection: atrium_api::types::string::Nsid,
