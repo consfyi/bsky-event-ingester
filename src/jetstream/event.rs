@@ -57,7 +57,7 @@ pub enum CommitBody {
 #[derive(serde::Deserialize, Debug)]
 pub struct Identity {
     pub did: atrium_api::types::string::Did,
-    pub handle: Option<atrium_api::types::string::Handle>,
+    pub handle: Option<String>,
     pub seq: u64,
     pub time: chrono::DateTime<chrono::Utc>,
 }
