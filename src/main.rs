@@ -575,7 +575,7 @@ async fn service_jetstream(
     };
 
     loop {
-        cursor = service_jetstream_once(
+        match service_jetstream_once(
             db_pool,
             did,
             keypair,
@@ -584,7 +584,15 @@ async fn service_jetstream(
             commit_firehose_cursor_every,
             cursor,
         )
-        .await?;
+        .await
+        {
+            Ok(next_cursor) => {
+                cursor = next_cursor;
+            }
+            Err(e) => {
+                log::error!("Jetstream disconnected: {e}");
+            }
+        };
         tokio::time::sleep(std::time::Duration::from_secs(1)).await;
     }
 }
