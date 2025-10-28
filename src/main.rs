@@ -748,7 +748,7 @@ async fn service_jetstream_once(
                             src: did.clone(),
                             cid: None,
                             neg: Some(true),
-                            uri: did.to_string(),
+                            uri,
                             val,
                             sig: None,
                             ver: Some(1),
