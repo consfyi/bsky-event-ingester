@@ -39,11 +39,10 @@ pub async fn connect(
     url.set_query(Some(&serde_html_form::to_string(&options)?));
     url.query_pairs_mut().append_pair("compress", "true");
 
-    let (ws, _) = tokio_tungstenite::connect_async(url).await?;
-    let (mut tx, mut rx) = ws.split();
+    let (mut ws, _) = tokio_tungstenite::connect_async(url).await?;
 
     Ok(async_stream::try_stream! {
-        while let Some(message) = rx.next().await {
+        while let Some(message) = ws.next().await {
             match message? {
                 tokio_tungstenite::tungstenite::Message::Binary(body) => {
                     yield serde_json::from_reader(zstd::stream::Decoder::with_prepared_dictionary(
@@ -52,7 +51,7 @@ pub async fn connect(
                     )?)?;
                 }
                 tokio_tungstenite::tungstenite::Message::Ping(body) => {
-                    tx.send(tokio_tungstenite::tungstenite::Message::Pong(body))
+                    ws.send(tokio_tungstenite::tungstenite::Message::Pong(body))
                         .await?;
                 }
                 _ => {}
