@@ -13,13 +13,22 @@ pub struct ConnectOptions {
     pub cursor: Option<i64>,
 }
 
+#[derive(thiserror::Error, Debug)]
+pub enum Error {
+    #[error("tungstenite: {0}")]
+    Tungstenite(#[from] tokio_tungstenite::tungstenite::Error),
+
+    #[error("serde_json: {0}")]
+    SerdeJson(#[from] serde_json::Error),
+
+    #[error("io: {0}")]
+    Io(#[from] std::io::Error),
+}
+
 pub async fn connect(
     endpoint: &url::Url,
     options: ConnectOptions,
-) -> Result<
-    impl futures::Stream<Item = Result<event::Event, anyhow::Error>>,
-    tokio_tungstenite::tungstenite::Error,
-> {
+) -> Result<impl futures::Stream<Item = Result<event::Event, Error>>, Error> {
     let mut url = endpoint.clone();
     url.query_pairs_mut()
         .append_pair("compress", "true")
