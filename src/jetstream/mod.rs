@@ -55,11 +55,8 @@ pub async fn connect(
                 tokio_tungstenite::tungstenite::Message::Ping(body) => {
                     tx.send(tokio_tungstenite::tungstenite::Message::Pong(body))
                         .await?;
-                    continue;
                 }
-                _ => {
-                    continue;
-                }
+                _ => {}
             }
         }
     })
