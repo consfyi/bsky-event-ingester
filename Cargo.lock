@@ -426,6 +426,7 @@ dependencies = [
  "regex",
  "reqwest",
  "serde",
+ "serde_html_form",
  "serde_ipld_dagcbor",
  "serde_json",
  "sqlx",

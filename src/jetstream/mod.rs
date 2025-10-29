@@ -7,9 +7,12 @@ const ZSTD_DICTIONARY: std::sync::LazyLock<zstd::dict::DecoderDictionary<'static
         zstd::dict::DecoderDictionary::copy(include_bytes!("./zstd_dictionary"))
     });
 
-#[derive(Default)]
+#[derive(serde::Serialize, Default)]
+#[serde(rename_all = "camelCase")]
 pub struct ConnectOptions {
     pub wanted_collections: Vec<atrium_api::types::string::Nsid>,
+    pub wanted_dids: Vec<atrium_api::types::string::Did>,
+    pub max_message_size_bytes: u32,
     pub cursor: Option<i64>,
 }
 
@@ -21,6 +24,9 @@ pub enum Error {
     #[error("serde_json: {0}")]
     SerdeJson(#[from] serde_json::Error),
 
+    #[error("serde_html_form: {0}")]
+    SerdeHtmlForm(#[from] serde_html_form::ser::Error),
+
     #[error("io: {0}")]
     Io(#[from] std::io::Error),
 }
@@ -30,15 +36,8 @@ pub async fn connect(
     options: ConnectOptions,
 ) -> Result<impl futures::Stream<Item = Result<event::Event, Error>>, Error> {
     let mut url = endpoint.clone();
-    url.query_pairs_mut()
-        .append_pair("compress", "true")
-        .extend_pairs(
-            options
-                .wanted_collections
-                .iter()
-                .map(|v| ("wantedCollections", v)),
-        )
-        .extend_pairs(options.cursor.map(|v| ("cursor", v.to_string())));
+    url.set_query(Some(&serde_html_form::to_string(&options)?));
+    url.query_pairs_mut().append_pair("compress", "true");
 
     let (ws, _) = tokio_tungstenite::connect_async(url).await?;
     let (mut tx, mut rx) = ws.split();

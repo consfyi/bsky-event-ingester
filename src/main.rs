@@ -611,6 +611,7 @@ async fn service_jetstream_once(
         jetstream::ConnectOptions {
             wanted_collections: vec![atrium_api::app::bsky::feed::Like::nsid()],
             cursor,
+            ..Default::default()
         },
     )
     .await?;
