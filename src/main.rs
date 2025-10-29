@@ -3,7 +3,7 @@ mod jetstream;
 use atrium_api::types::{Collection as _, TryFromUnknown as _, TryIntoUnknown as _};
 use axum::response::IntoResponse as _;
 use bsky_event_ingester::*;
-use futures::{SinkExt, StreamExt as _};
+use futures::StreamExt as _;
 use sqlx::Acquire as _;
 
 #[derive(serde::Deserialize, Debug)]
@@ -606,41 +606,20 @@ async fn service_jetstream_once(
     commit_firehose_cursor_every: std::time::Duration,
     mut cursor: Option<i64>,
 ) -> Result<Option<i64>, anyhow::Error> {
-    let mut url = jetstream_endpoint.clone();
-
-    url.query_pairs_mut()
-        .append_pair("compress", "true")
-        .append_pair(
-            "wantedCollections",
-            &atrium_api::app::bsky::feed::Like::nsid(),
-        );
-
-    if let Some(cursor) = cursor {
-        url.query_pairs_mut()
-            .append_pair("cursor", &cursor.to_string());
-    }
-
-    let (mut ws, _) = tokio_tungstenite::connect_async(url).await?;
+    let js = jetstream::connect(
+        jetstream_endpoint,
+        jetstream::ConnectOptions {
+            wanted_collections: vec![atrium_api::app::bsky::feed::Like::nsid()],
+            cursor,
+        },
+    )
+    .await?;
+    futures::pin_mut!(js);
 
     let mut last_firehose_commit_time = std::time::SystemTime::now();
 
-    while let Some(event) = ws.next().await {
-        let event: jetstream::event::Event = match event? {
-            tokio_tungstenite::tungstenite::Message::Binary(body) => {
-                serde_json::from_reader(zstd::stream::Decoder::with_prepared_dictionary(
-                    std::io::Cursor::new(body),
-                    &jetstream::ZSTD_DICTIONARY,
-                )?)?
-            }
-            tokio_tungstenite::tungstenite::Message::Ping(body) => {
-                ws.send(tokio_tungstenite::tungstenite::Message::Pong(body))
-                    .await?;
-                continue;
-            }
-            _ => {
-                continue;
-            }
-        };
+    while let Some(event) = js.next().await {
+        let event = event?;
 
         let jetstream::event::EventBody::Commit(commit_event) = event.body else {
             continue;

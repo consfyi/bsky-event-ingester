@@ -6,6 +6,7 @@ default-run = "bsky-event-ingester"
 
 [dependencies]
 anyhow = "1"
+async-stream = "0.3"
 atrium-api = "0.25"
 atrium-crypto = "0.1"
 atrium-xrpc-client = "0.5"
