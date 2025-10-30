@@ -11,24 +11,9 @@ pub struct Event {
 #[derive(serde::Deserialize, Debug)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum EventBody {
-    Commit(CommitEvent),
-    Identity(IdentityEvent),
-    Account(AccountEvent),
-}
-
-#[derive(serde::Deserialize, Debug)]
-pub struct CommitEvent {
-    pub commit: Commit,
-}
-
-#[derive(serde::Deserialize, Debug)]
-pub struct IdentityEvent {
-    pub identity: Identity,
-}
-
-#[derive(serde::Deserialize, Debug)]
-pub struct AccountEvent {
-    pub account: Account,
+    Commit { commit: Commit },
+    Identity { identity: Identity },
+    Account { account: Account },
 }
 
 #[derive(serde::Deserialize, Debug)]

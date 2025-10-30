@@ -620,14 +620,14 @@ async fn service_jetstream_once(
     while let Some(event) = js.next().await {
         let event = event?;
 
-        let jetstream::event::EventBody::Commit(commit_event) = event.body else {
+        let jetstream::event::EventBody::Commit { commit } = event.body else {
             continue;
         };
 
         let mut db_conn = db_pool.acquire().await?;
 
         async {
-            match commit_event.commit.body {
+            match commit.body {
                 jetstream::event::CommitBody::Create { record, .. } => {
                     let atrium_api::record::KnownRecord::AppBskyFeedLike(like) = record else {
                         return Ok(());
@@ -693,7 +693,7 @@ async fn service_jetstream_once(
                     log::info!("applying label: {:?}", label);
 
                     let mut tx = db_conn.begin().await?;
-                    labels::emit(keypair, &mut tx, &label, &commit_event.commit.rkey).await?;
+                    labels::emit(keypair, &mut tx, &label, &commit.rkey).await?;
                     tx.commit().await?;
                 }
                 jetstream::event::CommitBody::Delete { .. } => {
@@ -706,7 +706,7 @@ async fn service_jetstream_once(
                         ORDER BY seq DESC
                         LIMIT 1
                         "#,
-                        commit_event.commit.rkey,
+                        commit.rkey,
                         uri
                     )
                     .fetch_optional(&mut *db_conn)
@@ -736,7 +736,7 @@ async fn service_jetstream_once(
                     log::info!("removing label: {:?}", label);
 
                     let mut tx = db_conn.begin().await?;
-                    labels::emit(keypair, &mut tx, &label, &commit_event.commit.rkey).await?;
+                    labels::emit(keypair, &mut tx, &label, &commit.rkey).await?;
                     tx.commit().await?;
                 }
                 _ => {}
