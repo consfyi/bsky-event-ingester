@@ -1,5 +1,3 @@
-mod jetstream;
-
 use atrium_api::types::{Collection as _, TryFromUnknown as _, TryIntoUnknown as _};
 use axum::response::IntoResponse as _;
 use bsky_event_ingester::*;
