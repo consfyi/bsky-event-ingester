@@ -9,7 +9,6 @@ pub struct ConnectOptions {
     pub wanted_dids: Vec<atrium_api::types::string::Did>,
     pub max_message_size_bytes: u32,
     pub cursor: Option<i64>,
-    #[serde(skip)]
     pub compress: bool,
 }
 
@@ -39,9 +38,6 @@ pub async fn connect(
 ) -> Result<impl futures::Stream<Item = Result<event::Event, Error>>, Error> {
     let mut url = endpoint.clone();
     url.set_query(Some(&serde_html_form::to_string(&options)?));
-    if options.compress {
-        url.query_pairs_mut().append_pair("compress", "true");
-    }
 
     let (mut ws, _) = tokio_tungstenite::connect_async(url).await?;
 
