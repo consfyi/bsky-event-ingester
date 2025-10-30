@@ -5,12 +5,12 @@ pub struct Event {
     pub did: atrium_api::types::string::Did,
     pub time_us: u64,
     #[serde(flatten)]
-    pub body: EventBody,
+    pub kind: EventKind,
 }
 
 #[derive(serde::Deserialize, Debug)]
 #[serde(tag = "kind", rename_all = "snake_case")]
-pub enum EventBody {
+pub enum EventKind {
     Commit { commit: Commit },
     Identity { identity: Identity },
     Account { account: Account },
@@ -22,12 +22,12 @@ pub struct Commit {
     pub collection: atrium_api::types::string::Nsid,
     pub rkey: String,
     #[serde(flatten)]
-    pub body: CommitBody,
+    pub operation: CommitOperation,
 }
 
 #[derive(serde::Deserialize, Debug)]
 #[serde(tag = "operation", rename_all = "snake_case")]
-pub enum CommitBody {
+pub enum CommitOperation {
     Create {
         record: atrium_api::record::KnownRecord,
         cid: atrium_api::types::string::Cid,

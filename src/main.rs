@@ -620,15 +620,15 @@ async fn service_jetstream_once(
     while let Some(event) = js.next().await {
         let event = event?;
 
-        let jetstream::event::EventBody::Commit { commit } = event.body else {
+        let jetstream::event::EventKind::Commit { commit } = event.kind else {
             continue;
         };
 
         let mut db_conn = db_pool.acquire().await?;
 
         async {
-            match commit.body {
-                jetstream::event::CommitBody::Create { record, .. } => {
+            match commit.operation {
+                jetstream::event::CommitOperation::Create { record, .. } => {
                     let atrium_api::record::KnownRecord::AppBskyFeedLike(like) = record else {
                         return Ok(());
                     };
@@ -696,7 +696,7 @@ async fn service_jetstream_once(
                     labels::emit(keypair, &mut tx, &label, &commit.rkey).await?;
                     tx.commit().await?;
                 }
-                jetstream::event::CommitBody::Delete { .. } => {
+                jetstream::event::CommitOperation::Delete { .. } => {
                     let uri = event.did.to_string();
 
                     let Some(val) = sqlx::query_scalar!(
