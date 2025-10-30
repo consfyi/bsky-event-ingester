@@ -609,6 +609,7 @@ async fn service_jetstream_once(
         jetstream::ConnectOptions {
             wanted_collections: vec![atrium_api::app::bsky::feed::Like::nsid()],
             cursor,
+            compress: true,
             ..Default::default()
         },
     )
@@ -619,6 +620,7 @@ async fn service_jetstream_once(
 
     while let Some(event) = js.next().await {
         let event = event?;
+        println!("{event:?}");
 
         let jetstream::event::EventKind::Commit { commit } = event.kind else {
             continue;
