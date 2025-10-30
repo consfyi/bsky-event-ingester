@@ -47,7 +47,7 @@ pub async fn connect(
                 tokio_tungstenite::tungstenite::Message::Binary(body) => {
                     // Compressed.
                     yield serde_json::from_reader(zstd::stream::Decoder::with_prepared_dictionary(
-                        std::io::Cursor::new(body),
+                        &mut &body[..],
                         &ZSTD_DICTIONARY,
                     )?)?;
                 }
