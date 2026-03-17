@@ -14,6 +14,9 @@ pub enum EventKind {
     Commit { commit: Commit },
     Identity { identity: Identity },
     Account { account: Account },
+
+    #[serde(untagged)]
+    Other(serde_json::Value),
 }
 
 #[derive(serde::Deserialize, Debug)]
@@ -37,6 +40,9 @@ pub enum CommitOperation {
         cid: atrium_api::types::string::Cid,
     },
     Delete {},
+
+    #[serde(untagged)]
+    Other(serde_json::Value),
 }
 
 #[derive(serde::Deserialize, Debug)]
@@ -63,4 +69,8 @@ pub enum AccountStatus {
     Deleted,
     Suspended,
     TakenDown,
+    Throttled,
+
+    #[serde(untagged)]
+    Other(String),
 }
