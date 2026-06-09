@@ -126,7 +126,7 @@ async fn fetch_events(
     reqwest_client: &reqwest::Client,
     events_url: &str,
 ) -> Result<std::collections::HashMap<String, AssociatedEvent>, anyhow::Error> {
-    Ok(reqwest_client
+    reqwest_client
         .get(events_url)
         .send()
         .await?
@@ -145,7 +145,7 @@ async fn fetch_events(
                 },
             ))
         })
-        .collect::<Result<_, _>>()?)
+        .collect::<Result<_, _>>()
 }
 
 const EXTRA_DATA_POST_RKEY: &str = "fbl_postRkey";
@@ -280,18 +280,15 @@ async fn sync_labels(
         })
         .collect::<std::collections::HashSet<atrium_api::types::string::RecordKey>>();
 
-    old_events = old_events
-        .into_iter()
-        .filter(|(_, oe)| {
-            if let Some(rkey) = oe.rkey.as_ref() {
-                if !record_rkeys.contains(rkey) {
-                    log::info!("could not find {}, will recreate", rkey.as_str());
-                    return false;
-                }
+    old_events.retain(|_, oe| {
+        if let Some(rkey) = oe.rkey.as_ref() {
+            if !record_rkeys.contains(rkey) {
+                log::info!("could not find {}, will recreate", rkey.as_str());
+                return false;
             }
-            true
-        })
-        .collect();
+        }
+        true
+    });
 
     // Delete old events if we don't see them in our retrieved events.
     for (label_id, oe) in old_events.into_iter() {
@@ -349,7 +346,7 @@ async fn sync_labels(
             assoc_event.rkey = Some(rkey.clone());
 
             {
-                let text = format!("{}", assoc_event.event.name);
+                let text = assoc_event.event.name.to_string();
 
                 let record: atrium_api::app::bsky::feed::post::Record =
                     atrium_api::app::bsky::feed::post::RecordData {
@@ -381,7 +378,7 @@ async fn sync_labels(
                             )],
                             index: atrium_api::app::bsky::richtext::facet::ByteSliceData {
                                 byte_start: 0,
-                                byte_end: text.bytes().len(),
+                                byte_end: text.len(),
                             }
                             .into(),
                         }
@@ -412,9 +409,9 @@ async fn sync_labels(
                         hidden_replies: None,
                         post: format!(
                             "at://{}/{}/{}",
-                            did.to_string(),
+                            did.as_str(),
                             atrium_api::app::bsky::feed::Post::NSID,
-                            rkey.to_string()
+                            rkey.as_str()
                         ),
                     }
                     .into();
