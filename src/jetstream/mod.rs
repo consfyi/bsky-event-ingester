@@ -27,7 +27,7 @@ pub enum Error {
     Io(#[from] std::io::Error),
 }
 
-const ZSTD_DICTIONARY: std::sync::LazyLock<zstd::dict::DecoderDictionary<'static>> =
+static ZSTD_DICTIONARY: std::sync::LazyLock<zstd::dict::DecoderDictionary<'static>> =
     std::sync::LazyLock::new(|| {
         zstd::dict::DecoderDictionary::copy(include_bytes!("./zstd_dictionary"))
     });

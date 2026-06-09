@@ -11,9 +11,15 @@ pub struct Event {
 #[derive(serde::Deserialize, Debug)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum EventKind {
-    Commit { commit: Commit },
-    Identity { identity: Identity },
-    Account { account: Account },
+    Commit {
+        commit: Commit,
+    },
+    Identity {
+        identity: Identity,
+    },
+    Account {
+        account: Account,
+    },
 
     #[serde(untagged)]
     Other(serde_json::Value),
