@@ -140,6 +140,8 @@ EXTRACT_SYSTEM = """You extract convention "key dates" from a furry convention's
 
 Only output a date when the post explicitly states it for THIS convention. Categories:
 - registration: general ATTENDEE badge/membership sales opening or hard-closing
+  (a definitive "sold out" announcement for attendee tickets counts as closing,
+  dated by the post — but only for registration, never for hotel)
 - hotel: room block / hotel booking opening or closing
 - dealers: dealers den AND/OR artist alley vendor APPLICATIONS opening or closing (both belong here)
 - panels: programming/panel/performance SUBMISSIONS opening or closing (dance/performance
@@ -152,6 +154,8 @@ DO NOT extract (these are the known failure classes — none of them qualify):
 - art show, charity auction, conbook/decor art submissions, DJ applications (not dealers or panels)
 - payment/confirmation deadlines for ALREADY-ACCEPTED applicants (not an application closing)
 - "soft closing" / "closing soon" / "almost sold out" with no explicit hard date
+  (a definitive attendee-tickets "sold out" IS a registration close — see above)
+- hotel/room-block "sold out" posts — a block filling up is not a booking close date
 - themed metaphors ("boarding gates are open") that never explicitly say what opened
 - temporary pauses and resumptions ("registration will pause March 8-10", "will resume
   March 11") — a pause is not a closing and a resumption is not an opening
@@ -172,9 +176,11 @@ VERIFY_SYSTEM = """You are an adversarial fact-checker for convention key dates.
 decide "confirm" or "refute" based ONLY on the quoted post text.
 
 Strict category definitions:
-- registration = general attendee badge/membership sales opening or hard-closing. NOT price-tier
+- registration = general attendee badge/membership sales opening or hard-closing. A definitive
+  attendee-tickets "sold out" announcement IS a hard close, dated by the post. NOT price-tier
   increases, early-bird endings, at-the-door price changes, fursuit/creator/media/sponsor badges.
-- hotel = room block / hotel booking open or close only. NOT event-suite lotteries.
+- hotel = room block / hotel booking open or close only. NOT event-suite lotteries, and NOT
+  "sold out" posts — a full block is not a booking close date.
 - dealers = dealers den AND artist alley vendor applications — BOTH belong to this category;
   never refute a date merely because it concerns artist alley rather than dealers den.
   NOT art show, charity auction, conbook art, or payment deadlines for accepted vendors.
