@@ -21,6 +21,13 @@ struct Config {
     keydates_worker_cmd: Option<String>,
     con_post_debounce_secs: u64,
     con_posts_daily_cap: u32,
+    // Key-date announcements: see src/keydates_announce.rs. Dry run by
+    // default; messages are logged (and the snapshot advances) until
+    // telegram_dry_run is explicitly set to false.
+    telegram_bot_token: Option<String>,
+    telegram_chat_id: Option<String>,
+    telegram_dry_run: bool,
+    keydates_announce_cap: u32,
 }
 
 struct EventsState {
@@ -107,6 +114,8 @@ struct IngestedEvent {
     series_id: Option<String>,
     #[serde(default)]
     bluesky: Option<BlueskyRef>,
+    #[serde(default)]
+    key_dates: Option<serde_json::Value>,
 }
 
 #[derive(Debug)]
@@ -253,6 +262,7 @@ async fn fetch_old_events(
         }))
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn sync_labels(
     reqwest_client: &reqwest::Client,
     events_url: &str,
@@ -266,6 +276,7 @@ async fn sync_labels(
     >,
     events_state: std::sync::Arc<tokio::sync::Mutex<EventsState>>,
     watchlist: con_posts::Watchlist,
+    announcer: Option<&keydates_announce::Announcer>,
 ) -> Result<(), anyhow::Error> {
     // Lock the entire events state while labels are syncing.
     //
@@ -585,6 +596,20 @@ async fn sync_labels(
         );
     }
 
+    // Announce newly published key dates (post-merge data only) and advance
+    // the snapshot. Failures are logged inside run(), never propagated.
+    if let Some(announcer) = announcer {
+        let announce_events = events
+            .values()
+            .map(|assoc_event| keydates_announce::EventKeyDates {
+                event_id: assoc_event.event.id.clone(),
+                name: assoc_event.event.name.clone(),
+                key_dates: assoc_event.event.key_dates.clone(),
+            })
+            .collect::<Vec<_>>();
+        announcer.run(&announce_events).await;
+    }
+
     events_state.events = events;
 
     Ok(())
@@ -824,6 +849,8 @@ async fn main() -> Result<(), anyhow::Error> {
         .set_default("commit_firehose_cursor_every_secs", 5)?
         .set_default("con_post_debounce_secs", 15 * 60)?
         .set_default("con_posts_daily_cap", 30)?
+        .set_default("telegram_dry_run", true)?
+        .set_default("keydates_announce_cap", 10)?
         .build()?
         .try_deserialize()?;
     log::info!("config: {config:?}");
@@ -856,6 +883,16 @@ async fn main() -> Result<(), anyhow::Error> {
     let watchlist: con_posts::Watchlist =
         std::sync::Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new()));
 
+    let announcer = std::sync::Arc::new(keydates_announce::Announcer {
+        db_pool: db_pool.clone(),
+        reqwest_client: reqwest_client.clone(),
+        ui_endpoint: config.ui_endpoint.clone(),
+        bot_token: config.telegram_bot_token.clone(),
+        chat_id: config.telegram_chat_id.clone(),
+        dry_run: config.telegram_dry_run,
+        cap_per_sync: config.keydates_announce_cap,
+    });
+
     log::info!("syncing initial labels");
 
     sync_labels(
@@ -866,6 +903,7 @@ async fn main() -> Result<(), anyhow::Error> {
         &agent,
         events_state.clone(),
         watchlist.clone(),
+        Some(&announcer),
     )
     .await?;
 
@@ -877,6 +915,7 @@ async fn main() -> Result<(), anyhow::Error> {
             let did = did.clone();
             let events_state = events_state.clone();
             let watchlist = watchlist.clone();
+            let announcer = announcer.clone();
             let triggering = std::sync::Arc::new(tokio::sync::Mutex::new(()));
             || async move {
                 let Ok(_guard) = triggering.try_lock() else {
@@ -892,6 +931,7 @@ async fn main() -> Result<(), anyhow::Error> {
                     &agent,
                     events_state,
                     watchlist,
+                    Some(&announcer),
                 )
                 .await
                 {
