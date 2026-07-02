@@ -16,6 +16,11 @@ struct Config {
     keypair_path: String,
     ingester_bind: std::net::SocketAddr,
     commit_firehose_cursor_every_secs: u64,
+    // Key-date detection: unset = feature off. See src/con_posts.rs.
+    con_posts_spool_dir: Option<std::path::PathBuf>,
+    keydates_worker_cmd: Option<String>,
+    con_post_debounce_secs: u64,
+    con_posts_daily_cap: u32,
 }
 
 struct EventsState {
@@ -81,6 +86,14 @@ async fn list_all_records(
 
 #[derive(Debug, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
+struct BlueskyRef {
+    did: String,
+    #[allow(dead_code)]
+    handle: Option<String>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct IngestedEvent {
     id: String,
     name: String,
@@ -90,6 +103,10 @@ struct IngestedEvent {
     start_date: chrono::NaiveDate,
     end_date: chrono::NaiveDate,
     timezone: Option<String>,
+    #[serde(default)]
+    series_id: Option<String>,
+    #[serde(default)]
+    bluesky: Option<BlueskyRef>,
 }
 
 #[derive(Debug)]
@@ -248,6 +265,7 @@ async fn sync_labels(
         >,
     >,
     events_state: std::sync::Arc<tokio::sync::Mutex<EventsState>>,
+    watchlist: con_posts::Watchlist,
 ) -> Result<(), anyhow::Error> {
     // Lock the entire events state while labels are syncing.
     //
@@ -549,6 +567,24 @@ async fn sync_labels(
         })
         .collect();
 
+    // Rebuild the con-post watchlist (did -> series id) for key-date detection.
+    {
+        let mut watchlist = watchlist.write().await;
+        watchlist.clear();
+        for assoc_event in events.values() {
+            if let (Some(series_id), Some(bluesky)) = (
+                assoc_event.event.series_id.as_ref(),
+                assoc_event.event.bluesky.as_ref(),
+            ) {
+                watchlist.insert(bluesky.did.clone(), series_id.clone());
+            }
+        }
+        log::info!(
+            "watching {} con accounts for key-date posts",
+            watchlist.len()
+        );
+    }
+
     events_state.events = events;
 
     Ok(())
@@ -786,6 +822,8 @@ async fn main() -> Result<(), anyhow::Error> {
         .set_default("label_sync_delay_secs", 60 * 60)?
         .set_default("ingester_bind", "127.0.0.1:3002")?
         .set_default("commit_firehose_cursor_every_secs", 5)?
+        .set_default("con_post_debounce_secs", 15 * 60)?
+        .set_default("con_posts_daily_cap", 30)?
         .build()?
         .try_deserialize()?;
     log::info!("config: {config:?}");
@@ -815,6 +853,9 @@ async fn main() -> Result<(), anyhow::Error> {
 
     let db_pool = sqlx::PgPool::connect(&config.postgres_url).await?;
 
+    let watchlist: con_posts::Watchlist =
+        std::sync::Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new()));
+
     log::info!("syncing initial labels");
 
     sync_labels(
@@ -824,6 +865,7 @@ async fn main() -> Result<(), anyhow::Error> {
         &did,
         &agent,
         events_state.clone(),
+        watchlist.clone(),
     )
     .await?;
 
@@ -834,6 +876,7 @@ async fn main() -> Result<(), anyhow::Error> {
         axum::routing::post({
             let did = did.clone();
             let events_state = events_state.clone();
+            let watchlist = watchlist.clone();
             let triggering = std::sync::Arc::new(tokio::sync::Mutex::new(()));
             || async move {
                 let Ok(_guard) = triggering.try_lock() else {
@@ -848,6 +891,7 @@ async fn main() -> Result<(), anyhow::Error> {
                     &did,
                     &agent,
                     events_state,
+                    watchlist,
                 )
                 .await
                 {
@@ -860,6 +904,21 @@ async fn main() -> Result<(), anyhow::Error> {
             }
         }),
     );
+
+    let con_posts_endpoint = config.jetstream_endpoint.clone();
+    let con_posts_options =
+        config
+            .con_posts_spool_dir
+            .clone()
+            .map(|spool_dir| con_posts::Options {
+                spool_dir,
+                worker_cmd: config.keydates_worker_cmd.clone(),
+                debounce: std::time::Duration::from_secs(config.con_post_debounce_secs),
+                daily_cap: config.con_posts_daily_cap,
+                commit_cursor_every: std::time::Duration::from_secs(
+                    config.commit_firehose_cursor_every_secs,
+                ),
+            });
 
     tokio::try_join!(
         async {
@@ -886,6 +945,22 @@ async fn main() -> Result<(), anyhow::Error> {
         async {
             // Serve labeler.
             axum::serve(listener, app).await?;
+            unreachable!();
+
+            #[allow(unreachable_code)]
+            Ok::<_, anyhow::Error>(())
+        },
+        async {
+            // Watch con accounts for key-date posts (second Jetstream
+            // connection; the like connection must stay unfiltered by DID).
+            let (Some(options), Some(jetstream_endpoint)) =
+                (con_posts_options, con_posts_endpoint.as_ref())
+            else {
+                log::info!("con_posts_spool_dir not configured, key-date detection off");
+                return Ok(());
+            };
+
+            con_posts::service(&db_pool, watchlist.clone(), jetstream_endpoint, options).await?;
             unreachable!();
 
             #[allow(unreachable_code)]
