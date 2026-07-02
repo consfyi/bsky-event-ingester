@@ -71,7 +71,7 @@ CONFIDENCE_THRESHOLD = 0.80
 POSTS_PER_CON = 50
 APPVIEW = "https://public.api.bsky.app/xrpc"
 TODAY = datetime.datetime.now(datetime.timezone.utc).date()
-CATEGORIES = ["registration", "hotel", "dealers", "panels", "volunteers"]
+CATEGORIES = ["registration", "hotel", "dealers", "panels", "performances", "djs", "volunteers"]
 VERIFY_BATCH = 8
 INPUT_BUDGET_CHARS = 24000  # ~6k tokens; free tier caps requests at 8k in
 # RPM pacing per free-tier docs: low tier 15 RPM, high tier 10 RPM
@@ -144,14 +144,17 @@ Only output a date when the post explicitly states it for THIS convention. Categ
   dated by the post — but only for registration, never for hotel)
 - hotel: room block / hotel booking opening or closing
 - dealers: dealers den AND/OR artist alley vendor APPLICATIONS opening or closing (both belong here)
-- panels: programming/panel/performance SUBMISSIONS opening or closing (dance/performance
-  competition auditions count as performance submissions)
+- panels: panel/programming SUBMISSIONS (talks, workshops, meetups, activities) opening
+  or closing — performances and DJ sets are NOT panels, they have their own categories
+- performances: dance competition, talent/variety show, and performer AUDITION
+  signups opening or closing
+- djs: DJ set applications opening or closing
 - volunteers: general staff/volunteer signups opening or closing (not sub-group-only calls)
 
 DO NOT extract (these are the known failure classes — none of them qualify):
 - price-tier changes, early-bird endings, "more expensive at the door" (registration stays open)
 - fursuit badges, creator/media badges, sponsor upgrades (not attendee registration)
-- art show, charity auction, conbook/decor art submissions, DJ applications (not dealers or panels)
+- art show, charity auction, conbook/decor art submissions (not dealers or panels)
 - payment/confirmation deadlines for ALREADY-ACCEPTED applicants (not an application closing)
 - "soft closing" / "closing soon" / "almost sold out" with no explicit hard date
   (a definitive attendee-tickets "sold out" IS a registration close — see above)
@@ -184,8 +187,11 @@ Strict category definitions:
 - dealers = dealers den AND artist alley vendor applications — BOTH belong to this category;
   never refute a date merely because it concerns artist alley rather than dealers den.
   NOT art show, charity auction, conbook art, or payment deadlines for accepted vendors.
-- panels = programming/panel/performance submissions, INCLUDING dance/performance competition
-  auditions. NOT DJ set applications, art show, or creator badges.
+- panels = panel/programming submissions (talks, workshops, meetups, activities) ONLY.
+  NOT dance/performance auditions or DJ sets (separate categories), art show, creator badges.
+- performances = dance competition, talent/variety show, performer audition signups.
+  NOT DJ set applications, and NOT general panel submissions.
+- djs = DJ set applications only.
 - volunteers = general staff/volunteer signups. NOT recruitment for one named sub-group only.
 
 Refute when ANY of: the date is a price change rather than a true open/close; the post refers to
