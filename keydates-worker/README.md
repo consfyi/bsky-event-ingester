@@ -45,6 +45,7 @@ two cron days. `MAX_EXTRACTS` guards runaway usage.
    with the spool file as its argument):
    ```sh
    #!/bin/sh
+   # token files and this wrapper must be chmod 600 / owned by the worker user
    export GITHUB_TOKEN=$(cat /home/fbl/.keydates-models-token)
    export DATA_DIR=/home/fbl/consfyi/data-worktree
    export PUSH=1
