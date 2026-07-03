@@ -582,6 +582,13 @@ def process_con(fn, cache, rejections, provided_posts=None):
     return changes, refuted, held, rejected_skips, True
 
 
+def md_inline(text, cap):
+    """Collapse whitespace so attacker-influenceable text (post bodies,
+    model reasons) cannot break out of its blockquote/list line in the
+    PR markdown."""
+    return " ".join(str(text).split())[:cap]
+
+
 def render_summary(all_changes, all_refuted, all_held, all_rejected, skipped_note):
     lines = ["## Key dates from Bluesky", ""]
     lines.append(f"_Extract: `{EXTRACT_MODEL}` · Verify (unanimous): `{'` + `'.join(VERIFY_MODELS)}` · {TODAY.isoformat()}_")
@@ -589,18 +596,18 @@ def render_summary(all_changes, all_refuted, all_held, all_rejected, skipped_not
         lines.append("\n### Applied (unanimously verified)")
         for c in all_changes:
             lines.append(f"\n**{c['_file']}** — `{c['event_id']}` {c['category']}.{c['kind']} → **{c['date']}** ({c['verb']}, conf {c['confidence']})")
-            lines.append(f"> {c['_post_text'][:400]}")
+            lines.append(f"> {md_inline(c['_post_text'], 400)}")
             lines.append(f"> — [source post]({c['source']}) at {c['asOf']}")
     if all_held:
         lines.append("\n### Held — verifier disagreement, needs a human (`/reject` or hand-apply)")
         for p in all_held:
             lines.append(f"- `{p['event_id']}` {p['category']}.{p['kind']} {p['date']} — " +
-                         "; ".join(f"{v['model'].split('/')[-1]}: {v['verdict']} ({v['reason'][:120]})" for v in p["_verdicts"]))
+                         "; ".join(f"{v['model'].split('/')[-1]}: {v['verdict']} ({md_inline(v['reason'], 120)})" for v in p["_verdicts"]))
     if all_refuted:
         lines.append("\n### Refuted by verification (not applied)")
         for p in all_refuted:
             reason = next((v["reason"] for v in p["_verdicts"] if v["verdict"] == "refute"), "")
-            lines.append(f"- `{p['event_id']}` {p['category']}.{p['kind']} {p['date']} — {reason[:160]}")
+            lines.append(f"- `{p['event_id']}` {p['category']}.{p['kind']} {p['date']} — {md_inline(reason, 160)}")
     if all_rejected:
         lines.append("\n### Skipped — matches an entry in keydates_rejections.json")
         for p in all_rejected:
@@ -624,7 +631,7 @@ def publish(summary):
         log("nothing to publish")
         return
     git("checkout", "-B", BOT_BRANCH)
-    git("add", *changed)
+    git("add", "--", *changed)
     git("commit", "-m", "via keydates_worker")
     git("push", "-f", "origin", BOT_BRANCH)
     pr = subprocess.run(["gh", "pr", "list", "--repo", "consfyi/data", "--head", BOT_BRANCH,
@@ -655,9 +662,16 @@ def main():
     cache = load_cache()
     rejections = load_rejections()
 
+    def series_path(series):
+        # series ids become filesystem paths under DATA_DIR — refuse anything
+        # that is not a bare slug (defense in depth; ids come from the dataset)
+        if not re.fullmatch(r"[a-z0-9-]+", series or ""):
+            raise SystemExit(f"invalid series id: {series!r}")
+        return os.path.join(DATA_DIR, series + ".json")
+
     targets = []  # (filename, provided_posts | None)
     if args.series:
-        targets = [(os.path.join(DATA_DIR, args.series + ".json"), None)]
+        targets = [(series_path(args.series), None)]
     elif args.post_file:
         with open(args.post_file) as f:
             spool = json.load(f)
@@ -674,7 +688,7 @@ def main():
             raise SystemExit(f"no series found for spooled post {args.post_file}")
         # single post + its context: still fetch the feed so recency-wins sees
         # neighbours, but the triggering post is guaranteed present
-        targets = [(os.path.join(DATA_DIR, series + ".json"), None)]
+        targets = [(series_path(series), None)]
     else:
         files = sorted(glob.glob(os.path.join(DATA_DIR, "*.json")))
         if args.shard:

@@ -258,6 +258,17 @@ fn handle_post(
         return;
     }
 
+    // series comes from the published events data, not post content, but it
+    // becomes part of a filesystem path — refuse anything but a bare slug.
+    if series.is_empty()
+        || !series
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+    {
+        log::warn!("con_posts: refusing to spool series with non-slug id {series:?}");
+        return;
+    }
+
     let as_of = post.created_at.as_str().to_string();
     let spooled = SpooledPost {
         series,
@@ -299,7 +310,17 @@ fn handle_post(
                 tokio::spawn(async move {
                     match child.wait().await {
                         Ok(status) => {
-                            log::info!("con_posts: worker for {series} exited: {status}")
+                            log::info!("con_posts: worker for {series} exited: {status}");
+                            if status.success() {
+                                // processed: reclaim the spool file so the dir
+                                // doesn't grow forever
+                                if let Err(e) = tokio::fs::remove_file(&path).await {
+                                    log::warn!(
+                                        "con_posts: could not remove spool file {}: {e}",
+                                        path.display()
+                                    );
+                                }
+                            }
                         }
                         Err(e) => log::error!("con_posts: worker for {series} failed: {e}"),
                     }

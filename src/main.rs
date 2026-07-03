@@ -4,7 +4,7 @@ use bsky_event_ingester::*;
 use futures::StreamExt as _;
 use sqlx::Acquire as _;
 
-#[derive(serde::Deserialize, Debug)]
+#[derive(serde::Deserialize)]
 struct Config {
     bsky_username: String,
     bsky_password: String,
@@ -28,6 +28,38 @@ struct Config {
     telegram_chat_id: Option<String>,
     telegram_dry_run: bool,
     keydates_announce_cap: u32,
+}
+
+// Manual Debug so the startup config log can never leak credentials.
+impl std::fmt::Debug for Config {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Config")
+            .field("bsky_username", &self.bsky_username)
+            .field("bsky_password", &"<redacted>")
+            .field("bsky_endpoint", &self.bsky_endpoint)
+            .field("ui_endpoint", &self.ui_endpoint)
+            .field("jetstream_endpoint", &self.jetstream_endpoint)
+            .field("events_url", &self.events_url)
+            .field("postgres_url", &"<redacted>")
+            .field("keypair_path", &self.keypair_path)
+            .field("ingester_bind", &self.ingester_bind)
+            .field(
+                "commit_firehose_cursor_every_secs",
+                &self.commit_firehose_cursor_every_secs,
+            )
+            .field("con_posts_spool_dir", &self.con_posts_spool_dir)
+            .field("keydates_worker_cmd", &self.keydates_worker_cmd)
+            .field("con_post_debounce_secs", &self.con_post_debounce_secs)
+            .field("con_posts_daily_cap", &self.con_posts_daily_cap)
+            .field(
+                "telegram_bot_token",
+                &self.telegram_bot_token.as_ref().map(|_| "<redacted>"),
+            )
+            .field("telegram_chat_id", &self.telegram_chat_id)
+            .field("telegram_dry_run", &self.telegram_dry_run)
+            .field("keydates_announce_cap", &self.keydates_announce_cap)
+            .finish()
+    }
 }
 
 struct EventsState {

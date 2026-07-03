@@ -115,6 +115,9 @@ impl Announcer {
             log::info!("keydates_announce (no telegram configured):\n{text}");
             return Ok(());
         };
+        // The bot token is a path segment of the request URL, and reqwest
+        // errors include the URL in their Display output — strip it so a
+        // failed send can't leak the token into the logs.
         self.reqwest_client
             .post(format!("https://api.telegram.org/bot{token}/sendMessage"))
             .json(&serde_json::json!({
@@ -123,8 +126,10 @@ impl Announcer {
                 "disable_web_page_preview": true,
             }))
             .send()
-            .await?
-            .error_for_status()?;
+            .await
+            .map_err(reqwest::Error::without_url)?
+            .error_for_status()
+            .map_err(reqwest::Error::without_url)?;
         Ok(())
     }
 
