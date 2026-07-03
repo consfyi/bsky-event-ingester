@@ -77,7 +77,8 @@ INPUT_BUDGET_CHARS = 24000  # ~6k tokens; free tier caps requests at 8k in
 # RPM pacing per free-tier docs: low tier 15 RPM, high tier 10 RPM
 MODEL_MIN_INTERVAL = {EXTRACT_MODEL: 4.5, **{m: 6.5 for m in VERIFY_MODELS}}
 
-# cheap pre-filter so we only spend model calls on date-relevant posts
+# cheap pre-filter so we only spend model calls on date-relevant posts.
+# KEEP IN SYNC with relevant_re in bsky-event-ingester/src/con_posts.rs
 # (validated in the 2026-07-01 run: 1559/~3850 posts passed across 77 cons)
 RELEVANT = re.compile(
     r"\b(regist|reg open|hotel|room block|booking|dealer|artist alley|panel|"
@@ -438,8 +439,10 @@ def save_cache(cache):
     cutoff = (TODAY - datetime.timedelta(days=90)).isoformat()
     cache = {k: v for k, v in cache.items() if v.get("at", "9999") >= cutoff}
     os.makedirs(os.path.dirname(CACHE_FILE), exist_ok=True)
-    with open(CACHE_FILE, "w") as f:
+    tmp = CACHE_FILE + ".tmp"
+    with open(tmp, "w") as f:
         json.dump(cache, f, indent=1)
+    os.replace(tmp, CACHE_FILE)
 
 
 # --- pipeline -------------------------------------------------------------------
@@ -514,7 +517,7 @@ def verify_proposals(proposals, cache):
     return confirmed, refuted, held
 
 
-def process_con(fn, cache, rejections, provided_posts=None):
+def process_con(fn, cache, rejections, provided_posts=None, extra_post=None):
     """Returns (changes, refuted, held, rejected_skips, did_extract) for one
     con file; did_extract is False when the con was skipped before any model
     call (no mapping / no upcoming edition / no posts)."""
@@ -527,6 +530,10 @@ def process_con(fn, cache, rejections, provided_posts=None):
     if not events:
         return [], [], [], [], False
     posts = provided_posts if provided_posts is not None else fetch_posts(bsky.get("handle") or bsky["did"])
+    if extra_post and all(p.get("url") != extra_post.get("url") for p in posts):
+        # appview indexing can lag the jetstream trigger; make sure the post
+        # that fired us is actually in the set we extract from
+        posts = [extra_post, *posts]
     if not posts:
         return [], [], [], [], False
 
@@ -582,9 +589,11 @@ def process_con(fn, cache, rejections, provided_posts=None):
     if confirmed:
         changes = merge(con, confirmed)
         if changes and not DRY_RUN:
-            with open(fn, "w") as f:
+            tmp = fn + ".tmp"
+            with open(tmp, "w") as f:
                 json.dump(con, f, ensure_ascii=False, indent=2)
                 f.write("\n")
+            os.replace(tmp, fn)  # atomic: a killed run can't truncate a con file
     return changes, refuted, held, rejected_skips, True
 
 
@@ -626,11 +635,37 @@ def render_summary(all_changes, all_refuted, all_held, all_rejected, skipped_not
     return body
 
 
+def git(*args, check=True):
+    return subprocess.run(["git", "-C", DATA_DIR, *args], check=check, capture_output=True, text=True)
+
+
+_LOCK_FD = None
+
+
+def acquire_run_lock():
+    """One worker at a time per DATA_DIR: concurrent runs would race on the
+    git worktree, the bot branch force-push, the verdict cache, and would
+    combine past the models RPM limits. Blocks until the running one exits."""
+    global _LOCK_FD
+    import fcntl
+    lock_dir = os.path.join(DATA_DIR, ".git")
+    if not os.path.isdir(lock_dir):
+        lock_dir = DATA_DIR
+    _LOCK_FD = open(os.path.join(lock_dir, "keydates_worker.lock"), "w")
+    fcntl.flock(_LOCK_FD, fcntl.LOCK_EX)
+
+
+def sync_checkout_to_main():
+    """PUSH mode only: restage the bot branch from fresh origin/main so the
+    checkout never drifts after the rolling PR merges (the run regenerates
+    all file changes anyway)."""
+    git("fetch", "origin")
+    git("checkout", "-B", BOT_BRANCH, "origin/main")
+    git("reset", "--hard", "origin/main")
+
+
 def publish(summary):
     """Commit staged changes and open/update the rolling PR. PUSH=1 only."""
-    def git(*args, check=True):
-        return subprocess.run(["git", "-C", DATA_DIR, *args], check=check, capture_output=True, text=True)
-
     status = git("status", "--porcelain").stdout
     changed = [l[3:] for l in status.splitlines() if l.endswith(".json") and "/" not in l[3:]]
     if not changed:
@@ -664,6 +699,9 @@ def main():
     ap.add_argument("--shard", default=None, help="N/M — process the Nth of M slices (sweep only)")
     args = ap.parse_args()
 
+    acquire_run_lock()
+    if PUSH and not DRY_RUN:
+        sync_checkout_to_main()
     catalog_check()
     cache = load_cache()
     rejections = load_rejections()
@@ -677,7 +715,7 @@ def main():
 
     targets = []  # (filename, provided_posts | None)
     if args.series:
-        targets = [(series_path(args.series), None)]
+        targets = [(series_path(args.series), None, None)]
     elif args.post_file:
         with open(args.post_file) as f:
             spool = json.load(f)
@@ -693,19 +731,21 @@ def main():
         if not series:
             raise SystemExit(f"no series found for spooled post {args.post_file}")
         # single post + its context: still fetch the feed so recency-wins sees
-        # neighbours, but the triggering post is guaranteed present
-        targets = [(series_path(series), None)]
+        # neighbours; the spooled post itself is injected in process_con so
+        # appview indexing lag can't drop the trigger
+        spool_post = {k: spool.get(k) for k in ("url", "asOf", "text")}
+        targets = [(series_path(series), None, spool_post)]
     else:
         files = sorted(glob.glob(os.path.join(DATA_DIR, "*.json")))
         if args.shard:
             n, m = (int(x) for x in args.shard.split("/"))
             files = [f for i, f in enumerate(files) if i % m == n - 1]
-        targets = [(f, None) for f in files]
+        targets = [(f, None, None) for f in files]
 
     all_changes, all_refuted, all_held, all_rejected = [], [], [], []
     extracts = 0
     skipped_note = ""
-    for fn, provided in targets:
+    for fn, provided, extra_post in targets:
         if not os.path.exists(fn):
             log(f"missing: {fn}")
             continue
@@ -713,10 +753,15 @@ def main():
             skipped_note = f"Stopped after {MAX_EXTRACTS} extract calls (quota guard); remaining cons pick up next run."
             break
         try:
-            changes, refuted, held, rejected, did_extract = process_con(fn, cache, rejections, provided)
+            changes, refuted, held, rejected, did_extract = process_con(
+                fn, cache, rejections, provided, extra_post)
         except DailyCapHit as e:
             skipped_note = f"Daily quota hit on {e}; remaining cons pick up next run."
             break
+        except Exception as e:
+            # one corrupt con file or feed hiccup must not kill the sweep
+            log(f"ERROR processing {os.path.basename(fn)}: {e}")
+            continue
         if did_extract:
             extracts += 1
         base = os.path.basename(fn)

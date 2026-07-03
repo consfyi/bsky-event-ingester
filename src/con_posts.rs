@@ -23,6 +23,7 @@ pub struct Options {
 }
 
 /// Same cheap pre-filter the worker uses: only date-relevant posts are spooled.
+/// KEEP IN SYNC with RELEVANT in keydates-worker/keydates_worker.py.
 fn relevant_re() -> &'static regex::Regex {
     static RE: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
         regex::RegexBuilder::new(
@@ -139,6 +140,15 @@ pub async fn service(
             }
             Err(e) => {
                 log::error!("con_posts: Jetstream disconnected: {e}");
+                // The in-memory cursor is only updated on clean exits, so after
+                // an error it can be hours stale — and a replay here re-fires
+                // the whole LLM pipeline, unlike the labeler's idempotent
+                // upserts. Resume from the persisted cursor (committed every
+                // few seconds) instead.
+                match read_cursor(db_pool).await {
+                    Ok(persisted) => cursor = persisted,
+                    Err(e) => log::error!("con_posts: could not re-read cursor: {e}"),
+                }
             }
         }
         tokio::time::sleep(std::time::Duration::from_secs(1)).await;
