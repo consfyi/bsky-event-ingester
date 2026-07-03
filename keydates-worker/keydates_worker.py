@@ -163,6 +163,9 @@ DO NOT extract (these are the known failure classes — none of them qualify):
 - themed metaphors ("boarding gates are open") that never explicitly say what opened
 - temporary pauses and resumptions ("registration will pause March 8-10", "will resume
   March 11") — a pause is not a closing and a resumption is not an opening
+- "still open" reminders and follow-ups addressed to applicants ("Dealers! Your reg is
+  now open!" weeks after applications opened) — only the post that announces the opening
+  (or explicitly states its date) sets an opens date
 
 Rules:
 - kind is "opens" or "closes" (a submission "deadline" is closes).
@@ -202,7 +205,9 @@ almost certainly refers to that earlier edition unless it carries explicit evide
 or hashtag); the "closing" is soft ("closing soon", "almost sold out") with no explicit date;
 the date is not explicitly stated in the post; the category is a stretch per the definitions;
 the deadline applies only to already-accepted applicants; the "close" or "open" is actually a
-temporary pause or a resumption of something already open. When uncertain, refute — a dropped
+temporary pause or a resumption of something already open; the post is a reminder that
+something is still open (or a follow-up for people already accepted) rather than the
+announcement of the opening. When uncertain, refute — a dropped
 true date returns next run; a published false date misleads attendees.
 
 Return a verdict for every item index you were given."""
