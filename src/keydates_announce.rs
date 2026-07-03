@@ -34,7 +34,7 @@ struct Change {
     source: Option<String>,
 }
 
-const CATEGORY_LABELS: [(&str, &str); 5] = [
+const CATEGORY_LABELS: [(&str, &str); 7] = [
     ("registration", "Registration"),
     ("hotel", "Hotel block"),
     ("dealers", "Dealers/artist alley"),
