@@ -39,6 +39,8 @@ const CATEGORY_LABELS: [(&str, &str); 5] = [
     ("hotel", "Hotel block"),
     ("dealers", "Dealers/artist alley"),
     ("panels", "Panel submissions"),
+    ("performances", "Performance signups"),
+    ("djs", "DJ applications"),
     ("volunteers", "Volunteer signups"),
 ];
 
