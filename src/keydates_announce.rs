@@ -55,12 +55,19 @@ fn diff(old: Option<&serde_json::Value>, new: &serde_json::Value) -> Vec<Change>
             let Some(new_leaf) = leaf(new, category, kind) else {
                 continue;
             };
-            if old.and_then(|o| leaf(o, category, kind)) == Some(new_leaf) {
-                continue;
-            }
             let Some(date) = new_leaf.get("date").and_then(|d| d.as_str()) else {
                 continue;
             };
+            // compare dates, not whole leaves: a source-citation or confidence
+            // refresh with the same date is not news to subscribers
+            if old
+                .and_then(|o| leaf(o, category, kind))
+                .and_then(|o| o.get("date"))
+                .and_then(|d| d.as_str())
+                == Some(date)
+            {
+                continue;
+            }
             if *date < *today {
                 continue; // only announce dates that haven't passed
             }
@@ -143,6 +150,13 @@ impl Announcer {
     }
 
     async fn run_inner(&self, events: &[EventKeyDates]) -> Result<(), anyhow::Error> {
+        if events.is_empty() {
+            // a transient bad fetch must not wipe the snapshot below (an empty
+            // table looks like first-run seeding and would swallow a whole
+            // batch of real announcements)
+            log::warn!("keydates_announce: no events; skipping");
+            return Ok(());
+        }
         let mut conn = self.db_pool.acquire().await?;
 
         let seeding = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM keydates_snapshot")
@@ -175,8 +189,15 @@ impl Announcer {
                 );
                 continue;
             } else {
-                self.send(&render_message(&self.ui_endpoint, ev, &changes))
-                    .await?;
+                // a failed send skips only this event's snapshot advance (so it
+                // retries next sync) instead of wedging every event after it
+                if let Err(e) = self
+                    .send(&render_message(&self.ui_endpoint, ev, &changes))
+                    .await
+                {
+                    log::error!("keydates_announce: send failed for {}: {e}", ev.event_id);
+                    continue;
+                }
                 announced += 1;
             }
 
