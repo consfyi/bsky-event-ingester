@@ -243,7 +243,7 @@ def chat(model: str, system: str, user: str, schema: dict, schema_name: str):
             GH_MODELS_URL, data=body, method="POST",
             headers={"Authorization": f"Bearer {token}",
                      "Content-Type": "application/json",
-                     "User-Agent": "consfyi-keydates-worker"})
+                     "User-Agent": "consfyi/bsky-event-ingester"})
         try:
             with urllib.request.urlopen(req, timeout=120) as r:
                 _last_call[model] = time.monotonic()
@@ -276,7 +276,7 @@ def catalog_check():
     """Fail fast if a configured model has vanished from the catalog."""
     try:
         with urllib.request.urlopen(
-            urllib.request.Request(GH_CATALOG_URL, headers={"User-Agent": "consfyi-keydates"}),
+            urllib.request.Request(GH_CATALOG_URL, headers={"User-Agent": "consfyi/bsky-event-ingester"}),
             timeout=30,
         ) as r:
             ids = {m["id"] for m in json.load(r)}
@@ -294,7 +294,7 @@ def catalog_check():
 # --- Bluesky fetch (free public appview) -------------------------------------
 def appget(method, params):
     url = f"{APPVIEW}/{method}?" + urllib.parse.urlencode(params, doseq=True)
-    req = urllib.request.Request(url, headers={"User-Agent": "consfyi-keydates"})
+    req = urllib.request.Request(url, headers={"User-Agent": "consfyi/bsky-event-ingester"})
     for _ in range(3):
         try:
             with urllib.request.urlopen(req, timeout=20) as r:
