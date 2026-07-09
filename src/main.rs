@@ -647,6 +647,15 @@ async fn sync_labels(
     Ok(())
 }
 
+async fn read_jetstream_cursor(db_pool: &sqlx::PgPool) -> Result<Option<i64>, anyhow::Error> {
+    let mut db_conn = db_pool.acquire().await?;
+    Ok(
+        sqlx::query_scalar!(r#"SELECT cursor FROM jetstream_cursor"#)
+            .fetch_optional(&mut *db_conn)
+            .await?,
+    )
+}
+
 async fn service_jetstream(
     db_pool: &sqlx::PgPool,
     did: &atrium_api::types::string::Did,
@@ -655,12 +664,7 @@ async fn service_jetstream(
     jetstream_endpoint: &url::Url,
     commit_firehose_cursor_every: std::time::Duration,
 ) -> Result<(), anyhow::Error> {
-    let mut cursor = {
-        let mut db_conn = db_pool.acquire().await?;
-        sqlx::query_scalar!(r#"SELECT cursor FROM jetstream_cursor"#)
-            .fetch_optional(&mut *db_conn)
-            .await?
-    };
+    let mut cursor = read_jetstream_cursor(db_pool).await?;
 
     loop {
         match service_jetstream_once(
@@ -679,6 +683,15 @@ async fn service_jetstream(
             }
             Err(e) => {
                 log::error!("Jetstream disconnected: {e}");
+                // The in-memory cursor is only updated on clean exits, so after
+                // an error it can be hours stale — reconnecting from it replays
+                // already-committed events and drags jetstream_cursor backward.
+                // Resume from the persisted cursor (committed every few seconds)
+                // instead.
+                match read_jetstream_cursor(db_pool).await {
+                    Ok(persisted) => cursor = persisted,
+                    Err(e) => log::error!("could not re-read cursor: {e}"),
+                }
             }
         };
         tokio::time::sleep(std::time::Duration::from_secs(1)).await;
