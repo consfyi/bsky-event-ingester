@@ -16,3 +16,16 @@ WHERE
 CREATE TABLE jetstream_cursor (cursor BIGINT NOT NULL);
 
 CREATE UNIQUE INDEX jetstream_cursor_single_row ON jetstream_cursor ((true));
+
+-- Cursor for the con-post (key-date detection) Jetstream connection.
+-- Migration for existing deployments:
+--   CREATE TABLE con_posts_cursor (cursor BIGINT NOT NULL);
+--   CREATE UNIQUE INDEX con_posts_cursor_single_row ON con_posts_cursor ((true));
+CREATE TABLE con_posts_cursor (cursor BIGINT NOT NULL);
+
+CREATE UNIQUE INDEX con_posts_cursor_single_row ON con_posts_cursor ((true));
+
+-- Last-seen published keyDates per event, for post-merge announcements.
+-- Migration for existing deployments:
+--   CREATE TABLE keydates_snapshot (event_id TEXT PRIMARY KEY, key_dates TEXT NOT NULL);
+CREATE TABLE keydates_snapshot (event_id TEXT PRIMARY KEY, key_dates TEXT NOT NULL);

@@ -4,7 +4,7 @@ use bsky_event_ingester::*;
 use futures::StreamExt as _;
 use sqlx::Acquire as _;
 
-#[derive(serde::Deserialize, Debug)]
+#[derive(serde::Deserialize)]
 struct Config {
     bsky_username: String,
     bsky_password: String,
@@ -16,6 +16,50 @@ struct Config {
     keypair_path: String,
     ingester_bind: std::net::SocketAddr,
     commit_firehose_cursor_every_secs: u64,
+    // Key-date detection: unset = feature off. See src/con_posts.rs.
+    con_posts_spool_dir: Option<std::path::PathBuf>,
+    keydates_worker_cmd: Option<String>,
+    con_post_debounce_secs: u64,
+    con_posts_daily_cap: u32,
+    // Key-date announcements: see src/keydates_announce.rs. Dry run by
+    // default; messages are logged (and the snapshot advances) until
+    // telegram_dry_run is explicitly set to false.
+    telegram_bot_token: Option<String>,
+    telegram_chat_id: Option<String>,
+    telegram_dry_run: bool,
+    keydates_announce_cap: u32,
+}
+
+// Manual Debug so the startup config log can never leak credentials.
+impl std::fmt::Debug for Config {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Config")
+            .field("bsky_username", &self.bsky_username)
+            .field("bsky_password", &"<redacted>")
+            .field("bsky_endpoint", &self.bsky_endpoint)
+            .field("ui_endpoint", &self.ui_endpoint)
+            .field("jetstream_endpoint", &self.jetstream_endpoint)
+            .field("events_url", &self.events_url)
+            .field("postgres_url", &"<redacted>")
+            .field("keypair_path", &self.keypair_path)
+            .field("ingester_bind", &self.ingester_bind)
+            .field(
+                "commit_firehose_cursor_every_secs",
+                &self.commit_firehose_cursor_every_secs,
+            )
+            .field("con_posts_spool_dir", &self.con_posts_spool_dir)
+            .field("keydates_worker_cmd", &self.keydates_worker_cmd)
+            .field("con_post_debounce_secs", &self.con_post_debounce_secs)
+            .field("con_posts_daily_cap", &self.con_posts_daily_cap)
+            .field(
+                "telegram_bot_token",
+                &self.telegram_bot_token.as_ref().map(|_| "<redacted>"),
+            )
+            .field("telegram_chat_id", &self.telegram_chat_id)
+            .field("telegram_dry_run", &self.telegram_dry_run)
+            .field("keydates_announce_cap", &self.keydates_announce_cap)
+            .finish()
+    }
 }
 
 struct EventsState {
@@ -81,6 +125,14 @@ async fn list_all_records(
 
 #[derive(Debug, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
+struct BlueskyRef {
+    did: String,
+    #[allow(dead_code)]
+    handle: Option<String>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct IngestedEvent {
     id: String,
     name: String,
@@ -90,6 +142,12 @@ struct IngestedEvent {
     start_date: chrono::NaiveDate,
     end_date: chrono::NaiveDate,
     timezone: Option<String>,
+    #[serde(default)]
+    series_id: Option<String>,
+    #[serde(default)]
+    bluesky: Option<BlueskyRef>,
+    #[serde(default)]
+    key_dates: Option<serde_json::Value>,
 }
 
 #[derive(Debug)]
@@ -236,6 +294,7 @@ async fn fetch_old_events(
         }))
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn sync_labels(
     reqwest_client: &reqwest::Client,
     events_url: &str,
@@ -248,6 +307,8 @@ async fn sync_labels(
         >,
     >,
     events_state: std::sync::Arc<tokio::sync::Mutex<EventsState>>,
+    watchlist: con_posts::Watchlist,
+    announcer: Option<&keydates_announce::Announcer>,
 ) -> Result<(), anyhow::Error> {
     // Lock the entire events state while labels are syncing.
     //
@@ -549,6 +610,38 @@ async fn sync_labels(
         })
         .collect();
 
+    // Rebuild the con-post watchlist (did -> series id) for key-date detection.
+    {
+        let mut watchlist = watchlist.write().await;
+        watchlist.clear();
+        for assoc_event in events.values() {
+            if let (Some(series_id), Some(bluesky)) = (
+                assoc_event.event.series_id.as_ref(),
+                assoc_event.event.bluesky.as_ref(),
+            ) {
+                watchlist.insert(bluesky.did.clone(), series_id.clone());
+            }
+        }
+        log::info!(
+            "watching {} con accounts for key-date posts",
+            watchlist.len()
+        );
+    }
+
+    // Announce newly published key dates (post-merge data only) and advance
+    // the snapshot. Failures are logged inside run(), never propagated.
+    if let Some(announcer) = announcer {
+        let announce_events = events
+            .values()
+            .map(|assoc_event| keydates_announce::EventKeyDates {
+                event_id: assoc_event.event.id.clone(),
+                name: assoc_event.event.name.clone(),
+                key_dates: assoc_event.event.key_dates.clone(),
+            })
+            .collect::<Vec<_>>();
+        announcer.run(&announce_events).await;
+    }
+
     events_state.events = events;
 
     Ok(())
@@ -786,6 +879,10 @@ async fn main() -> Result<(), anyhow::Error> {
         .set_default("label_sync_delay_secs", 60 * 60)?
         .set_default("ingester_bind", "127.0.0.1:3002")?
         .set_default("commit_firehose_cursor_every_secs", 5)?
+        .set_default("con_post_debounce_secs", 15 * 60)?
+        .set_default("con_posts_daily_cap", 30)?
+        .set_default("telegram_dry_run", true)?
+        .set_default("keydates_announce_cap", 10)?
         .build()?
         .try_deserialize()?;
     log::info!("config: {config:?}");
@@ -815,6 +912,19 @@ async fn main() -> Result<(), anyhow::Error> {
 
     let db_pool = sqlx::PgPool::connect(&config.postgres_url).await?;
 
+    let watchlist: con_posts::Watchlist =
+        std::sync::Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new()));
+
+    let announcer = std::sync::Arc::new(keydates_announce::Announcer {
+        db_pool: db_pool.clone(),
+        reqwest_client: reqwest_client.clone(),
+        ui_endpoint: config.ui_endpoint.clone(),
+        bot_token: config.telegram_bot_token.clone(),
+        chat_id: config.telegram_chat_id.clone(),
+        dry_run: config.telegram_dry_run,
+        cap_per_sync: config.keydates_announce_cap,
+    });
+
     log::info!("syncing initial labels");
 
     sync_labels(
@@ -824,6 +934,8 @@ async fn main() -> Result<(), anyhow::Error> {
         &did,
         &agent,
         events_state.clone(),
+        watchlist.clone(),
+        Some(&announcer),
     )
     .await?;
 
@@ -834,6 +946,8 @@ async fn main() -> Result<(), anyhow::Error> {
         axum::routing::post({
             let did = did.clone();
             let events_state = events_state.clone();
+            let watchlist = watchlist.clone();
+            let announcer = announcer.clone();
             let triggering = std::sync::Arc::new(tokio::sync::Mutex::new(()));
             || async move {
                 let Ok(_guard) = triggering.try_lock() else {
@@ -848,6 +962,8 @@ async fn main() -> Result<(), anyhow::Error> {
                     &did,
                     &agent,
                     events_state,
+                    watchlist,
+                    Some(&announcer),
                 )
                 .await
                 {
@@ -860,6 +976,21 @@ async fn main() -> Result<(), anyhow::Error> {
             }
         }),
     );
+
+    let con_posts_endpoint = config.jetstream_endpoint.clone();
+    let con_posts_options =
+        config
+            .con_posts_spool_dir
+            .clone()
+            .map(|spool_dir| con_posts::Options {
+                spool_dir,
+                worker_cmd: config.keydates_worker_cmd.clone(),
+                debounce: std::time::Duration::from_secs(config.con_post_debounce_secs),
+                daily_cap: config.con_posts_daily_cap,
+                commit_cursor_every: std::time::Duration::from_secs(
+                    config.commit_firehose_cursor_every_secs,
+                ),
+            });
 
     tokio::try_join!(
         async {
@@ -886,6 +1017,22 @@ async fn main() -> Result<(), anyhow::Error> {
         async {
             // Serve labeler.
             axum::serve(listener, app).await?;
+            unreachable!();
+
+            #[allow(unreachable_code)]
+            Ok::<_, anyhow::Error>(())
+        },
+        async {
+            // Watch con accounts for key-date posts (second Jetstream
+            // connection; the like connection must stay unfiltered by DID).
+            let (Some(options), Some(jetstream_endpoint)) =
+                (con_posts_options, con_posts_endpoint.as_ref())
+            else {
+                log::info!("con_posts_spool_dir not configured, key-date detection off");
+                return Ok(());
+            };
+
+            con_posts::service(&db_pool, watchlist.clone(), jetstream_endpoint, options).await?;
             unreachable!();
 
             #[allow(unreachable_code)]
