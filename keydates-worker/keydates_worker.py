@@ -171,7 +171,14 @@ Rules:
 - kind is "opens" or "closes" (a submission "deadline" is closes).
 - date MUST be the bare calendar date, yyyy-MM-dd. If the post states a time of day,
   drop the time and keep the date.
-- Resolve relative dates ("this Monday", "tonight") against that post's own timestamp.
+- Resolve relative dates against that post's own timestamp. "today"/"tonight" means the
+  post's own date. A weekday reference ("this Sunday", "next Friday") means the next such
+  weekday ON OR AFTER the post's date. Anything announced as upcoming ("in a few days",
+  "next week") lies in the future. A same-day signal ("now open", "starts today",
+  attendee-tickets "sold out") means the event happens on the post's own date, and
+  overrides the weekday resolution when both appear for the same event — but not when
+  they name different events ("Reg now open! Panels close this Friday" opens reg on the
+  post's date and closes panels that Friday).
 - Attribute to the correct edition via event_id. If the convention has MORE THAN ONE
   upcoming edition, only extract when the post carries explicit edition evidence
   (year, hashtag like #FWA2027, or an unambiguous date range).
@@ -207,8 +214,13 @@ the date is not explicitly stated in the post; the category is a stretch per the
 the deadline applies only to already-accepted applicants; the "close" or "open" is actually a
 temporary pause or a resumption of something already open; the post is a reminder that
 something is still open (or a follow-up for people already accepted) rather than the
-announcement of the opening. When uncertain, refute — a dropped
-true date returns next run; a published false date misleads attendees.
+announcement of the opening; the claimed date contradicts the post text once the open/close
+event's own relative references are resolved against post_timestamp (a weekday reference
+like "this Sunday" for that event means the next such weekday on or after post_timestamp)
+— refute only when the weekday names the open/close itself, not when it names something
+else ("Registration is NOW OPEN — see you this Sunday!" opens on the post's date; the
+Sunday is the con, not the open). When uncertain, refute — a dropped true date returns
+next run; a published false date misleads attendees.
 
 Return a verdict for every item index you were given."""
 
