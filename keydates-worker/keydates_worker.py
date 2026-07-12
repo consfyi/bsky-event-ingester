@@ -793,10 +793,17 @@ def main():
 
     save_cache(cache)
 
+    format_ok = True
     if all_changes and not DRY_RUN:
-        subprocess.run(["uv", "run", os.path.join(DATA_DIR, "tools", "format.py"),
-                        *sorted({os.path.join(DATA_DIR, c["_file"]) for c in all_changes})],
-                       check=False)
+        # cwd matters: uv's config discovery walks up from the working directory,
+        # and an unsearchable foreign directory (e.g. launched via sudo from
+        # another user's home) aborts uv before format.py even runs.
+        fmt = subprocess.run(["uv", "run", os.path.join(DATA_DIR, "tools", "format.py"),
+                              *sorted({os.path.join(DATA_DIR, c["_file"]) for c in all_changes})],
+                             cwd=DATA_DIR, check=False)
+        format_ok = fmt.returncode == 0
+        if not format_ok:
+            log(f"ERROR: format.py exited {fmt.returncode} — withholding push, changes left staged")
 
     summary = render_summary(all_changes, all_refuted, all_held, all_rejected, skipped_note)
     if os.environ.get("SUMMARY_FILE"):
@@ -805,7 +812,8 @@ def main():
     print(summary)
 
     if PUSH and not DRY_RUN and all_changes:
-        publish(summary)
+        if format_ok:
+            publish(summary)
     elif all_changes:
         log(f"\n{len(all_changes)} change(s) staged in {DATA_DIR} (PUSH not set — nothing pushed)")
 

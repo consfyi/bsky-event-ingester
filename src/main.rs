@@ -579,7 +579,8 @@ async fn sync_labels(
         );
     }
 
-    log::info!("applying writes:\n{writes:#?}");
+    log::info!("applying {} write(s)", writes.len());
+    log::debug!("applying writes:\n{writes:#?}");
 
     const CHUNK_SIZE: usize = 200;
     for chunk in writes.chunks(CHUNK_SIZE) {
