@@ -37,6 +37,9 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: cargo fmt --all --check
       - run: cargo clippy --all-targets -- -D warnings
+      # keydates_worker's outstanding-ledger logic has a dependency-free, sub-second
+      # test; run it here so a regression fails a branch-protected check.
+      - run: python3 keydates-worker/test_ledger.py
 
   sqlx-check:
     name: sqlx cache up to date

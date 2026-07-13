@@ -462,6 +462,103 @@ def save_cache(cache):
     os.replace(tmp, CACHE_FILE)
 
 
+# --- outstanding ledger ---------------------------------------------------------
+# PUSH mode resets the bot branch from origin/main on every run, so without a
+# memory of earlier runs the rolling PR only ever showed the latest run's
+# changes — any unmerged batch was silently discarded by the next detection
+# (consfyi/bsky-event-ingester#17). The ledger remembers applied-but-unmerged
+# changes so every run re-applies the full outstanding set. Entries leave the
+# ledger once origin/main reflects them (merge() then produces no diff), or
+# when superseded by a newer source, curated by a human, or rejected.
+OUTSTANDING_FILE = os.path.join(os.path.dirname(CACHE_FILE), "outstanding.json")
+
+
+def outstanding_key(d):
+    return f'{d.get("event_id")}|{d.get("category")}|{d.get("kind")}'
+
+
+def load_outstanding():
+    if os.path.exists(OUTSTANDING_FILE):
+        try:
+            with open(OUTSTANDING_FILE) as f:
+                return json.load(f)
+        except json.JSONDecodeError:
+            pass
+    return {}
+
+
+def save_outstanding(entries):
+    os.makedirs(os.path.dirname(OUTSTANDING_FILE), exist_ok=True)
+    tmp = OUTSTANDING_FILE + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump(entries, f, indent=1)
+    os.replace(tmp, OUTSTANDING_FILE)
+
+
+def reapply_outstanding(run_changes, rejections):
+    """Fold this run's changes into the ledger, re-apply every other
+    outstanding entry to the fresh checkout, and prune what is no longer
+    outstanding. Returns the re-applied changes (for the summary/PR)."""
+    ledger = load_outstanding()
+    for c in run_changes:
+        key = outstanding_key(c)
+        prev = ledger.get(key)
+        if prev and (prev.get("asOf") or "") > (c.get("asOf") or ""):
+            # extraction is non-deterministic and may re-propose an older post
+            # for a slot the ledger already holds from a newer one; keep the
+            # newer entry. Note this only fixes the ledger: process_con already
+            # wrote the older value to the file this run, and it will keep doing
+            # so every run the older post is still re-extracted, so the older
+            # value can persist in the PR until that post ages out of the feed.
+            continue
+        ledger[key] = {k: c.get(k) for k in
+                       ("event_id", "category", "kind", "date", "source",
+                        "asOf", "confidence", "_file", "_post_text")}
+    run_keys = {outstanding_key(c) for c in run_changes}
+    kept, carried = {}, []
+    for key, entry in ledger.items():
+        if key in run_keys:
+            kept[key] = entry
+            continue
+        if is_rejected(rejections, entry):
+            continue
+        f_name = entry.get("_file") or ""
+        # _file must be a bare basename under DATA_DIR; anything with path
+        # separators (or the "."/".." directory names, which basename passes
+        # but open() chokes on) is a corrupt/tampered ledger entry — drop it,
+        # never join it (defense in depth, mirroring series_path's slug guard)
+        if not f_name or f_name in (".", "..") or f_name != os.path.basename(f_name):
+            continue
+        fn = os.path.join(DATA_DIR, f_name)
+        if not os.path.exists(fn):
+            continue
+        with open(fn) as f:
+            con = json.load(f)
+        event = next((e for e in con.get("events", []) if e["id"] == entry["event_id"]), None)
+        if event is None:
+            continue  # edition removed upstream
+        # process_con never re-proposes an edition past upcoming_events' cutoff
+        # (endDate < today minus the deliberate 2-day grace), so a stale entry
+        # would otherwise sit in every PR forever — prune it, aligned to that
+        # same grace so we don't drop one process_con would still re-propose
+        if (event.get("endDate") or "") < (TODAY - datetime.timedelta(days=2)).isoformat():
+            continue
+        changes = merge(con, [entry])
+        if not changes:
+            continue  # main already has it, or a newer/curated value won
+        tmp = fn + ".tmp"
+        with open(tmp, "w") as f:
+            json.dump(con, f, ensure_ascii=False, indent=2)
+            f.write("\n")
+        os.replace(tmp, fn)
+        kept[key] = entry
+        carried += changes
+    save_outstanding(kept)
+    if carried:
+        log(f"re-applied {len(carried)} outstanding change(s) from earlier runs")
+    return carried
+
+
 # --- pipeline -------------------------------------------------------------------
 def log(msg):
     print(msg, file=sys.stderr, flush=True)
@@ -625,7 +722,7 @@ def render_summary(all_changes, all_refuted, all_held, all_rejected, skipped_not
     lines = ["## Key dates from Bluesky", ""]
     lines.append(f"_Extract: `{EXTRACT_MODEL}` · Verify (unanimous): `{'` + `'.join(VERIFY_MODELS)}` · {TODAY.isoformat()}_")
     if all_changes:
-        lines.append("\n### Applied (unanimously verified)")
+        lines.append("\n### Applied (unanimously verified — `/reject <event> <category>.<kind>` to drop a bad entry for good)")
         for c in all_changes:
             lines.append(f"\n**{c['_file']}** — `{c['event_id']}` {c['category']}.{c['kind']} → **{c['date']}** ({c['verb']}, conf {c['confidence']})")
             lines.append(f"> {md_inline(c['_post_text'], 400)}")
@@ -684,7 +781,11 @@ def sync_checkout_to_main():
 def publish(summary):
     """Commit staged changes and open/update the rolling PR. PUSH=1 only."""
     status = git("status", "--porcelain").stdout
-    changed = [l[3:] for l in status.splitlines() if l.endswith(".json") and "/" not in l[3:]]
+    # never stage the outstanding ledger, even if CACHE_FILE is misconfigured to
+    # sit inside DATA_DIR — it is worker state, not con data
+    ledger_name = os.path.basename(OUTSTANDING_FILE)
+    changed = [l[3:] for l in status.splitlines()
+               if l.endswith(".json") and "/" not in l[3:] and l[3:] != ledger_name]
     if not changed:
         log("nothing to publish")
         return
@@ -790,6 +891,9 @@ def main():
         all_rejected += rejected
         if changes or refuted or held:
             log(f"{base}: +{len(changes)} applied, {len(refuted)} refuted, {len(held)} held")
+
+    if PUSH and not DRY_RUN:
+        all_changes += reapply_outstanding(all_changes, rejections)
 
     save_cache(cache)
 
