@@ -4,6 +4,7 @@ Stdlib-only; appget is monkeypatched so nothing touches the network.
 Run: python3 -m unittest discover -s keydates-worker
 """
 import copy
+import datetime
 import json
 import os
 import sys
@@ -100,7 +101,9 @@ class LivenessTest(unittest.TestCase):
 
     def seed_pending(self, *rkeys, first_seen="2000-01-01"):
         """Mark uris as already observed dead on an earlier sweep, so the
-        two-different-days rule lets check_source_liveness remove them."""
+        20-hours-elapsed rule lets check_source_liveness remove them. The
+        date-only default also exercises the pre-timestamp pending format
+        (parsed as midnight UTC)."""
         with open(self.pending_file, "w") as f:
             json.dump({uri(rk): {"first_seen": first_seen} for rk in rkeys}, f)
 
@@ -137,20 +140,44 @@ class LivenessTest(unittest.TestCase):
         self.assertEqual([(p["event_id"], p["category"], p["kind"]) for p in pending],
                          [("testcon-2999", "panels", "opens")])
         self.assertEqual(self.read_con(fn), before)
-        self.assertEqual(self.read_pending(),
-                         {uri("3dead"): {"first_seen": kw.TODAY.isoformat()}})
+        pend = self.read_pending()
+        self.assertEqual(list(pend), [uri("3dead")])
+        seen = datetime.datetime.fromisoformat(pend[uri("3dead")]["first_seen"])
+        self.assertLess(datetime.datetime.now(datetime.timezone.utc) - seen,
+                        datetime.timedelta(minutes=5))
 
-    def test_same_day_second_sighting_still_pends(self):
+    def test_second_sighting_within_20h_still_pends(self):
+        # runs minutes apart across UTC midnight must NOT count as two sightings
         con = make_con({"panels": {"opens": entry("3dead")}})
         fn = self.write_con(con)
         before = copy.deepcopy(con)
-        self.seed_pending("3dead", first_seen=kw.TODAY.isoformat())
+        first = (datetime.datetime.now(datetime.timezone.utc)
+                 - datetime.timedelta(hours=19)).isoformat()
+        self.seed_pending("3dead", first_seen=first)
         removals, _, pending = self.check([fn], alive_rkeys=set())
         self.assertEqual(removals, [])
         self.assertEqual(len(pending), 1)
         self.assertEqual(self.read_con(fn), before)
         self.assertEqual(self.read_pending(),
-                         {uri("3dead"): {"first_seen": kw.TODAY.isoformat()}})
+                         {uri("3dead"): {"first_seen": first}})
+
+    def test_second_sighting_after_20h_removes(self):
+        con = make_con({"panels": {"opens": entry("3dead")}})
+        fn = self.write_con(con)
+        first = (datetime.datetime.now(datetime.timezone.utc)
+                 - datetime.timedelta(hours=21)).isoformat()
+        self.seed_pending("3dead", first_seen=first)
+        removals, _, pending = self.check([fn], alive_rkeys=set())
+        self.assertEqual(len(removals), 1)
+        self.assertEqual(pending, [])
+        self.assertNotIn("keyDates", self.read_con(fn)["events"][0])
+
+    def test_save_prunes_stale_pending_entries(self):
+        now = datetime.datetime.now(datetime.timezone.utc)
+        stale = {uri("3old"): {"first_seen": (now - datetime.timedelta(days=100)).isoformat()}}
+        fresh = {uri("3new"): {"first_seen": now.isoformat()}}
+        kw.save_dead_pending({**stale, **fresh})
+        self.assertEqual(self.read_pending(), fresh)
 
     def test_alive_again_clears_pending(self):
         con = make_con({"panels": {"opens": entry("3live")}})
@@ -262,6 +289,20 @@ class SummaryTest(unittest.TestCase):
         self.assertNotIn("](javascript:", body)  # inert text, not a link
         self.assertIn("javascript:alert", body)  # still visible to the reviewer
 
+    def test_newline_in_url_renders_as_inert_text(self):
+        sneaky = "https://bsky.app/profile/testcon.example/post/3aaa\n[x](https://evil.example)"
+        out = kw.md_link("source post", sneaky)
+        self.assertNotIn("](https://bsky", out)  # not rendered as a link
+        self.assertNotIn("\n", out)  # whitespace collapsed, can't break the line
+
+    def test_summary_tolerates_missing_date(self):
+        r = {"_file": "testcon.json", "event_id": "testcon-2999", "category": "panels",
+             "kind": "opens", "source": entry("3aaa")["source"],
+             "asOf": "2998-12-01T00:00:00.000Z"}  # no "date" key
+        body = kw.render_summary([], [], [], [], "", removals=[r], account_flags=[r],
+                                 pending=[r])
+        self.assertIn("testcon-2999", body)
+
 
 class PruneOutstandingTest(unittest.TestCase):
     def setUp(self):
@@ -358,6 +399,22 @@ class MainSmokeTest(unittest.TestCase):
             body = f.read()
         self.assertNotIn("### Applied", body)
         self.assertIn("Source post deleted", body)
+
+    def test_format_failure_withholds_publish_but_writes_summary(self):
+        removal = {"event_id": "testcon-2999", "category": "panels", "kind": "opens",
+                   "date": "2999-01-01", "source": entry("3aaa")["source"],
+                   "asOf": "2998-12-01T00:00:00.000Z", "_file": "con-a.json"}
+        bad = unittest.mock.Mock(returncode=1, stdout="")
+        with unittest.mock.patch.object(
+                 kw, "process_con", return_value=([], [], [], [], True)), \
+             unittest.mock.patch.object(
+                 kw, "check_source_liveness", return_value=([removal], [], [])), \
+             unittest.mock.patch.object(kw, "publish") as publish, \
+             unittest.mock.patch.object(kw.subprocess, "run", return_value=bad):
+            kw.main()
+        publish.assert_not_called()  # format.py exited 1 — nothing may be pushed
+        with open(self.summary_file) as f:
+            self.assertIn("Source post deleted", f.read())
 
     def test_liveness_error_does_not_kill_the_run(self):
         ok = unittest.mock.Mock(returncode=0, stdout="")
