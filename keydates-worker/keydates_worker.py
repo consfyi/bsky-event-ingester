@@ -445,7 +445,10 @@ def merge(con, dates):
 # an upcoming edition; a source deleted with no replacement (recency-wins would
 # already have swapped in a newer post by the time this runs) gets its entry
 # removed via the bot PR, where a human reviews the removal before merge.
-SOURCE_URL_RE = re.compile(r"\Ahttps://bsky\.app/profile/[^/\s]+/post/([a-zA-Z0-9._~-]+)\Z")
+# the profile segment is a handle (DNS name) or a did — [a-zA-Z0-9.:-] covers
+# both and, critically, admits no markdown metacharacters or whitespace, so a
+# matching URL can always be rendered raw inside a markdown link
+SOURCE_URL_RE = re.compile(r"\Ahttps://bsky\.app/profile/[a-zA-Z0-9.:-]+/post/([a-zA-Z0-9._~-]+)\Z")
 
 
 def collect_bsky_sources(con):
@@ -486,8 +489,8 @@ def dead_sighting_elapsed(first_seen, now):
     minutes apart across UTC midnight no longer count as 'two days')."""
     try:
         seen = datetime.datetime.fromisoformat(first_seen)
-    except ValueError:
-        return False  # unparseable entry: hold rather than remove
+    except (ValueError, TypeError):
+        return False  # unparseable/corrupt entry: hold rather than remove
     if seen.tzinfo is None:
         seen = seen.replace(tzinfo=datetime.timezone.utc)
     return now - seen >= datetime.timedelta(hours=20)
@@ -510,7 +513,7 @@ def save_dead_pending(entries):
     # source left the dataset (superseded/curated/edition aged out) is never
     # seen alive nor removed, so it would otherwise sit here forever
     cutoff = (TODAY - datetime.timedelta(days=90)).isoformat()
-    entries = {k: v for k, v in entries.items() if v.get("first_seen", "9999") >= cutoff}
+    entries = {k: v for k, v in entries.items() if str(v.get("first_seen", "9999")) >= cutoff}
     os.makedirs(os.path.dirname(DEAD_PENDING_FILE), exist_ok=True)
     tmp = DEAD_PENDING_FILE + ".tmp"
     with open(tmp, "w") as f:
@@ -544,6 +547,11 @@ def check_source_liveness(files):
             return [], [], []
         alive = {p.get("uri") for p in res["posts"]}
         dead.update(u for u in batch if u not in alive)
+    if uris and len(dead) == len(uris):
+        # a degraded appview can answer 200 with an empty posts array; zero
+        # alive posts across the whole dataset is that, not mass deletion
+        log("source liveness: no source came back alive; assuming appview degradation, skipping")
+        return [], [], []
 
     pending_state = load_dead_pending()
     now = datetime.datetime.now(datetime.timezone.utc)
@@ -906,10 +914,12 @@ def md_inline(text, cap):
 
 def md_link(label, url):
     """Render a markdown link only when the target is a verified bsky post URL;
-    anything else (a tampered ledger/con file value) is rendered inert as text."""
-    if SOURCE_URL_RE.match(url or "") and not re.search(r"\s", url):
+    anything else (a tampered ledger/con file value) is rendered inside a code
+    span — plain text is NOT inert, a smuggled [x](y) in it would still render
+    as a live link. Backticks are stripped so the span can't be closed early."""
+    if SOURCE_URL_RE.match(url or "") and not re.search(r"[()\[\]\s]", url):
         return f"[{label}]({url})"
-    return md_inline(url or "(no source)", 200)
+    return "`" + md_inline(url or "(no source)", 200).replace("`", "'") + "`"
 
 
 def render_summary(all_changes, all_refuted, all_held, all_rejected, skipped_note,
@@ -991,11 +1001,11 @@ def sync_checkout_to_main():
 def publish(summary):
     """Commit staged changes and open/update the rolling PR. PUSH=1 only."""
     status = git("status", "--porcelain").stdout
-    # never stage the outstanding ledger, even if CACHE_FILE is misconfigured to
+    # never stage worker state files (ledger, pending, cache), even if CACHE_FILE is misconfigured to
     # sit inside DATA_DIR — it is worker state, not con data
-    ledger_name = os.path.basename(OUTSTANDING_FILE)
+    state_names = {os.path.basename(p) for p in (OUTSTANDING_FILE, DEAD_PENDING_FILE, CACHE_FILE)}
     changed = [l[3:] for l in status.splitlines()
-               if l.endswith(".json") and "/" not in l[3:] and l[3:] != ledger_name]
+               if l.endswith(".json") and "/" not in l[3:] and l[3:] not in state_names]
     if not changed:
         log("nothing to publish")
         return

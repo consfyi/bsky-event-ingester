@@ -135,7 +135,8 @@ class LivenessTest(unittest.TestCase):
         con = make_con({"panels": {"opens": entry("3dead")}})
         fn = self.write_con(con)
         before = copy.deepcopy(con)
-        removals, flags, pending = self.check([fn], alive_rkeys=set())
+        removals, flags, pending = self.check(
+            [fn, self.write_alive_companion()], alive_rkeys={"3ok"})
         self.assertEqual((removals, flags), ([], []))
         self.assertEqual([(p["event_id"], p["category"], p["kind"]) for p in pending],
                          [("testcon-2999", "panels", "opens")])
@@ -154,7 +155,8 @@ class LivenessTest(unittest.TestCase):
         first = (datetime.datetime.now(datetime.timezone.utc)
                  - datetime.timedelta(hours=19)).isoformat()
         self.seed_pending("3dead", first_seen=first)
-        removals, _, pending = self.check([fn], alive_rkeys=set())
+        removals, _, pending = self.check(
+            [fn, self.write_alive_companion()], alive_rkeys={"3ok"})
         self.assertEqual(removals, [])
         self.assertEqual(len(pending), 1)
         self.assertEqual(self.read_con(fn), before)
@@ -167,7 +169,8 @@ class LivenessTest(unittest.TestCase):
         first = (datetime.datetime.now(datetime.timezone.utc)
                  - datetime.timedelta(hours=21)).isoformat()
         self.seed_pending("3dead", first_seen=first)
-        removals, _, pending = self.check([fn], alive_rkeys=set())
+        removals, _, pending = self.check(
+            [fn, self.write_alive_companion()], alive_rkeys={"3ok"})
         self.assertEqual(len(removals), 1)
         self.assertEqual(pending, [])
         self.assertNotIn("keyDates", self.read_con(fn)["events"][0])
@@ -205,12 +208,20 @@ class LivenessTest(unittest.TestCase):
         self.assertEqual(self.read_con(fn)["events"][0]["keyDates"]["panels"]["opens"]["date"],
                          "2999-02-02")
 
+    def write_alive_companion(self):
+        """A second con with a live source, so the dataset-wide zero-alive
+        degradation guard doesn't trip in per-con all-dead scenarios."""
+        other = make_con({"hotel": {"opens": entry("3ok")}}, did="did:plc:othercononly")
+        other["events"][0]["id"] = "othercon-2999"
+        return self.write_con(other, name="othercon.json")
+
     def test_all_dead_with_unreachable_account_is_report_only(self):
         con = make_con({"panels": {"opens": entry("3aaa")},
                         "hotel": {"opens": entry("3bbb")}})
         fn = self.write_con(con)
         before = copy.deepcopy(con)
-        removals, flags, pending = self.check([fn], alive_rkeys=set(), profile_ok=False)
+        removals, flags, pending = self.check(
+            [fn, self.write_alive_companion()], alive_rkeys={"3ok"}, profile_ok=False)
         self.assertEqual((removals, pending), ([], []))
         self.assertEqual(len(flags), 2)
         self.assertEqual(self.read_con(fn), before)
@@ -220,10 +231,36 @@ class LivenessTest(unittest.TestCase):
         con = make_con({"panels": {"opens": entry("3aaa")}})
         fn = self.write_con(con)
         self.seed_pending("3aaa")
-        removals, flags, _ = self.check([fn], alive_rkeys=set(), profile_ok=True)
+        removals, flags, _ = self.check(
+            [fn, self.write_alive_companion()], alive_rkeys={"3ok"}, profile_ok=True)
         self.assertEqual(len(removals), 1)
         self.assertEqual(flags, [])
         self.assertNotIn("keyDates", self.read_con(fn)["events"][0])
+
+    def test_zero_alive_dataset_skips_check(self):
+        # a degraded appview can answer 200 with an empty posts array for live
+        # uris; if NOTHING in the dataset comes back alive, assume degradation
+        con = make_con({"panels": {"opens": entry("3aaa")}})
+        fn = self.write_con(con)
+        before = copy.deepcopy(con)
+        self.seed_pending("3aaa")  # even a confirmed-dead uri must not be removed
+        removals, flags, pending = self.check([fn], alive_rkeys=set())
+        self.assertEqual((removals, flags, pending), ([], [], []))
+        self.assertEqual(self.read_con(fn), before)
+        self.assertEqual(self.read_pending(), {uri("3aaa"): {"first_seen": "2000-01-01"}})
+
+    def test_unparseable_first_seen_holds_instead_of_removing(self):
+        con = make_con({"panels": {"opens": entry("3dead")}})
+        fn = self.write_con(con)
+        before = copy.deepcopy(con)
+        for garbage in ("not-a-date", 12345):
+            with open(self.pending_file, "w") as f:
+                json.dump({uri("3dead"): {"first_seen": garbage}}, f)
+            removals, _, pending = self.check(
+                [fn, self.write_alive_companion()], alive_rkeys={"3ok"})
+            self.assertEqual(removals, [], garbage)
+            self.assertEqual(len(pending), 1, garbage)
+            self.assertEqual(self.read_con(fn), before)
 
     def test_getposts_error_skips_check(self):
         con = make_con({"panels": {"opens": entry("3aaa")}})
@@ -240,7 +277,8 @@ class LivenessTest(unittest.TestCase):
         before = copy.deepcopy(con)
         self.seed_pending("3aaa")
         with unittest.mock.patch.object(kw, "DRY_RUN", True):
-            removals, _, _ = self.check([fn], alive_rkeys=set())
+            removals, _, _ = self.check(
+                [fn, self.write_alive_companion()], alive_rkeys={"3ok"})
         self.assertEqual(len(removals), 1)
         self.assertEqual(self.read_con(fn), before)
         # DRY_RUN doesn't touch the pending file either
@@ -251,10 +289,11 @@ class LivenessTest(unittest.TestCase):
         # must be collected (28 fake categories keeps it in a single con file)
         rkeys = [f"3k{i:02d}" for i in range(28)]
         con = make_con({f"c{i:02d}": {"opens": entry(rk)} for i, rk in enumerate(rkeys)})
+        con["events"][0]["keyDates"]["calive"] = {"opens": entry("3ok")}  # 29th, alive
         fn = self.write_con(con)
         self.seed_pending(*rkeys)
         calls = []
-        inner = fake_appget(alive_rkeys=set())
+        inner = fake_appget(alive_rkeys={"3ok"})
 
         def tracking(method, params):
             if method == "app.bsky.feed.getPosts":
@@ -263,12 +302,22 @@ class LivenessTest(unittest.TestCase):
 
         with unittest.mock.patch.object(kw, "appget", tracking):
             removals, flags, _ = kw.check_source_liveness([fn])
-        self.assertEqual([len(c) for c in calls], [25, 3])
+        self.assertEqual([len(c) for c in calls], [25, 4])
         self.assertEqual(len(removals), 28)
         self.assertEqual(flags, [])
 
 
 class SummaryTest(unittest.TestCase):
+    def test_markdown_metachars_in_source_render_inert(self):
+        # a bsky.app-prefixed source whose profile segment smuggles a second
+        # markdown link must not survive into the PR body as live markup
+        evil = "https://bsky.app/profile/x)[click](mailto:a@evil.example)y/post/3aaa"
+        rendered = kw.md_link("deleted source", evil)
+        self.assertFalse(rendered.startswith("[deleted source]("))  # not a link
+        # inert = wrapped in a code span the payload can't close early
+        self.assertTrue(rendered.startswith("`") and rendered.endswith("`"))
+        self.assertNotIn("`", rendered[1:-1])
+
     def test_summary_lists_removals_flags_and_pending(self):
         r = {"_file": "testcon.json", "event_id": "testcon-2999", "category": "panels",
              "kind": "opens", **entry("3aaa")}
