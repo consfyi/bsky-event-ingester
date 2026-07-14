@@ -18,7 +18,10 @@ Pipeline per con:
      unanimous confirm required; split verdicts are held (reported, not applied)
   D. MERGE confirmed dates into the con JSON (confidence gate, never overwrite
      curated values, recency-wins, rejections-file exclusions), run format.py
-  E. (PUSH=1 only) commit to bot/bsky-keydates, push, open/update the PR
+  E. (sweep only) SOURCE LIVENESS — verify recorded source posts still exist;
+     an entry whose post was deleted with no replacement is removed (skipped
+     when the whole account is unreachable, or on any appview error)
+  F. (PUSH=1 only) commit to bot/bsky-keydates, push, open/update the PR
 
 Validated against the 2026-07-01 manual baseline: Haiku-class extraction alone
 carried ~30% false positives past the confidence gate; the adversarial verify
@@ -70,6 +73,8 @@ BOT_BRANCH = "bot/bsky-keydates"
 CONFIDENCE_THRESHOLD = 0.80
 POSTS_PER_CON = 50
 APPVIEW = "https://public.api.bsky.app/xrpc"
+# contact path so Bluesky can reach us about our appview traffic
+APPVIEW_USER_AGENT = "consfyi/bsky-event-ingester (+https://cons.fyi)"
 TODAY = datetime.datetime.now(datetime.timezone.utc).date()
 CATEGORIES = ["registration", "hotel", "dealers", "panels", "performances", "djs", "volunteers"]
 VERIFY_BATCH = 8
@@ -312,7 +317,7 @@ def catalog_check():
 # --- Bluesky fetch (free public appview) -------------------------------------
 def appget(method, params):
     url = f"{APPVIEW}/{method}?" + urllib.parse.urlencode(params, doseq=True)
-    req = urllib.request.Request(url, headers={"User-Agent": "consfyi/bsky-event-ingester"})
+    req = urllib.request.Request(url, headers={"User-Agent": APPVIEW_USER_AGENT})
     for _ in range(3):
         try:
             with urllib.request.urlopen(req, timeout=20) as r:
@@ -431,6 +436,99 @@ def merge(con, dates):
             if not kd:
                 del ev["keyDates"]
     return changes
+
+
+# --- source liveness (sweep only) ----------------------------------------------
+# A con deleting a key-date post usually means the announcement was wrong or
+# withdrawn. The sweep re-checks every importer-owned source still referenced by
+# an upcoming edition; a source deleted with no replacement (recency-wins would
+# already have swapped in a newer post by the time this runs) gets its entry
+# removed via the bot PR, where a human reviews the removal before merge.
+SOURCE_URL_RE = re.compile(r"^https://bsky\.app/profile/[^/]+/post/([a-zA-Z0-9._~-]+)$")
+
+
+def collect_bsky_sources(con):
+    """(at_uri, event_id, category, kind, entry) for every importer-owned
+    keyDates value on an upcoming edition; [] when the con has no bluesky DID.
+    at-uris are built from the stored DID, not the source URL's handle, so a
+    handle change can never make a live post look dead."""
+    did = (con.get("bluesky") or {}).get("did")
+    if not did:
+        return []
+    upcoming = {e["id"] for e in upcoming_events(con)}
+    out = []
+    for ev in con.get("events", []):
+        if ev["id"] not in upcoming:
+            continue
+        for cat, kinds in (ev.get("keyDates") or {}).items():
+            for kind, entry in (kinds or {}).items():
+                if not entry or not importer_owned(entry):
+                    continue
+                m = SOURCE_URL_RE.match(entry.get("source") or "")
+                if not m:
+                    continue
+                out.append((f"at://{did}/app.bsky.feed.post/{m.group(1)}", ev["id"], cat, kind, entry))
+    return out
+
+
+def check_source_liveness(files):
+    """Verify recorded source posts still exist; remove entries whose source is
+    gone. Returns (removals, account_flags) — account_flags are entries left
+    untouched because the whole account is unreachable (deactivated/suspended),
+    where per-post deletion can't be inferred."""
+    per_file, uris = {}, set()
+    for fn in files:
+        with open(fn) as f:
+            con = json.load(f)
+        sources = collect_bsky_sources(con)
+        if sources:
+            per_file[fn] = (con, sources)
+            uris.update(u for u, *_ in sources)
+
+    dead = set()
+    uris = sorted(uris)
+    for lo in range(0, len(uris), 25):  # getPosts caps at 25 uris per call
+        batch = uris[lo:lo + 25]
+        res = appget("app.bsky.feed.getPosts", {"uris": batch})
+        if "posts" not in res:  # appview error after retries — never remove on a failed lookup
+            log("source liveness: getPosts failed; skipping the check this run")
+            return [], []
+        alive = {p.get("uri") for p in res["posts"]}
+        dead.update(u for u in batch if u not in alive)
+
+    removals, account_flags = [], []
+    for fn, (con, sources) in sorted(per_file.items()):
+        dead_here = [s for s in sources if s[0] in dead]
+        if not dead_here:
+            continue
+        base = os.path.basename(fn)
+        if len(dead_here) == len(sources):
+            # every source gone at once smells like account-level unavailability,
+            # not per-post deletes — only proceed if the account itself is up
+            profile = appget("app.bsky.actor.getProfile", {"actor": con["bluesky"]["did"]})
+            if "did" not in profile:
+                account_flags += [
+                    {"_file": base, "event_id": eid, "category": cat, "kind": kind, **entry}
+                    for _, eid, cat, kind, entry in dead_here
+                ]
+                continue
+        by_id = {e["id"]: e for e in con.get("events", [])}
+        for _, event_id, cat, kind, entry in dead_here:
+            kinds = by_id[event_id]["keyDates"][cat]
+            del kinds[kind]
+            if not kinds:
+                del by_id[event_id]["keyDates"][cat]
+            if not by_id[event_id]["keyDates"]:
+                del by_id[event_id]["keyDates"]
+            removals.append({"_file": base, "event_id": event_id, "category": cat,
+                             "kind": kind, **entry})
+        if not DRY_RUN:
+            tmp = fn + ".tmp"
+            with open(tmp, "w") as f:
+                json.dump(con, f, ensure_ascii=False, indent=2)
+                f.write("\n")
+            os.replace(tmp, fn)
+    return removals, account_flags
 
 
 # --- verdict cache -------------------------------------------------------------
@@ -557,6 +655,17 @@ def reapply_outstanding(run_changes, rejections):
     if carried:
         log(f"re-applied {len(carried)} outstanding change(s) from earlier runs")
     return carried
+
+
+def prune_outstanding_removals(removals):
+    """Drop ledger entries whose exact slot+source was just removed by the
+    liveness check, so the next run's reapply doesn't resurrect them."""
+    gone = {(r["event_id"], r["category"], r["kind"], r.get("source")) for r in removals}
+    ledger = load_outstanding()
+    kept = {k: v for k, v in ledger.items()
+            if (v.get("event_id"), v.get("category"), v.get("kind"), v.get("source")) not in gone}
+    if len(kept) != len(ledger):
+        save_outstanding(kept)
 
 
 # --- pipeline -------------------------------------------------------------------
@@ -718,7 +827,8 @@ def md_inline(text, cap):
     return " ".join(str(text).split())[:cap]
 
 
-def render_summary(all_changes, all_refuted, all_held, all_rejected, skipped_note):
+def render_summary(all_changes, all_refuted, all_held, all_rejected, skipped_note,
+                   removals=(), account_flags=()):
     lines = ["## Key dates from Bluesky", ""]
     lines.append(f"_Extract: `{EXTRACT_MODEL}` · Verify (unanimous): `{'` + `'.join(VERIFY_MODELS)}` · {TODAY.isoformat()}_")
     if all_changes:
@@ -741,6 +851,16 @@ def render_summary(all_changes, all_refuted, all_held, all_rejected, skipped_not
         lines.append("\n### Skipped — matches an entry in keydates_rejections.json")
         for p in all_rejected:
             lines.append(f"- `{p['event_id']}` {p['category']}.{p['kind']} {p['date']} — {p.get('_reason','')}")
+    if removals:
+        lines.append("\n### Source post deleted — entry removed (no replacement seen)")
+        for r in removals:
+            lines.append(f"- **{r['_file']}** — `{r['event_id']}` {r['category']}.{r['kind']} {r['date']} — "
+                         f"[deleted source]({r['source']}), was asOf {r.get('asOf')}")
+    if account_flags:
+        lines.append("\n### Source account unreachable — entries left untouched (deactivated/suspended?)")
+        for r in account_flags:
+            lines.append(f"- **{r['_file']}** — `{r['event_id']}` {r['category']}.{r['kind']} {r['date']} — "
+                         f"[source]({r['source']})")
     if skipped_note:
         lines.append(f"\n_{skipped_note}_")
     body = "\n".join(lines)
@@ -861,6 +981,7 @@ def main():
         targets = [(f, None, None) for f in files]
 
     all_changes, all_refuted, all_held, all_rejected = [], [], [], []
+    processed = []  # files that got a full pass this run (liveness only checks these)
     extracts = 0
     skipped_note = ""
     for fn, provided, extra_post in targets:
@@ -882,6 +1003,7 @@ def main():
             continue
         if did_extract:
             extracts += 1
+        processed.append(fn)
         base = os.path.basename(fn)
         for c in changes:
             c.setdefault("_file", base)
@@ -895,31 +1017,43 @@ def main():
     if PUSH and not DRY_RUN:
         all_changes += reapply_outstanding(all_changes, rejections)
 
+    removals, account_flags = [], []
+    if args.sweep:
+        # after reapply_outstanding, each slot's source is the best-known post —
+        # a slot amended this run already points at the replacement, so only
+        # genuinely unreplaced dead sources are still referenced here
+        removals, account_flags = check_source_liveness(processed)
+        if removals:
+            log(f"source liveness: removed {len(removals)} entr(ies) with deleted sources")
+            if PUSH and not DRY_RUN:
+                prune_outstanding_removals(removals)
+
     save_cache(cache)
 
     format_ok = True
-    if all_changes and not DRY_RUN:
+    if (all_changes or removals) and not DRY_RUN:
         # cwd matters: uv's config discovery walks up from the working directory,
         # and an unsearchable foreign directory (e.g. launched via sudo from
         # another user's home) aborts uv before format.py even runs.
         fmt = subprocess.run(["uv", "run", os.path.join(DATA_DIR, "tools", "format.py"),
-                              *sorted({os.path.join(DATA_DIR, c["_file"]) for c in all_changes})],
+                              *sorted({os.path.join(DATA_DIR, c["_file"]) for c in [*all_changes, *removals]})],
                              cwd=DATA_DIR, check=False)
         format_ok = fmt.returncode == 0
         if not format_ok:
             log(f"ERROR: format.py exited {fmt.returncode} — withholding push, changes left staged")
 
-    summary = render_summary(all_changes, all_refuted, all_held, all_rejected, skipped_note)
+    summary = render_summary(all_changes, all_refuted, all_held, all_rejected, skipped_note,
+                             removals, account_flags)
     if os.environ.get("SUMMARY_FILE"):
         with open(os.environ["SUMMARY_FILE"], "w") as f:
             f.write(summary)
     print(summary)
 
-    if PUSH and not DRY_RUN and all_changes:
+    if PUSH and not DRY_RUN and (all_changes or removals):
         if format_ok:
             publish(summary)
-    elif all_changes:
-        log(f"\n{len(all_changes)} change(s) staged in {DATA_DIR} (PUSH not set — nothing pushed)")
+    elif all_changes or removals:
+        log(f"\n{len(all_changes) + len(removals)} change(s) staged in {DATA_DIR} (PUSH not set — nothing pushed)")
 
 
 if __name__ == "__main__":

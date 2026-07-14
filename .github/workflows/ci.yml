@@ -40,6 +40,8 @@ jobs:
       # keydates_worker's outstanding-ledger logic has a dependency-free, sub-second
       # test; run it here so a regression fails a branch-protected check.
       - run: python3 keydates-worker/test_ledger.py
+      # source-liveness tests (unittest-style; test_ledger stays script-style)
+      - run: python3 -m unittest discover -s keydates-worker -p test_keydates_worker.py -v
 
   sqlx-check:
     name: sqlx cache up to date
