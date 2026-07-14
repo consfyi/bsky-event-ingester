@@ -19,8 +19,9 @@ Pipeline per con:
   D. MERGE confirmed dates into the con JSON (confidence gate, never overwrite
      curated values, recency-wins, rejections-file exclusions), run format.py
   E. (sweep only) SOURCE LIVENESS — verify recorded source posts still exist;
-     an entry whose post was deleted with no replacement is removed (skipped
-     when the whole account is unreachable, or on any appview error)
+     an entry whose post was deleted with no replacement is removed once seen
+     dead on two different calendar days (skipped when the whole account is
+     unreachable, or on any appview error)
   F. (PUSH=1 only) commit to bot/bsky-keydates, push, open/update the PR
 
 Validated against the 2026-07-01 manual baseline: Haiku-class extraction alone
@@ -471,11 +472,40 @@ def collect_bsky_sources(con):
     return out
 
 
+# a single getPosts response can transiently omit a live post (appview reindex,
+# PDS blip, brief takedown), so a source is only removed after being observed
+# dead in two different runs on different calendar days. The pending file
+# remembers the first sighting: at-uri -> {"first_seen": ISO date}.
+DEAD_PENDING_FILE = os.path.join(os.path.dirname(CACHE_FILE), "dead_pending.json")
+
+
+def load_dead_pending():
+    if os.path.exists(DEAD_PENDING_FILE):
+        try:
+            with open(DEAD_PENDING_FILE) as f:
+                return json.load(f)
+        except json.JSONDecodeError:
+            pass
+    return {}
+
+
+def save_dead_pending(entries):
+    if DRY_RUN:
+        return
+    os.makedirs(os.path.dirname(DEAD_PENDING_FILE), exist_ok=True)
+    tmp = DEAD_PENDING_FILE + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump(entries, f, indent=1)
+    os.replace(tmp, DEAD_PENDING_FILE)
+
+
 def check_source_liveness(files):
     """Verify recorded source posts still exist; remove entries whose source is
-    gone. Returns (removals, account_flags) — account_flags are entries left
-    untouched because the whole account is unreachable (deactivated/suspended),
-    where per-post deletion can't be inferred."""
+    gone — but only after a second dead sighting on a later calendar day (see
+    DEAD_PENDING_FILE above). Returns (removals, account_flags, pending) —
+    account_flags are entries left untouched because the whole account is
+    unreachable (deactivated/suspended), where per-post deletion can't be
+    inferred; pending are first-sighting dead entries held for the next sweep."""
     per_file, uris = {}, set()
     for fn in files:
         with open(fn) as f:
@@ -492,11 +522,14 @@ def check_source_liveness(files):
         res = appget("app.bsky.feed.getPosts", {"uris": batch})
         if "posts" not in res:  # appview error after retries — never remove on a failed lookup
             log("source liveness: getPosts failed; skipping the check this run")
-            return [], []
+            return [], [], []
         alive = {p.get("uri") for p in res["posts"]}
         dead.update(u for u in batch if u not in alive)
 
-    removals, account_flags = [], []
+    pending_state = load_dead_pending()
+    today = TODAY.isoformat()
+    removals, account_flags, pending = [], [], []
+    removed_uris = set()
     for fn, (con, sources) in sorted(per_file.items()):
         dead_here = [s for s in sources if s[0] in dead]
         if not dead_here:
@@ -511,9 +544,23 @@ def check_source_liveness(files):
                     {"_file": base, "event_id": eid, "category": cat, "kind": kind, **entry}
                     for _, eid, cat, kind, entry in dead_here
                 ]
-                continue
+                continue  # stays out of pending too — the account guard owns these
+        confirmed = []
+        for s in dead_here:
+            u, eid, cat, kind, entry = s
+            first_seen = (pending_state.get(u) or {}).get("first_seen", "")
+            if first_seen and first_seen < today:
+                confirmed.append(s)  # dead on two different days — really gone
+            else:
+                # first sighting (or a same-day rerun): could be a transient
+                # appview miss — hold for the next sweep instead of removing
+                pending_state.setdefault(u, {"first_seen": today})
+                pending.append({"_file": base, "event_id": eid, "category": cat,
+                                "kind": kind, **entry})
+        if not confirmed:
+            continue
         by_id = {e["id"]: e for e in con.get("events", [])}
-        for _, event_id, cat, kind, entry in dead_here:
+        for u, event_id, cat, kind, entry in confirmed:
             kinds = by_id[event_id]["keyDates"][cat]
             del kinds[kind]
             if not kinds:
@@ -522,13 +569,19 @@ def check_source_liveness(files):
                 del by_id[event_id]["keyDates"]
             removals.append({"_file": base, "event_id": event_id, "category": cat,
                              "kind": kind, **entry})
+            removed_uris.add(u)
         if not DRY_RUN:
             tmp = fn + ".tmp"
             with open(tmp, "w") as f:
                 json.dump(con, f, ensure_ascii=False, indent=2)
                 f.write("\n")
             os.replace(tmp, fn)
-    return removals, account_flags
+    # a uri seen alive again is no longer pending-dead; removed ones leave too
+    alive_now = set(uris) - dead
+    pending_state = {u: v for u, v in pending_state.items()
+                     if u not in alive_now and u not in removed_uris}
+    save_dead_pending(pending_state)
+    return removals, account_flags, pending
 
 
 # --- verdict cache -------------------------------------------------------------
@@ -827,8 +880,16 @@ def md_inline(text, cap):
     return " ".join(str(text).split())[:cap]
 
 
+def md_link(label, url):
+    """Render a markdown link only when the target is a verified bsky post URL;
+    anything else (a tampered ledger/con file value) is rendered inert as text."""
+    if SOURCE_URL_RE.match(url or ""):
+        return f"[{label}]({url})"
+    return md_inline(url or "(no source)", 200)
+
+
 def render_summary(all_changes, all_refuted, all_held, all_rejected, skipped_note,
-                   removals=(), account_flags=()):
+                   removals=(), account_flags=(), pending=()):
     lines = ["## Key dates from Bluesky", ""]
     lines.append(f"_Extract: `{EXTRACT_MODEL}` · Verify (unanimous): `{'` + `'.join(VERIFY_MODELS)}` · {TODAY.isoformat()}_")
     if all_changes:
@@ -836,7 +897,7 @@ def render_summary(all_changes, all_refuted, all_held, all_rejected, skipped_not
         for c in all_changes:
             lines.append(f"\n**{c['_file']}** — `{c['event_id']}` {c['category']}.{c['kind']} → **{c['date']}** ({c['verb']}, conf {c['confidence']})")
             lines.append(f"> {md_inline(c['_post_text'], 400)}")
-            lines.append(f"> — [source post]({c['source']}) at {c['asOf']}")
+            lines.append(f"> — {md_link('source post', c['source'])} at {c['asOf']}")
     if all_held:
         lines.append("\n### Held — verifier disagreement, needs a human (`/reject` or hand-apply)")
         for p in all_held:
@@ -855,12 +916,17 @@ def render_summary(all_changes, all_refuted, all_held, all_rejected, skipped_not
         lines.append("\n### Source post deleted — entry removed (no replacement seen)")
         for r in removals:
             lines.append(f"- **{r['_file']}** — `{r['event_id']}` {r['category']}.{r['kind']} {r['date']} — "
-                         f"[deleted source]({r['source']}), was asOf {r.get('asOf')}")
+                         f"{md_link('deleted source', r['source'])}, was asOf {r.get('asOf')}")
+    if pending:
+        lines.append("\n### Source post missing — will remove next sweep if still gone")
+        for r in pending:
+            lines.append(f"- **{r['_file']}** — `{r['event_id']}` {r['category']}.{r['kind']} {r['date']} — "
+                         f"{md_link('missing source', r['source'])}")
     if account_flags:
         lines.append("\n### Source account unreachable — entries left untouched (deactivated/suspended?)")
         for r in account_flags:
             lines.append(f"- **{r['_file']}** — `{r['event_id']}` {r['category']}.{r['kind']} {r['date']} — "
-                         f"[source]({r['source']})")
+                         f"{md_link('source', r['source'])}")
     if skipped_note:
         lines.append(f"\n_{skipped_note}_")
     body = "\n".join(lines)
@@ -1017,16 +1083,30 @@ def main():
     if PUSH and not DRY_RUN:
         all_changes += reapply_outstanding(all_changes, rejections)
 
-    removals, account_flags = [], []
+    removals, account_flags, pending = [], [], []
     if args.sweep:
         # after reapply_outstanding, each slot's source is the best-known post —
         # a slot amended this run already points at the replacement, so only
         # genuinely unreplaced dead sources are still referenced here
-        removals, account_flags = check_source_liveness(processed)
+        try:
+            removals, account_flags, pending = check_source_liveness(processed)
+        except Exception as e:
+            # a malformed con structure must not kill the cache save, summary,
+            # and publish for the whole run
+            log(f"ERROR in source liveness check: {e}")
+        if pending:
+            log(f"source liveness: {len(pending)} missing source(s) pending a second sighting")
         if removals:
             log(f"source liveness: removed {len(removals)} entr(ies) with deleted sources")
             if PUSH and not DRY_RUN:
                 prune_outstanding_removals(removals)
+            # reapply_outstanding may have just re-added the very slot liveness
+            # removed; drop it from the applied list so the summary doesn't show
+            # it as both applied and removed (its file stays in the format set
+            # via the removal entry itself)
+            gone = {(r["event_id"], r["category"], r["kind"], r.get("source")) for r in removals}
+            all_changes = [c for c in all_changes
+                           if (c.get("event_id"), c.get("category"), c.get("kind"), c.get("source")) not in gone]
 
     save_cache(cache)
 
@@ -1043,7 +1123,7 @@ def main():
             log(f"ERROR: format.py exited {fmt.returncode} — withholding push, changes left staged")
 
     summary = render_summary(all_changes, all_refuted, all_held, all_rejected, skipped_note,
-                             removals, account_flags)
+                             removals, account_flags, pending)
     if os.environ.get("SUMMARY_FILE"):
         with open(os.environ["SUMMARY_FILE"], "w") as f:
             f.write(summary)
