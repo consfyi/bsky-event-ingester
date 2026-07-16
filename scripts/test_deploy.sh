@@ -15,11 +15,22 @@ fail() {
 }
 
 # --- fixtures -----------------------------------------------------------------
-# Stub systemctl/journalctl that record their invocations.
+# Stub systemctl/journalctl that record their invocations. The systemctl stub is
+# scriptable: each `is-active` call pops an exit code from $tmp/systemctl.is-active
+# (one per line; the last line is sticky once the queue drains). No file = always
+# active. `restart` (and everything else) always succeeds and is only recorded.
 mkdir -p "$tmp/bin"
 cat > "$tmp/bin/systemctl" <<EOF
 #!/usr/bin/env bash
 echo "\$*" >> "$tmp/systemctl.log"
+q="$tmp/systemctl.is-active"
+if [ "\$1" = is-active ] && [ -s "\$q" ]; then
+    rc=\$(head -n1 "\$q")
+    if [ "\$(wc -l < "\$q")" -gt 1 ]; then
+        tail -n +2 "\$q" > "\$q.next" && mv "\$q.next" "\$q"
+    fi
+    exit "\$rc"
+fi
 exit 0
 EOF
 cat > "$tmp/bin/journalctl" <<EOF
@@ -62,7 +73,11 @@ reset_root() {
     printf 'old-worker\n' > "$tmp/root/home/fbl/keydates-worker/keydates_worker.py"
     printf 'old-labeler\n' > "$tmp/root/home/fbl/bsky-labeler"
     chmod +x "$tmp/root/home/fbl/bsky-labeler"
-    rm -f "$tmp/systemctl.log" "$tmp/journalctl.log"
+    rm -f "$tmp/systemctl.log" "$tmp/journalctl.log" "$tmp/systemctl.is-active"
+}
+
+set_is_active() { # exit codes for successive is-active calls; the last is sticky
+    printf '%s\n' "$@" > "$tmp/systemctl.is-active"
 }
 
 mkdir -p "$tmp/staging"
@@ -80,7 +95,7 @@ deploy() {
     DEPLOY_SYSTEMCTL="$tmp/bin/systemctl" \
     DEPLOY_JOURNALCTL="$tmp/bin/journalctl" \
     DEPLOY_SETTLE_SECS=0 \
-    DEPLOY_HEALTH_URL="file://$tmp/health-ok" \
+    DEPLOY_HEALTH_URL="${DEPLOY_HEALTH_URL:-file://$tmp/health-ok}" \
     bash "$here/deploy.sh" "$@"
 }
 
@@ -133,7 +148,7 @@ expect_content "$tmp/root/home/fbl/bsky-event-ingester" old-binary "uncovered de
 # restore the manifest
 (cd "$tmp/assets/consfyi/bsky-event-ingester/deploy-test-1" && sha256sum bsky-event-ingester keydates_worker.py > SHA256SUMS)
 
-# --- 5. labeler happy path incl. health check ------------------------------------
+# --- 5. labeler happy path incl. advisory health check ---------------------------
 reset_root
 deploy labeler > "$tmp/out5" 2>&1 || { cat "$tmp/out5"; fail "labeler deploy exited non-zero"; }
 expect_content "$tmp/root/home/fbl/bsky-labeler" new-labeler "labeler binary not swapped"
@@ -145,5 +160,57 @@ grep -q "health check OK" "$tmp/out5" || fail "labeler health check not run"
 reset_root
 deploy ingester --version deploy-test-1 > "$tmp/out6" 2>&1 || { cat "$tmp/out6"; fail "--version deploy exited non-zero"; }
 expect_content "$tmp/root/home/fbl/bsky-event-ingester" new-binary "--version did not deploy"
+
+# --- 7. restart failure fails the deploy and a retry keeps the last-good .bak -----
+reset_root
+set_is_active 0 1 # pre-snapshot check OK; never active again after the restart
+if deploy ingester > "$tmp/out7" 2>&1; then
+    fail "deploy succeeded although the unit never became active"
+fi
+grep -q "roll back with" "$tmp/out7" || { cat "$tmp/out7"; fail "no roll-back hint on restart failure"; }
+expect_content "$tmp/root/home/fbl/bsky-event-ingester.bak" old-binary "restart failure lost the .bak"
+# The unit is still down, so a retry must not snapshot the (bad) live files
+# over the last-known-good .bak pair.
+if deploy ingester > "$tmp/out7b" 2>&1; then
+    fail "retry deploy succeeded although the unit never became active"
+fi
+grep -q "keeping existing .bak" "$tmp/out7b" || { cat "$tmp/out7b"; fail "retry did not warn about skipping the snapshot"; }
+expect_content "$tmp/root/home/fbl/bsky-event-ingester.bak" old-binary "retry clobbered the last-good .bak"
+expect_content "$tmp/root/home/fbl/keydates-worker/keydates_worker.py.bak" old-worker "retry clobbered the worker .bak"
+
+# --- 8. crash-loop: transiently active, then dead at the confirm check ------------
+reset_root
+set_is_active 0 0 1 # pre-snapshot OK; first poll active; confirm check fails
+if deploy ingester > "$tmp/out8" 2>&1; then
+    fail "deploy succeeded although the unit died right after going active"
+fi
+grep -q "roll back with" "$tmp/out8" || { cat "$tmp/out8"; fail "no roll-back hint on crash-loop"; }
+
+# --- 9. rollback with no .bak must abort without touching anything ----------------
+reset_root
+if deploy ingester --rollback > "$tmp/out9" 2>&1; then
+    fail "rollback succeeded with no .bak"
+fi
+grep -q "to roll back to" "$tmp/out9" || { cat "$tmp/out9"; fail "wrong error for missing .bak"; }
+expect_content "$tmp/root/home/fbl/bsky-event-ingester" old-binary "no-.bak rollback modified the binary"
+expect_content "$tmp/root/home/fbl/keydates-worker/keydates_worker.py" old-worker "no-.bak rollback modified the worker"
+[ ! -s "$tmp/systemctl.log" ] || fail "no-.bak rollback touched systemd"
+
+# --- 10. health check is advisory: a failure warns but never fails the deploy -----
+reset_root
+DEPLOY_HEALTH_URL="file://$tmp/does-not-exist" deploy labeler > "$tmp/out10" 2>&1 \
+    || { cat "$tmp/out10"; fail "health-check failure failed the deploy"; }
+grep -q "warning: health check failed" "$tmp/out10" || { cat "$tmp/out10"; fail "no health advisory warning"; }
+
+# --- 11. a release missing a wanted asset must abort -------------------------------
+reset_root
+make_release consfyi/bsky-event-ingester deploy-test-noworker bsky-event-ingester
+if deploy ingester --version deploy-test-noworker > "$tmp/out11" 2>&1; then
+    fail "deploy succeeded from a release missing an asset"
+fi
+grep -q "has no asset named" "$tmp/out11" || { cat "$tmp/out11"; fail "wrong error for missing asset"; }
+expect_content "$tmp/root/home/fbl/bsky-event-ingester" old-binary "missing-asset deploy modified the binary"
+# make_release also rewrote "latest"; restore it for anything added after this
+make_release consfyi/bsky-event-ingester deploy-test-1 bsky-event-ingester keydates_worker.py
 
 echo "PASS: all deploy.sh tests"

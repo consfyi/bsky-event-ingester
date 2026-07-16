@@ -15,6 +15,11 @@
 #   - the swap is install + atomic rename; there is no window where the live
 #     file is missing
 #
+# Trust model: SHA256SUMS ships in the same release over the same channel as
+# the binaries, so checksum verification protects against transport corruption
+# only, NOT against a malicious publisher. The trust anchor is write access to
+# the GitHub repo/releases; the artifacts are unsigned.
+#
 # Host specifics live here rather than in a config file because they are already
 # public in bsky-labeler's DEPLOY.md; the private parts (host, SSH, sudo) stay
 # out of the repo either way. Requires curl and python3 (both on the box).
@@ -29,7 +34,6 @@ ROOT="${DEPLOY_ROOT:-}"
 SUDO="${DEPLOY_SUDO-sudo}"
 SYSTEMCTL="${DEPLOY_SYSTEMCTL:-systemctl}"
 JOURNALCTL="${DEPLOY_JOURNALCTL:-journalctl}"
-CURL="${DEPLOY_CURL:-curl}"
 SETTLE_SECS="${DEPLOY_SETTLE_SECS:-2}"
 
 usage() {
@@ -107,20 +111,27 @@ restart_and_verify() {
             break
         fi
     done
+    # A crash-looping binary can be transiently active on the first poll;
+    # require the unit to still be active one settle interval later.
+    if [ "$ok" = 1 ]; then
+        sleep "$SETTLE_SECS"
+        run_priv "$SYSTEMCTL" is-active --quiet "$unit" || ok=0
+    fi
     echo "--- last journal lines for $unit ---"
     run_priv "$JOURNALCTL" -n 15 -u "$unit" --no-pager || true
     [ "$ok" = 1 ] || die "$unit is not active after restart; roll back with: $0 $service --rollback"
-    if [ "$service" = labeler ]; then
-        health_url="${DEPLOY_HEALTH_URL:-https://bsky-labeler.cons.fyi/health}"
-        if "$CURL" -fsS "$health_url" >/dev/null; then
-            echo "health check OK ($health_url)"
-        else
-            die "health check failed ($health_url); roll back with: $0 $service --rollback"
-        fi
+    # Advisory only, never a gate: /health (served by the labeler) reports the
+    # INGESTER's firehose cursor lag and legitimately 503s for ~30 min after an
+    # ingester restart while the backlog re-drains; it says nothing definitive
+    # about the labeler process. The unit staying active above is the success
+    # signal for both deploy and rollback.
+    health_url="${DEPLOY_HEALTH_URL:-https://bsky-labeler.cons.fyi/health}"
+    if curl -fsS "$health_url" >/dev/null 2>&1; then
+        echo "health check OK ($health_url)"
     else
-        echo "note: /health reports ingester cursor lag and may return 503 for a"
-        echo "while after an ingester restart (backlog re-drain, ~30 min); the"
-        echo "unit being active with a clean journal is the deploy signal here."
+        echo "warning: health check failed ($health_url); /health reflects ingester"
+        echo "cursor lag, and a 503 is expected for ~30 min after an ingester"
+        echo "restart — investigate only if it persists beyond that."
     fi
 }
 
@@ -144,7 +155,7 @@ if [ -n "$version" ]; then
 else
     release_url="$API_BASE/repos/$repo/releases/latest"
 fi
-"$CURL" -fsSL "$release_url" -o "$tmp/release.json" \
+curl -fsSL "$release_url" -o "$tmp/release.json" \
     || die "could not fetch release metadata from $release_url"
 tag=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["tag_name"])' "$tmp/release.json") \
     || die "malformed release metadata"
@@ -159,7 +170,7 @@ wanted=("$bin_asset" SHA256SUMS)
 for name in "${wanted[@]}"; do
     url=$(awk -F'\t' -v n="$name" '$1 == n { print $2 }' "$tmp/assets.tsv")
     [ -n "$url" ] || die "release $tag has no asset named $name"
-    "$CURL" -fsSL "$url" -o "$tmp/$name" || die "download of $name failed"
+    curl -fsSL "$url" -o "$tmp/$name" || die "download of $name failed"
 done
 
 # Verify checksums, and verify that every file we are about to install was
@@ -169,23 +180,35 @@ done
     || die "checksum verification failed for release $tag"
 for name in "${wanted[@]}"; do
     [ "$name" = SHA256SUMS ] && continue
-    grep -q "^$name: OK$" "$tmp/check.out" || die "$name is not covered by SHA256SUMS"
+    grep -qxF -- "$name: OK" "$tmp/check.out" || die "$name is not covered by SHA256SUMS"
 done
 
 chmod +x "$tmp/$bin_asset"
 [ -x "$tmp/$bin_asset" ] || die "downloaded $bin_asset is not executable"
 
-# Snapshot, then swap atomically (install + rename, no rm window).
-if [ -e "$bin_dest" ]; then
-    run_priv cp -p "$bin_dest" "$bin_dest.bak"
-fi
-run_priv install -m755 "$tmp/$bin_asset" "$bin_dest.new"
-run_priv mv -f "$bin_dest.new" "$bin_dest"
-if [ -n "$extra_dest" ]; then
-    if [ -e "$extra_dest" ]; then
+# Snapshot, then swap atomically (install + rename, no rm window). Snapshot
+# only when the live unit is actually running: if the previous deploy failed
+# (unit dead or crash-looping), overwriting .bak would destroy the last
+# known-good build that --rollback needs. The worker script is snapshotted in
+# the same gate so the .bak pair stays consistent.
+if run_priv "$SYSTEMCTL" is-active --quiet "$unit"; then
+    if [ -e "$bin_dest" ]; then
+        run_priv cp -p "$bin_dest" "$bin_dest.bak"
+    fi
+    if [ -n "$extra_dest" ] && [ -e "$extra_dest" ]; then
         run_priv cp -p "$extra_dest" "$extra_dest.bak"
     fi
+else
+    echo "warning: $unit is not active; live binary is not healthy; keeping existing .bak"
+fi
+# Stage both files first, then rename back-to-back, so a staging failure
+# cannot leave a half-updated binary/worker pair.
+run_priv install -m755 "$tmp/$bin_asset" "$bin_dest.new"
+if [ -n "$extra_dest" ]; then
     run_priv install "${extra_install_args[@]}" "$tmp/$extra_asset" "$extra_dest.new"
+fi
+run_priv mv -f "$bin_dest.new" "$bin_dest"
+if [ -n "$extra_dest" ]; then
     run_priv mv -f "$extra_dest.new" "$extra_dest"
 fi
 
