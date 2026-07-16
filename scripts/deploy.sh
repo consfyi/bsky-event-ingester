@@ -199,7 +199,7 @@ if run_priv "$SYSTEMCTL" is-active --quiet "$unit"; then
         run_priv cp -p "$extra_dest" "$extra_dest.bak"
     fi
 else
-    echo "warning: $unit is not active; live binary is not healthy; keeping existing .bak"
+    echo "warning: $unit is not active; not refreshing the snapshot, keeping existing .bak (if any)"
 fi
 # Stage both files first, then rename back-to-back, so a staging failure
 # cannot leave a half-updated binary/worker pair.
