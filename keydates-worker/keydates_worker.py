@@ -456,14 +456,15 @@ def merge(con, dates):
 # the profile segment is a handle (DNS name) or a did — [a-zA-Z0-9.:-] covers
 # both and, critically, admits no markdown metacharacters or whitespace, so a
 # matching URL can always be rendered raw inside a markdown link
-SOURCE_URL_RE = re.compile(r"\Ahttps://bsky\.app/profile/[a-zA-Z0-9.:-]+/post/([a-zA-Z0-9._~-]+)\Z")
+SOURCE_URL_RE = re.compile(r"\Ahttps://bsky\.app/profile/([a-zA-Z0-9.:-]+)/post/([a-zA-Z0-9._~-]+)\Z")
 
 
 def collect_bsky_sources(con):
     """(at_uri, event_id, category, kind, entry) for every importer-owned
     keyDates value on an upcoming edition; [] when the con has no bluesky DID.
-    at-uris are built from the stored DID, not the source URL's handle, so a
-    handle change can never make a live post look dead."""
+    at-uris use the DID the source URL itself embeds when it carries one, else
+    the stored DID: a handle change never makes a live post look dead, and a
+    stored-DID URL survives an account migration (see repo derivation below)."""
     did = (con.get("bluesky") or {}).get("did")
     if not did:
         return []
@@ -479,7 +480,15 @@ def collect_bsky_sources(con):
                 m = SOURCE_URL_RE.match(entry.get("source") or "")
                 if not m:
                     continue
-                out.append((f"at://{did}/app.bsky.feed.post/{m.group(1)}", ev["id"], cat, kind, entry))
+                # a bsky post URL's profile segment is a handle OR a did. When
+                # it names a did, pin the at-uri to that repo so a con that
+                # MIGRATED accounts (bluesky.did rewritten to a new did) can't
+                # make its old but still-live source posts look deleted and mass
+                # -remove them. A handle-segment URL keeps falling back to the
+                # stored did (what survives a benign handle rename).
+                profile, rkey = m.group(1), m.group(2)
+                repo = profile if profile.startswith("did:") else did
+                out.append((f"at://{repo}/app.bsky.feed.post/{rkey}", ev["id"], cat, kind, entry))
     return out
 
 
@@ -566,56 +575,79 @@ def check_source_liveness(files):
     removals, account_flags, pending = [], [], []
     removed_uris = set()
     for fn, (con, sources) in sorted(per_file.items()):
-        dead_here = [s for s in sources if s[0] in dead]
-        if not dead_here:
+        # per-file isolation: a later file's I/O error must not discard the
+        # removals already written to disk for earlier files. publish() stages
+        # every changed root .json via git status, so a deletion that reached
+        # disk always ships in the bot PR; if it never reached removals it would
+        # ship unreported, unformatted, and unpruned (and reapply_outstanding
+        # would resurrect the slot next run). So we accumulate what was actually
+        # applied and always return it, logging any file we couldn't finish.
+        try:
+            dead_here = [s for s in sources if s[0] in dead]
+            if not dead_here:
+                continue
+            base = os.path.basename(fn)
+            if len(dead_here) == len(sources):
+                # every source gone at once smells like account-level unavailability,
+                # not per-post deletes — only proceed if the account itself is up
+                profile = appget("app.bsky.actor.getProfile", {"actor": con["bluesky"]["did"]})
+                if "did" not in profile:
+                    account_flags += [
+                        {"_file": base, "event_id": eid, "category": cat, "kind": kind, **entry}
+                        for _, eid, cat, kind, entry in dead_here
+                    ]
+                    continue  # stays out of pending too — the account guard owns these
+            confirmed = []
+            for s in dead_here:
+                u, eid, cat, kind, entry = s
+                first_seen = (pending_state.get(u) or {}).get("first_seen", "")
+                if first_seen and dead_sighting_elapsed(first_seen, now):
+                    confirmed.append(s)  # dead twice, 20+ hours apart — really gone
+                else:
+                    # first sighting (or a rerun inside the 20h window): could be a
+                    # transient appview miss — hold for the next sweep instead of removing
+                    pending_state.setdefault(u, {"first_seen": now.isoformat()})
+                    pending.append({"_file": base, "event_id": eid, "category": cat,
+                                    "kind": kind, **entry})
+            if not confirmed:
+                continue
+            by_id = {e["id"]: e for e in con.get("events", [])}
+            file_removals = []
+            for u, event_id, cat, kind, entry in confirmed:
+                kinds = by_id[event_id]["keyDates"][cat]
+                del kinds[kind]
+                if not kinds:
+                    del by_id[event_id]["keyDates"][cat]
+                if not by_id[event_id]["keyDates"]:
+                    del by_id[event_id]["keyDates"]
+                file_removals.append((u, {"_file": base, "event_id": event_id, "category": cat,
+                                          "kind": kind, **entry}))
+            if not DRY_RUN:
+                tmp = fn + ".tmp"
+                with open(tmp, "w") as f:
+                    json.dump(con, f, ensure_ascii=False, indent=2)
+                    f.write("\n")
+                os.replace(tmp, fn)
+            # commit to the returned set only past a successful write, so a
+            # failed write on this file never reports a removal the con file
+            # didn't receive (DRY_RUN still reports without writing)
+            for u, r in file_removals:
+                removals.append(r)
+                removed_uris.add(u)
+        except Exception as e:
+            log(f"source liveness: error applying removals to {os.path.basename(fn)}: {e}")
             continue
-        base = os.path.basename(fn)
-        if len(dead_here) == len(sources):
-            # every source gone at once smells like account-level unavailability,
-            # not per-post deletes — only proceed if the account itself is up
-            profile = appget("app.bsky.actor.getProfile", {"actor": con["bluesky"]["did"]})
-            if "did" not in profile:
-                account_flags += [
-                    {"_file": base, "event_id": eid, "category": cat, "kind": kind, **entry}
-                    for _, eid, cat, kind, entry in dead_here
-                ]
-                continue  # stays out of pending too — the account guard owns these
-        confirmed = []
-        for s in dead_here:
-            u, eid, cat, kind, entry = s
-            first_seen = (pending_state.get(u) or {}).get("first_seen", "")
-            if first_seen and dead_sighting_elapsed(first_seen, now):
-                confirmed.append(s)  # dead twice, 20+ hours apart — really gone
-            else:
-                # first sighting (or a rerun inside the 20h window): could be a
-                # transient appview miss — hold for the next sweep instead of removing
-                pending_state.setdefault(u, {"first_seen": now.isoformat()})
-                pending.append({"_file": base, "event_id": eid, "category": cat,
-                                "kind": kind, **entry})
-        if not confirmed:
-            continue
-        by_id = {e["id"]: e for e in con.get("events", [])}
-        for u, event_id, cat, kind, entry in confirmed:
-            kinds = by_id[event_id]["keyDates"][cat]
-            del kinds[kind]
-            if not kinds:
-                del by_id[event_id]["keyDates"][cat]
-            if not by_id[event_id]["keyDates"]:
-                del by_id[event_id]["keyDates"]
-            removals.append({"_file": base, "event_id": event_id, "category": cat,
-                             "kind": kind, **entry})
-            removed_uris.add(u)
-        if not DRY_RUN:
-            tmp = fn + ".tmp"
-            with open(tmp, "w") as f:
-                json.dump(con, f, ensure_ascii=False, indent=2)
-                f.write("\n")
-            os.replace(tmp, fn)
     # a uri seen alive again is no longer pending-dead; removed ones leave too
     alive_now = set(uris) - dead
     pending_state = {u: v for u, v in pending_state.items()
                      if u not in alive_now and u not in removed_uris}
-    save_dead_pending(pending_state)
+    try:
+        save_dead_pending(pending_state)
+    except Exception as e:
+        # persisting the pending file must not raise past removals already on
+        # disk: main()'s blanket except would blank them out and skip the
+        # format/prune path. A lost pending sighting only costs an extra sweep.
+        log(f"source liveness: could not persist dead-pending state: {e}")
     return removals, account_flags, pending
 
 
@@ -1145,7 +1177,13 @@ def main():
             continue
         if did_extract:
             extracts += 1
-        processed.append(fn)
+            # liveness only re-checks cons whose extraction pass actually ran
+            # this sweep. A con whose feed fetch failed (appget swallows the
+            # error and yields no posts) never got the chance to re-post a
+            # replacement, so its still-valid source must not be judged dead
+            # here. did_extract is the conservative signal — it is also False
+            # for a genuinely empty/irrelevant feed, which we likewise skip.
+            processed.append(fn)
         base = os.path.basename(fn)
         for c in changes:
             c.setdefault("_file", base)

@@ -72,6 +72,19 @@ class CollectSourcesTest(unittest.TestCase):
         })
         self.assertEqual(kw.collect_bsky_sources(con), [])
 
+    def test_did_in_source_url_overrides_stored_did(self):
+        # a con that migrated accounts: bluesky.did is the NEW did, but an old
+        # source URL still names the OLD did in its profile segment — the at-uri
+        # must target the OLD repo the post actually lives in, so the migration
+        # can't make every still-live source look deleted and mass-remove them
+        old_did = "did:plc:oldoldoldoldoldoldold"
+        con = make_con(
+            {"panels": {"opens": {**entry("3aaa"),
+                                  "source": f"https://bsky.app/profile/{old_did}/post/3aaa"}}},
+            did="did:plc:newnewnewnewnewnewnew")
+        got = kw.collect_bsky_sources(con)
+        self.assertEqual([s[0] for s in got], [uri("3aaa", did=old_did)])
+
     def test_skips_past_editions_and_conless_dids(self):
         past = make_con({"panels": {"opens": entry("3ccc")}}, end_date="2000-01-01")
         self.assertEqual(kw.collect_bsky_sources(past), [])
@@ -284,6 +297,52 @@ class LivenessTest(unittest.TestCase):
         # DRY_RUN doesn't touch the pending file either
         self.assertEqual(self.read_pending(), {uri("3aaa"): {"first_seen": "2000-01-01"}})
 
+    def test_later_write_failure_keeps_earlier_removals(self):
+        # finding 1: a mid-loop write error on a later con file must not discard
+        # removals already written to disk for an earlier file (publish() stages
+        # every changed .json, so an unreported one would still ship), and the
+        # failed file's removal must NOT be reported — it never reached disk
+        good = make_con({"panels": {"opens": entry("3good")}})
+        good_fn = self.write_con(good, name="acon.json")
+        bad = make_con({"panels": {"opens": entry("3bad")}}, did="did:plc:secondcononly")
+        bad["events"][0]["id"] = "secondcon-2999"
+        bad_fn = self.write_con(bad, name="zcon.json")
+        before_bad = copy.deepcopy(bad)
+        # both confirmed-dead (old first_seen); each at-uri derives from its own con's did
+        with open(self.pending_file, "w") as f:
+            json.dump({uri("3good"): {"first_seen": "2000-01-01"},
+                       uri("3bad", did="did:plc:secondcononly"): {"first_seen": "2000-01-01"}}, f)
+        real_replace = os.replace
+
+        def flaky_replace(src, dst):
+            if str(dst).endswith("zcon.json"):
+                raise OSError("disk full")
+            return real_replace(src, dst)
+
+        with unittest.mock.patch.object(kw.os, "replace", flaky_replace):
+            removals, flags, pending = self.check(
+                [good_fn, bad_fn, self.write_alive_companion()], alive_rkeys={"3ok"})
+        # the earlier file's removal survived and reached disk...
+        self.assertEqual([r["event_id"] for r in removals], ["testcon-2999"])
+        self.assertNotIn("keyDates", self.read_con(good_fn)["events"][0])
+        # ...the failed file kept its data and was not reported as removed
+        self.assertEqual(self.read_con(bad_fn), before_bad)
+        self.assertEqual((flags, pending), ([], []))
+
+    def test_pending_save_failure_still_returns_removals(self):
+        # finding 1: if persisting the dead-pending file fails, removals already
+        # written to disk must still be returned — main() would otherwise blank
+        # them out and skip the format/prune path while they ship via git status
+        con = make_con({"panels": {"opens": entry("3dead")}})
+        fn = self.write_con(con)
+        self.seed_pending("3dead")
+        with unittest.mock.patch.object(kw, "save_dead_pending",
+                                        side_effect=OSError("disk full")):
+            removals, flags, pending = self.check(
+                [fn, self.write_alive_companion()], alive_rkeys={"3ok"})
+        self.assertEqual(len(removals), 1)
+        self.assertNotIn("keyDates", self.read_con(fn)["events"][0])
+
     def test_dead_across_getposts_batches_all_collected(self):
         # >25 sources forces two getPosts calls; dead uris from BOTH batches
         # must be collected (28 fake categories keeps it in a single con file)
@@ -464,6 +523,26 @@ class MainSmokeTest(unittest.TestCase):
         publish.assert_not_called()  # format.py exited 1 — nothing may be pushed
         with open(self.summary_file) as f:
             self.assertIn("Source post deleted", f.read())
+
+    def test_unextracted_con_excluded_from_liveness(self):
+        # finding 2: a con whose extraction pass didn't run this sweep (e.g. its
+        # feed fetch failed, so appget yielded no posts) must not be liveness
+        # -checked — it never had a chance to re-post a replacement for a source
+        # it may have just deleted, so its still-valid date must not look dead
+        def pc(fn, *a, **k):
+            extracted = os.path.basename(fn) == "con-a.json"
+            return ([], [], [], [], extracted)
+        ok = unittest.mock.Mock(returncode=0, stdout="")
+        with unittest.mock.patch.object(kw, "MAX_EXTRACTS", 10), \
+             unittest.mock.patch.object(kw, "process_con", side_effect=pc), \
+             unittest.mock.patch.object(
+                 kw, "check_source_liveness", return_value=([], [], [])) as liveness, \
+             unittest.mock.patch.object(kw, "publish"), \
+             unittest.mock.patch.object(kw.subprocess, "run", return_value=ok):
+            kw.main()
+        liveness.assert_called_once()
+        self.assertEqual([os.path.basename(f) for f in liveness.call_args[0][0]],
+                         ["con-a.json"])
 
     def test_liveness_error_does_not_kill_the_run(self):
         ok = unittest.mock.Mock(returncode=0, stdout="")
