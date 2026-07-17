@@ -22,7 +22,7 @@ jobs:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - run: cargo build --all-targets
+      - run: cargo build --all-targets --locked
 
   lint:
     name: lint
@@ -42,6 +42,10 @@ jobs:
       - run: python3 keydates-worker/test_ledger.py
       # source-liveness tests (unittest-style; test_ledger stays script-style)
       - run: python3 -m unittest discover -s keydates-worker -p test_keydates_worker.py -v
+      # deploy.sh drives production swaps; its harness runs it against a fake
+      # root with stubbed systemd/network (see scripts/test_deploy.sh).
+      - run: shellcheck scripts/deploy.sh scripts/test_deploy.sh
+      - run: bash scripts/test_deploy.sh
 
   sqlx-check:
     name: sqlx cache up to date
