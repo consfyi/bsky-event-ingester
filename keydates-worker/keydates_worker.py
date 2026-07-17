@@ -15,7 +15,8 @@ Pipeline per con:
   A. fetch recent posts (public Bluesky appview, free) or take a spooled post
   B. EXTRACT candidate dates  — gpt-4.1-mini (low tier), hardened exclusion prompt
   C. VERIFY every guardrail-passing proposal — gpt-4.1 AND gpt-4o (high tier),
-     unanimous confirm required; split verdicts are held (reported, not applied)
+     unanimous confirm required; split verdicts are held (reported, not applied),
+     as are same-run conflicts (two confirmed dates for one slot in one run)
   D. MERGE confirmed dates into the con JSON (confidence gate, never overwrite
      curated values, recency-wins, rejections-file exclusions), run format.py
   E. (sweep only) SOURCE LIVENESS — verify recorded source posts still exist;
@@ -427,7 +428,14 @@ def merge(con, dates):
             continue
         cat[d["kind"]] = new_val
         verb = f"amend {existing['date']} -> {d['date']}" if existing and existing.get("date") != d["date"] else ("update" if existing else "add")
-        changes.append({**d, "verb": verb})
+        change = {**d, "verb": verb}
+        if existing and existing.get("date") != d["date"]:
+            # recency-wins reminder for the PR body: the human sees what was
+            # replaced and where it came from, in case the two posts announce
+            # different sign-ups rather than a correction
+            change["_prev"] = {"date": existing.get("date"), "source": existing.get("source"),
+                               "asOf": existing.get("asOf")}
+        changes.append(change)
     # drop empty stubs
     for ev in con.get("events", []):
         kd = ev.get("keyDates")
@@ -825,6 +833,33 @@ def verify_proposals(proposals, cache):
     return confirmed, refuted, held
 
 
+def hold_same_run_conflicts(confirmed):
+    """Two confirmed proposals for the same (event, category.kind) slot with
+    different dates in one run are usually two different sign-ups mapped to
+    the same slot (e.g. dance comp vs dance battle), not a correction —
+    recency-wins must not arbitrate. Returns (kept, conflicted); conflicted
+    proposals go to the Held section for a human to pick."""
+    by_slot = {}
+    for p in confirmed:
+        by_slot.setdefault((p["event_id"], p["category"], p["kind"]), []).append(p)
+    kept, conflicted = [], []
+    for group in by_slot.values():
+        if len({p["date"] for p in group}) == 1:
+            kept.extend(group)
+            continue
+        for p in group:
+            others = ", ".join(sorted({q["date"] for q in group} - {p["date"]}))
+            # rebind rather than append: verify_proposals caches the same
+            # _verdicts list object, and a mutated cache entry would hold
+            # this proposal forever on later runs
+            p["_verdicts"] = p["_verdicts"] + [{
+                "model": "mechanical", "verdict": "hold",
+                "reason": f"same-run conflict: {others} also proposed — "
+                          "pick the right one by hand, /reject the other"}]
+            conflicted.append(p)
+    return kept, conflicted
+
+
 def process_con(fn, cache, rejections, provided_posts=None, extra_post=None):
     """Returns (changes, refuted, held, rejected_skips, did_extract) for one
     con file; did_extract is False when the con was skipped before any model
@@ -891,6 +926,8 @@ def process_con(fn, cache, rejections, provided_posts=None, extra_post=None):
         return [], stale_drops, [], rejected_skips, True
 
     confirmed, refuted, held = verify_proposals(proposals, cache)
+    confirmed, conflicted = hold_same_run_conflicts(confirmed)
+    held = conflicted + held
     refuted = stale_drops + refuted
 
     changes = []
@@ -932,10 +969,15 @@ def render_summary(all_changes, all_refuted, all_held, all_rejected, skipped_not
             lines.append(f"\n**{c['_file']}** — `{c['event_id']}` {c['category']}.{c['kind']} → **{c['date']}** ({c['verb']}, conf {c['confidence']})")
             lines.append(f"> {md_inline(c['_post_text'], 400)}")
             lines.append(f"> — {md_link('source post', c['source'])} at {c['asOf']}")
+            if c.get("_prev"):
+                prev = c["_prev"]
+                lines.append(f"> ⚠️ recency-wins: this replaced **{md_inline(prev.get('date'), 40)}** "
+                             f"({md_link('previous post', prev.get('source'))}, asOf {md_inline(prev.get('asOf'), 40)}) — "
+                             f"a different sign-up rather than a correction? `/reject` this date and hand-restore the old one.")
     if all_held:
-        lines.append("\n### Held — verifier disagreement, needs a human (`/reject` or hand-apply)")
+        lines.append("\n### Held — verifier disagreement or same-run conflict, needs a human (`/reject` or hand-apply)")
         for p in all_held:
-            lines.append(f"- `{p['event_id']}` {p['category']}.{p['kind']} {p['date']} — " +
+            lines.append(f"- `{p['event_id']}` {p['category']}.{p['kind']} {p['date']} — {md_link('post', p.get('source'))} — " +
                          "; ".join(f"{v['model'].split('/')[-1]}: {v['verdict']} ({md_inline(v['reason'], 120)})" for v in p["_verdicts"]))
     if all_refuted:
         lines.append("\n### Refuted by verification (not applied)")

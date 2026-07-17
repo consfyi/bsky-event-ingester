@@ -485,5 +485,82 @@ class UserAgentTest(unittest.TestCase):
         self.assertIn("(+https://cons.fyi)", kw.APPVIEW_USER_AGENT)
 
 
+def proposal(date, rkey, asof="2999-01-01T00:00:00.000Z", slot=("testcon-2999", "performances", "opens")):
+    event_id, category, kind = slot
+    return {"event_id": event_id, "category": category, "kind": kind,
+            "date": date, "source": f"https://bsky.app/profile/testcon.example/post/{rkey}",
+            "asOf": asof, "confidence": 1.0,
+            "_verdicts": [{"model": "m1", "verdict": "confirm", "reason": "ok"}]}
+
+
+class SameRunConflictTest(unittest.TestCase):
+    def test_conflicting_dates_all_held(self):
+        a = proposal("2999-05-13", "3aaa", asof="2999-05-13T00:00:00.000Z")
+        b = proposal("2999-07-15", "3bbb", asof="2999-07-15T00:00:00.000Z")
+        kept, conflicted = kw.hold_same_run_conflicts([a, b])
+        self.assertEqual(kept, [])
+        self.assertEqual(len(conflicted), 2)
+        # each conflicted proposal names the competing date for the reviewer
+        reason_a = conflicted[0]["_verdicts"][-1]
+        self.assertEqual(reason_a["verdict"], "hold")
+        self.assertIn("2999-07-15", reason_a["reason"])
+        self.assertIn("2999-05-13", conflicted[1]["_verdicts"][-1]["reason"])
+
+    def test_same_date_from_two_posts_is_not_a_conflict(self):
+        a = proposal("2999-05-13", "3aaa")
+        b = proposal("2999-05-13", "3bbb")
+        kept, conflicted = kw.hold_same_run_conflicts([a, b])
+        self.assertEqual(len(kept), 2)
+        self.assertEqual(conflicted, [])
+
+    def test_different_slots_do_not_conflict(self):
+        a = proposal("2999-05-13", "3aaa")
+        b = proposal("2999-07-15", "3bbb", slot=("testcon-2999", "hotel", "opens"))
+        kept, conflicted = kw.hold_same_run_conflicts([a, b])
+        self.assertEqual(len(kept), 2)
+        self.assertEqual(conflicted, [])
+
+    def test_cached_verdicts_list_not_mutated(self):
+        # verify_proposals stores the same _verdicts list object in the verdict
+        # cache; the mechanical hold verdict must not leak into it
+        a = proposal("2999-05-13", "3aaa")
+        b = proposal("2999-07-15", "3bbb")
+        cached = a["_verdicts"]
+        kw.hold_same_run_conflicts([a, b])
+        self.assertEqual(len(cached), 1)
+
+    def test_held_rendering_shows_post_link(self):
+        a = proposal("2999-05-13", "3aaa")
+        b = proposal("2999-07-15", "3bbb")
+        _, conflicted = kw.hold_same_run_conflicts([a, b])
+        body = kw.render_summary([], [], conflicted, [], "")
+        self.assertIn("same-run conflict", body)
+        self.assertIn("[post](https://bsky.app/profile/testcon.example/post/3aaa)", body)
+        self.assertIn("[post](https://bsky.app/profile/testcon.example/post/3bbb)", body)
+
+
+class RecencyReminderTest(unittest.TestCase):
+    def test_amend_carries_prev_and_renders_reminder(self):
+        con = make_con({"performances": {"opens": entry("3aaa", date="2999-05-13")}})
+        newer = {**proposal("2999-07-15", "3bbb", asof="2999-06-01T00:00:00.000Z"),
+                 "_file": "testcon.json", "_post_text": "dance battle open"}
+        changes = kw.merge(con, [newer])
+        self.assertEqual(len(changes), 1)
+        self.assertEqual(changes[0]["_prev"]["date"], "2999-05-13")
+        body = kw.render_summary(changes, [], [], [], "")
+        self.assertIn("recency-wins", body)
+        self.assertIn("2999-05-13", body)
+        self.assertIn("[previous post](https://bsky.app/profile/testcon.example/post/3aaa)", body)
+
+    def test_fresh_add_has_no_reminder(self):
+        con = make_con({})
+        add = {**proposal("2999-07-15", "3bbb", asof="2999-06-01T00:00:00.000Z"),
+               "_file": "testcon.json", "_post_text": "dance battle open"}
+        changes = kw.merge(con, [add])
+        self.assertEqual(len(changes), 1)
+        self.assertNotIn("_prev", changes[0])
+        self.assertNotIn("recency-wins", kw.render_summary(changes, [], [], [], ""))
+
+
 if __name__ == "__main__":
     unittest.main()
