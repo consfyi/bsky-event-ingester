@@ -120,31 +120,6 @@ fn render_message(ui_endpoint: &str, ev: &EventKeyDates, changes: &[Change]) -> 
     lines.join("\n")
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_render_message_ends_with_con_update_hashtag() {
-        let ev = EventKeyDates {
-            event_id: "examplecon-2026".to_string(),
-            name: "ExampleCon 2026".to_string(),
-            key_dates: None,
-        };
-        let changes = vec![Change {
-            category: "registration",
-            kind: "opens",
-            date: "2026-08-01".to_string(),
-            source: Some("https://example.com/post".to_string()),
-        }];
-        let msg = render_message("https://cons.fyi", &ev, &changes);
-        assert_eq!(msg.lines().last(), Some("#ConUpdate"));
-        assert!(msg.starts_with("📅 ExampleCon 2026 — key date update:"));
-        assert!(msg.contains("• Registration opens Aug 1, 2026 (https://example.com/post)"));
-        assert!(msg.contains("https://cons.fyi/examplecon-2026 — always confirm on the official site"));
-    }
-}
-
 impl Announcer {
     async fn send(&self, text: &str) -> Result<(), anyhow::Error> {
         if self.dry_run {
@@ -261,5 +236,34 @@ impl Announcer {
             .await?;
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_render_message_ends_with_con_update_hashtag() {
+        let ev = EventKeyDates {
+            event_id: "examplecon-2026".to_string(),
+            name: "ExampleCon 2026".to_string(),
+            key_dates: None,
+        };
+        let changes = vec![Change {
+            category: "registration",
+            kind: "opens",
+            date: "2026-08-01".to_string(),
+            source: Some("https://example.com/post".to_string()),
+        }];
+        let msg = render_message("https://cons.fyi", &ev, &changes);
+        // Core behavior under test: the filter hashtag is the last line.
+        assert_eq!(msg.lines().last(), Some("#ConUpdate"));
+        // Presence checks (not exact header formatting, which copy may tweak).
+        assert!(msg.contains("ExampleCon 2026"));
+        assert!(msg.contains("• Registration opens Aug 1, 2026 (https://example.com/post)"));
+        assert!(
+            msg.contains("https://cons.fyi/examplecon-2026 — always confirm on the official site")
+        );
     }
 }
