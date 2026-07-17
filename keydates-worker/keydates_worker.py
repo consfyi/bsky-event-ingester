@@ -1000,7 +1000,7 @@ def render_summary(all_changes, all_refuted, all_held, all_rejected, skipped_not
         for c in all_changes:
             lines.append(f"\n**{c['_file']}** — `{c['event_id']}` {c['category']}.{c['kind']} → **{c['date']}** ({c['verb']}, conf {c['confidence']})")
             lines.append(f"> {md_inline(c['_post_text'], 400)}")
-            lines.append(f"> — {md_link('source post', c['source'])} at {c['asOf']}")
+            lines.append(f"> — {md_link('source post', c['source'])} at {md_inline(c['asOf'], 40)}")
             if c.get("_prev"):
                 prev = c["_prev"]
                 lines.append(f"> ⚠️ recency-wins: this replaced **{md_inline(prev.get('date'), 40)}** "
@@ -1024,7 +1024,7 @@ def render_summary(all_changes, all_refuted, all_held, all_rejected, skipped_not
         lines.append("\n### Source post deleted — entry removed (no replacement seen)")
         for r in removals:
             lines.append(f"- **{r['_file']}** — `{r['event_id']}` {r['category']}.{r['kind']} {r.get('date')} — "
-                         f"{md_link('deleted source', r['source'])}, was asOf {r.get('asOf')}")
+                         f"{md_link('deleted source', r['source'])}, was asOf {md_inline(r.get('asOf'), 40)}")
     if pending:
         lines.append("\n### Source post missing — will remove next sweep if still gone")
         for r in pending:

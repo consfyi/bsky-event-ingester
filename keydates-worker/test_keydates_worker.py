@@ -403,6 +403,19 @@ class SummaryTest(unittest.TestCase):
         self.assertNotIn("](https://bsky", out)  # not rendered as a link
         self.assertNotIn("\n", out)  # whitespace collapsed, can't break the line
 
+    def test_newline_in_asof_cannot_break_summary_line(self):
+        sneaky = "2998-12-01\n\n[approve all](https://evil.example)"
+        applied = {"_file": "testcon.json", "event_id": "testcon-2999", "category": "panels",
+                   "kind": "opens", "date": "2999-01-01", "asOf": sneaky,
+                   "source": entry("3aaa")["source"], "verb": "add", "confidence": 0.9,
+                   "_post_text": "post"}
+        removal = {k: applied[k] for k in ("_file", "event_id", "category", "kind",
+                                           "date", "asOf", "source")}
+        body = kw.render_summary([applied], [], [], [], "", removals=[removal])
+        self.assertNotIn(sneaky, body)  # raw newlines collapsed
+        for line in body.splitlines():  # payload can't start a fresh markdown line
+            self.assertFalse(line.startswith("[approve all]"))
+
     def test_summary_tolerates_missing_date(self):
         r = {"_file": "testcon.json", "event_id": "testcon-2999", "category": "panels",
              "kind": "opens", "source": entry("3aaa")["source"],
