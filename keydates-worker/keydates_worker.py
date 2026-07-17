@@ -670,7 +670,10 @@ def check_source_liveness(files):
     except Exception as e:
         # persisting the pending file must not raise past removals already on
         # disk: main()'s blanket except would blank them out and skip the
-        # format/prune path. A lost pending sighting only costs an extra sweep.
+        # format/prune path. A lost pending sighting only costs an extra sweep —
+        # except for a bulk-held con, where an unpersisted clock-reset pop can
+        # let a stale pre-hold sighting confirm a false removal if a source
+        # flaps alive on the very next sweep (narrow, accepted best-effort gap).
         log(f"source liveness: could not persist dead-pending state: {e}")
     return removals, account_flags, bulk_flags, pending
 
