@@ -34,6 +34,11 @@ struct Change {
     source: Option<String>,
 }
 
+/// Filter hashtag on every con key-date update message. Site-level
+/// announcements (not produced here yet) are reserved `#SiteNews` so channel
+/// searches can tell the two apart (CON-15).
+const CON_UPDATE_HASHTAG: &str = "#ConUpdate";
+
 const CATEGORY_LABELS: [(&str, &str); 7] = [
     ("registration", "Registration"),
     ("hotel", "Hotel block"),
@@ -111,7 +116,33 @@ fn render_message(ui_endpoint: &str, ev: &EventKeyDates, changes: &[Change]) -> 
         "{}/{} — always confirm on the official site",
         ui_endpoint, ev.event_id
     ));
+    lines.push(CON_UPDATE_HASHTAG.to_string());
     lines.join("\n")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_render_message_ends_with_con_update_hashtag() {
+        let ev = EventKeyDates {
+            event_id: "examplecon-2026".to_string(),
+            name: "ExampleCon 2026".to_string(),
+            key_dates: None,
+        };
+        let changes = vec![Change {
+            category: "registration",
+            kind: "opens",
+            date: "2026-08-01".to_string(),
+            source: Some("https://example.com/post".to_string()),
+        }];
+        let msg = render_message("https://cons.fyi", &ev, &changes);
+        assert_eq!(msg.lines().last(), Some("#ConUpdate"));
+        assert!(msg.starts_with("📅 ExampleCon 2026 — key date update:"));
+        assert!(msg.contains("• Registration opens Aug 1, 2026 (https://example.com/post)"));
+        assert!(msg.contains("https://cons.fyi/examplecon-2026 — always confirm on the official site"));
+    }
 }
 
 impl Announcer {
