@@ -541,10 +541,13 @@ def save_dead_pending(entries):
 def check_source_liveness(files):
     """Verify recorded source posts still exist; remove entries whose source is
     gone — but only after a second dead sighting at least 20 hours after the
-    first (see DEAD_PENDING_FILE above). Returns (removals, account_flags, pending) —
-    account_flags are entries left untouched because the whole account is
-    unreachable (deactivated/suspended), where per-post deletion can't be
-    inferred; pending are first-sighting dead entries held for the next sweep."""
+    first (see DEAD_PENDING_FILE above). Returns (removals, account_flags,
+    bulk_flags, pending) — account_flags are entries left untouched because the
+    whole account is unreachable (deactivated/suspended), where per-post
+    deletion can't be inferred; bulk_flags are entries held because every one
+    of the con's several sources read dead at once while the account is up
+    (the signature of an account migration, not of per-post deletes);
+    pending are first-sighting dead entries held for the next sweep."""
     per_file, uris = {}, set()
     for fn in files:
         with open(fn) as f:
@@ -561,18 +564,18 @@ def check_source_liveness(files):
         res = appget("app.bsky.feed.getPosts", {"uris": batch})
         if "posts" not in res:  # appview error after retries — never remove on a failed lookup
             log("source liveness: getPosts failed; skipping the check this run")
-            return [], [], []
+            return [], [], [], []
         alive = {p.get("uri") for p in res["posts"]}
         dead.update(u for u in batch if u not in alive)
     if uris and len(dead) == len(uris):
         # a degraded appview can answer 200 with an empty posts array; zero
         # alive posts across the whole dataset is that, not mass deletion
         log("source liveness: no source came back alive; assuming appview degradation, skipping")
-        return [], [], []
+        return [], [], [], []
 
     pending_state = load_dead_pending()
     now = datetime.datetime.now(datetime.timezone.utc)
-    removals, account_flags, pending = [], [], []
+    removals, account_flags, bulk_flags, pending = [], [], [], []
     removed_uris = set()
     for fn, (con, sources) in sorted(per_file.items()):
         # per-file isolation: a later file's I/O error must not discard the
@@ -597,6 +600,20 @@ def check_source_liveness(files):
                         for _, eid, cat, kind, entry in dead_here
                     ]
                     continue  # stays out of pending too — the account guard owns these
+                if len(sources) > 1:
+                    # the account is up yet every one of several source posts
+                    # reads dead — the signature of an account migration that
+                    # kept its handle (handle-segment at-uris resolve against
+                    # the new repo, where the old posts don't exist), not of a
+                    # con deleting each announcement. Hold and flag for a human
+                    # instead of auto-removing. A single-source con stays on
+                    # the normal two-sighting path: one dead post carries no
+                    # bulk signal, it's just a deleted post.
+                    bulk_flags += [
+                        {"_file": base, "event_id": eid, "category": cat, "kind": kind, **entry}
+                        for _, eid, cat, kind, entry in dead_here
+                    ]
+                    continue  # stays out of pending too — held until a human acts
             confirmed = []
             for s in dead_here:
                 u, eid, cat, kind, entry = s
@@ -648,7 +665,7 @@ def check_source_liveness(files):
         # disk: main()'s blanket except would blank them out and skip the
         # format/prune path. A lost pending sighting only costs an extra sweep.
         log(f"source liveness: could not persist dead-pending state: {e}")
-    return removals, account_flags, pending
+    return removals, account_flags, bulk_flags, pending
 
 
 # --- verdict cache -------------------------------------------------------------
@@ -992,7 +1009,7 @@ def md_link(label, url):
 
 
 def render_summary(all_changes, all_refuted, all_held, all_rejected, skipped_note,
-                   removals=(), account_flags=(), pending=()):
+                   removals=(), account_flags=(), bulk_flags=(), pending=()):
     lines = ["## Key dates from Bluesky", ""]
     lines.append(f"_Extract: `{EXTRACT_MODEL}` · Verify (unanimous): `{'` + `'.join(VERIFY_MODELS)}` · {TODAY.isoformat()}_")
     if all_changes:
@@ -1033,6 +1050,12 @@ def render_summary(all_changes, all_refuted, all_held, all_rejected, skipped_not
     if account_flags:
         lines.append("\n### Source account unreachable — entries left untouched (deactivated/suspended?)")
         for r in account_flags:
+            lines.append(f"- **{r['_file']}** — `{r['event_id']}` {r['category']}.{r['kind']} {r.get('date')} — "
+                         f"{md_link('source', r['source'])}")
+    if bulk_flags:
+        lines.append("\n### Every source post missing but account is live — held, needs a human "
+                     "(account migration? re-source or hand-remove; nothing was auto-removed)")
+        for r in bulk_flags:
             lines.append(f"- **{r['_file']}** — `{r['event_id']}` {r['category']}.{r['kind']} {r.get('date')} — "
                          f"{md_link('source', r['source'])}")
     if skipped_note:
@@ -1197,19 +1220,21 @@ def main():
     if PUSH and not DRY_RUN:
         all_changes += reapply_outstanding(all_changes, rejections)
 
-    removals, account_flags, pending = [], [], []
+    removals, account_flags, bulk_flags, pending = [], [], [], []
     if args.sweep:
         # after reapply_outstanding, each slot's source is the best-known post —
         # a slot amended this run already points at the replacement, so only
         # genuinely unreplaced dead sources are still referenced here
         try:
-            removals, account_flags, pending = check_source_liveness(processed)
+            removals, account_flags, bulk_flags, pending = check_source_liveness(processed)
         except Exception as e:
             # a malformed con structure must not kill the cache save, summary,
             # and publish for the whole run
             log(f"ERROR in source liveness check: {e}")
         if pending:
             log(f"source liveness: {len(pending)} missing source(s) pending a second sighting")
+        if bulk_flags:
+            log(f"source liveness: {len(bulk_flags)} entr(ies) held — all sources dead but account live (migration?)")
         if removals:
             log(f"source liveness: removed {len(removals)} entr(ies) with deleted sources")
             if PUSH and not DRY_RUN:
@@ -1236,7 +1261,7 @@ def main():
             log(f"ERROR: format.py exited {fmt.returncode} — withholding push, changes left staged")
 
     summary = render_summary(all_changes, all_refuted, all_held, all_rejected, skipped_note,
-                             removals, account_flags, pending)
+                             removals, account_flags, bulk_flags, pending)
     if os.environ.get("SUMMARY_FILE"):
         with open(os.environ["SUMMARY_FILE"], "w") as f:
             f.write(summary)
