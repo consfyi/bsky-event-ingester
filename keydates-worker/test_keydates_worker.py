@@ -270,10 +270,28 @@ class LivenessTest(unittest.TestCase):
                          [("testcon-2999", "panels", "opens"),
                           ("testcon-2999", "hotel", "opens")])
         self.assertEqual(self.read_con(fn), before)
-        # held uris accrue no new pending state; earlier sightings survive
-        self.assertEqual(self.read_pending(),
-                         {uri("3aaa"): {"first_seen": first},
-                          uri("3bbb"): {"first_seen": first}})
+        # the hold restarts the two-sighting clock: pre-hold sightings are
+        # cleared so they can't confirm a removal on a later sweep
+        self.assertEqual(self.read_pending(), {})
+
+    def test_hold_then_partial_alive_restarts_two_sighting_clock(self):
+        # staggered scenario: sources accrued sightings, the bulk hold fired,
+        # then one source flaps back alive so the hold lifts — the still-dead
+        # source must pend anew, not confirm-remove off its pre-hold sighting
+        con = make_con({"panels": {"opens": entry("3aaa")},
+                        "hotel": {"opens": entry("3bbb")}})
+        fn = self.write_con(con)
+        before = copy.deepcopy(con)
+        first = (datetime.datetime.now(datetime.timezone.utc)
+                 - datetime.timedelta(hours=21)).isoformat()
+        self.seed_pending("3aaa", "3bbb", first_seen=first)
+        self.check([fn, self.write_alive_companion()], alive_rkeys={"3ok"})  # hold fires
+        removals, flags, bulk, pending = self.check(
+            [fn, self.write_alive_companion()], alive_rkeys={"3ok", "3bbb"})
+        self.assertEqual((removals, flags, bulk), ([], [], []))
+        self.assertEqual([(p["event_id"], p["category"], p["kind"]) for p in pending],
+                         [("testcon-2999", "panels", "opens")])
+        self.assertEqual(self.read_con(fn), before)
 
     def test_zero_alive_dataset_skips_check(self):
         # a degraded appview can answer 200 with an empty posts array for live

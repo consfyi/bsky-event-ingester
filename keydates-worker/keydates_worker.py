@@ -613,6 +613,13 @@ def check_source_liveness(files):
                         {"_file": base, "event_id": eid, "category": cat, "kind": kind, **entry}
                         for _, eid, cat, kind, entry in dead_here
                     ]
+                    # restart the two-sighting clock for the held uris: without
+                    # this, a pre-hold sighting could confirm-remove a still-dead
+                    # source on a later sweep where another source flaps back
+                    # alive and the hold lifts — the exact staggered false
+                    # removal this guard exists to stop
+                    for u, *_ in dead_here:
+                        pending_state.pop(u, None)
                     continue  # stays out of pending too — held until a human acts
             confirmed = []
             for s in dead_here:
