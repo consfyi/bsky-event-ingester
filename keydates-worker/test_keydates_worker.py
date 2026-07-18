@@ -643,6 +643,29 @@ class MainSmokeTest(unittest.TestCase):
         self.assertNotIn("### Applied", body)
         self.assertIn("Source post deleted", body)
 
+    def test_pins_only_sweep_still_formats_and_publishes(self):
+        # CON-26 backfill case: a sweep whose only outcome is DID-pinning must
+        # still format the touched files and publish — otherwise the rewritten
+        # URLs sit on disk unstaged until an unrelated change comes along
+        pin = {"event_id": "testcon-2999", "category": "panels", "kind": "opens",
+               "date": "2999-01-01", "source": did_entry("3aaa")["source"],
+               "asOf": "2998-12-01T00:00:00.000Z", "_file": "con-a.json"}
+        ok = unittest.mock.Mock(returncode=0, stdout="")
+        with unittest.mock.patch.object(
+                 kw, "process_con", return_value=([], [], [], [], True)), \
+             unittest.mock.patch.object(
+                 kw, "check_source_liveness", return_value=([], [], [], [], [pin])), \
+             unittest.mock.patch.object(kw, "publish") as publish, \
+             unittest.mock.patch.object(kw.subprocess, "run", return_value=ok) as sprun:
+            kw.main()
+        fmt_calls = [c.args[0] for c in sprun.call_args_list
+                     if any("format.py" in str(a) for a in c.args[0])]
+        self.assertEqual(len(fmt_calls), 1)
+        self.assertIn(os.path.join(self.data_dir, "con-a.json"), fmt_calls[0])
+        publish.assert_called_once()
+        with open(self.summary_file) as f:
+            self.assertIn("Source URLs pinned to account DID", f.read())
+
     def test_format_failure_withholds_publish_but_writes_summary(self):
         removal = {"event_id": "testcon-2999", "category": "panels", "kind": "opens",
                    "date": "2999-01-01", "source": entry("3aaa")["source"],
