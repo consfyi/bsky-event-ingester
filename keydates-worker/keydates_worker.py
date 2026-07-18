@@ -329,9 +329,9 @@ def appget(method, params):
     return {}
 
 
-def fetch_posts(handle):
+def fetch_posts(actor):
     feed = appget("app.bsky.feed.getAuthorFeed",
-                  {"actor": handle, "limit": POSTS_PER_CON, "filter": "posts_no_replies"})
+                  {"actor": actor, "limit": POSTS_PER_CON, "filter": "posts_no_replies"})
     out = []
     for it in feed.get("feed", []):
         p = it.get("post", {})
@@ -343,7 +343,7 @@ def fetch_posts(handle):
         out.append({
             "asOf": rec.get("createdAt"),
             "text": txt,
-            "url": f"https://bsky.app/profile/{handle}/post/{rkey}",
+            "url": f"https://bsky.app/profile/{actor}/post/{rkey}",
         })
     return out
 
@@ -389,7 +389,9 @@ def is_rejected(rejections, d):
     for r in rejections:
         if (r["event_id"], r["category"], r["kind"], r["date"]) == \
            (d["event_id"], d["category"], d["kind"], d["date"]):
-            if r.get("source") and r["source"] != d.get("source"):
+            # profile-insensitive: a rejection recorded against a handle-form
+            # URL must keep suppressing the same post after DID pinning
+            if r.get("source") and source_ident(r["source"]) != source_ident(d.get("source")):
                 continue
             return r
     return None
@@ -457,6 +459,26 @@ def merge(con, dates):
 # both and, critically, admits no markdown metacharacters or whitespace, so a
 # matching URL can always be rendered raw inside a markdown link
 SOURCE_URL_RE = re.compile(r"\Ahttps://bsky\.app/profile/([a-zA-Z0-9.:-]+)/post/([a-zA-Z0-9._~-]+)\Z")
+
+
+def pin_source_url(url, did):
+    """Rewrite a handle-form bsky post URL to DID form; leave everything else
+    (already-pinned, non-bsky, malformed) untouched. Pinning while the post is
+    known to live in `did`'s repo is what makes an account migration unable to
+    fake a deletion later (CON-26)."""
+    m = SOURCE_URL_RE.match(url or "")
+    if m and not m.group(1).startswith("did:"):
+        return f"https://bsky.app/profile/{did}/post/{m.group(2)}"
+    return url
+
+
+def source_ident(url):
+    """Source identity that survives a handle<->DID rewrite of the profile
+    segment: the rkey names the post within the account. Only ever compared
+    within one con's slot (event/category/kind), where an rkey collision
+    across repos is not a real concern; non-bsky sources compare verbatim."""
+    m = SOURCE_URL_RE.match(url or "")
+    return m.group(2) if m else (url or "")
 
 
 def collect_bsky_sources(con):
@@ -541,13 +563,16 @@ def save_dead_pending(entries):
 def check_source_liveness(files):
     """Verify recorded source posts still exist; remove entries whose source is
     gone — but only after a second dead sighting at least 20 hours after the
-    first (see DEAD_PENDING_FILE above). Returns (removals, account_flags,
-    bulk_flags, pending) — account_flags are entries left untouched because the
-    whole account is unreachable (deactivated/suspended), where per-post
-    deletion can't be inferred; bulk_flags are entries held because every one
-    of the con's several sources read dead at once while the account is up
-    (the signature of an account migration, not of per-post deletes);
-    pending are first-sighting dead entries held for the next sweep."""
+    first (see DEAD_PENDING_FILE above). Also pins alive handle-form source
+    URLs to the repo DID that just proved them alive (CON-26), so a later
+    account migration can't fake a deletion. Returns (removals, account_flags,
+    bulk_flags, pending, pins) — account_flags are entries left untouched
+    because the whole account is unreachable (deactivated/suspended), where
+    per-post deletion can't be inferred; bulk_flags are entries held because
+    every one of the con's several sources read dead at once while the account
+    is up (the signature of an account migration, not of per-post deletes);
+    pending are first-sighting dead entries held for the next sweep; pins are
+    the entries whose source URL was rewritten to DID form."""
     per_file, uris = {}, set()
     for fn in files:
         with open(fn) as f:
@@ -564,18 +589,18 @@ def check_source_liveness(files):
         res = appget("app.bsky.feed.getPosts", {"uris": batch})
         if "posts" not in res:  # appview error after retries — never remove on a failed lookup
             log("source liveness: getPosts failed; skipping the check this run")
-            return [], [], [], []
+            return [], [], [], [], []
         alive = {p.get("uri") for p in res["posts"]}
         dead.update(u for u in batch if u not in alive)
     if uris and len(dead) == len(uris):
         # a degraded appview can answer 200 with an empty posts array; zero
         # alive posts across the whole dataset is that, not mass deletion
         log("source liveness: no source came back alive; assuming appview degradation, skipping")
-        return [], [], [], []
+        return [], [], [], [], []
 
     pending_state = load_dead_pending()
     now = datetime.datetime.now(datetime.timezone.utc)
-    removals, account_flags, bulk_flags, pending = [], [], [], []
+    removals, account_flags, bulk_flags, pending, pins = [], [], [], [], []
     removed_uris = set()
     for fn, (con, sources) in sorted(per_file.items()):
         # per-file isolation: a later file's I/O error must not discard the
@@ -587,10 +612,24 @@ def check_source_liveness(files):
         # applied and always return it, logging any file we couldn't finish.
         try:
             dead_here = [s for s in sources if s[0] in dead]
-            if not dead_here:
-                continue
             base = os.path.basename(fn)
-            if len(dead_here) == len(sources):
+            # pin alive handle-form sources to the repo DID that just proved
+            # them alive (CON-26): a later handle re-point or account migration
+            # then can't make these posts look deleted. Dead sources are never
+            # pinned — their at-uri proved nothing.
+            file_pins = []
+            for u, eid, cat, kind, entry in sources:
+                if u in dead:
+                    continue
+                pinned = pin_source_url(entry.get("source"), u.split("/")[2])
+                if pinned == entry.get("source"):
+                    continue  # already DID-form (or not a bsky URL)
+                entry["source"] = pinned
+                file_pins.append({"_file": base, "event_id": eid, "category": cat,
+                                  "kind": kind, **entry})
+            if not dead_here and not file_pins:
+                continue
+            if dead_here and len(dead_here) == len(sources):
                 # every source gone at once smells like account-level unavailability,
                 # not per-post deletes — only proceed if the account itself is up
                 profile = appget("app.bsky.actor.getProfile", {"actor": con["bluesky"]["did"]})
@@ -633,7 +672,7 @@ def check_source_liveness(files):
                     pending_state.setdefault(u, {"first_seen": now.isoformat()})
                     pending.append({"_file": base, "event_id": eid, "category": cat,
                                     "kind": kind, **entry})
-            if not confirmed:
+            if not confirmed and not file_pins:
                 continue
             by_id = {e["id"]: e for e in con.get("events", [])}
             file_removals = []
@@ -652,12 +691,13 @@ def check_source_liveness(files):
                     json.dump(con, f, ensure_ascii=False, indent=2)
                     f.write("\n")
                 os.replace(tmp, fn)
-            # commit to the returned set only past a successful write, so a
-            # failed write on this file never reports a removal the con file
-            # didn't receive (DRY_RUN still reports without writing)
+            # commit to the returned sets only past a successful write, so a
+            # failed write on this file never reports a removal or a pin the
+            # con file didn't receive (DRY_RUN still reports without writing)
             for u, r in file_removals:
                 removals.append(r)
                 removed_uris.add(u)
+            pins += file_pins
         except Exception as e:
             log(f"source liveness: error applying removals to {os.path.basename(fn)}: {e}")
             continue
@@ -675,7 +715,7 @@ def check_source_liveness(files):
         # let a stale pre-hold sighting confirm a false removal if a source
         # flaps alive on the very next sweep (narrow, accepted best-effort gap).
         log(f"source liveness: could not persist dead-pending state: {e}")
-    return removals, account_flags, bulk_flags, pending
+    return removals, account_flags, bulk_flags, pending, pins
 
 
 # --- verdict cache -------------------------------------------------------------
@@ -806,8 +846,10 @@ def reapply_outstanding(run_changes, rejections):
 
 def slot_key(d):
     """Identity of the exact value a liveness removal deleted: the ledger slot
-    plus the source post it came from."""
-    return (d.get("event_id"), d.get("category"), d.get("kind"), d.get("source"))
+    plus the source post it came from. Profile-insensitive via source_ident so
+    a removal of a DID-pinned entry still prunes a ledger entry recorded under
+    the old handle-form URL."""
+    return (d.get("event_id"), d.get("category"), d.get("kind"), source_ident(d.get("source")))
 
 
 def prune_outstanding_removals(removals):
@@ -931,7 +973,15 @@ def process_con(fn, cache, rejections, provided_posts=None, extra_post=None):
     events = upcoming_events(con)
     if not events:
         return [], [], [], [], False
-    posts = provided_posts if provided_posts is not None else fetch_posts(bsky.get("handle") or bsky["did"])
+    posts = provided_posts if provided_posts is not None else fetch_posts(bsky["did"])
+    # pin every post URL to the con's DID before it can become a stored source:
+    # feed, spool, and provided posts all belong to this con's repo by
+    # construction, and DID-form sources survive account migration (CON-26).
+    # Normalizing before the dedup below also keeps a handle-form spooled post
+    # from doubling up with its DID-form feed twin.
+    posts = [{**p, "url": pin_source_url(p.get("url"), bsky["did"])} for p in posts]
+    if extra_post:
+        extra_post = {**extra_post, "url": pin_source_url(extra_post.get("url"), bsky["did"])}
     if extra_post and all(p.get("url") != extra_post.get("url") for p in posts):
         # appview indexing can lag the jetstream trigger; make sure the post
         # that fired us is actually in the set we extract from
@@ -1019,7 +1069,7 @@ def md_link(label, url):
 
 
 def render_summary(all_changes, all_refuted, all_held, all_rejected, skipped_note,
-                   removals=(), account_flags=(), bulk_flags=(), pending=()):
+                   removals=(), account_flags=(), bulk_flags=(), pending=(), pins=()):
     lines = ["## Key dates from Bluesky", ""]
     lines.append(f"_Extract: `{EXTRACT_MODEL}` · Verify (unanimous): `{'` + `'.join(VERIFY_MODELS)}` · {TODAY.isoformat()}_")
     if all_changes:
@@ -1068,6 +1118,13 @@ def render_summary(all_changes, all_refuted, all_held, all_rejected, skipped_not
         for r in bulk_flags:
             lines.append(f"- **{r['_file']}** — `{r['event_id']}` {r['category']}.{r['kind']} {r.get('date')} — "
                          f"{md_link('source', r['source'])}")
+    if pins:
+        lines.append("\n### Source URLs pinned to account DID (migration-proofing; no date changes)")
+        counts = {}
+        for r in pins:
+            counts[r["_file"]] = counts.get(r["_file"], 0) + 1
+        for f_name, n in sorted(counts.items()):
+            lines.append(f"- **{f_name}** — {n} source URL(s) pinned")
     if skipped_note:
         lines.append(f"\n_{skipped_note}_")
     body = "\n".join(lines)
@@ -1230,13 +1287,13 @@ def main():
     if PUSH and not DRY_RUN:
         all_changes += reapply_outstanding(all_changes, rejections)
 
-    removals, account_flags, bulk_flags, pending = [], [], [], []
+    removals, account_flags, bulk_flags, pending, pins = [], [], [], [], []
     if args.sweep:
         # after reapply_outstanding, each slot's source is the best-known post —
         # a slot amended this run already points at the replacement, so only
         # genuinely unreplaced dead sources are still referenced here
         try:
-            removals, account_flags, bulk_flags, pending = check_source_liveness(processed)
+            removals, account_flags, bulk_flags, pending, pins = check_source_liveness(processed)
         except Exception as e:
             # a malformed con structure must not kill the cache save, summary,
             # and publish for the whole run
@@ -1245,6 +1302,8 @@ def main():
             log(f"source liveness: {len(pending)} missing source(s) pending a second sighting")
         if bulk_flags:
             log(f"source liveness: {len(bulk_flags)} entr(ies) held — all sources dead but account live (migration?)")
+        if pins:
+            log(f"source liveness: pinned {len(pins)} source URL(s) to account DIDs")
         if removals:
             log(f"source liveness: removed {len(removals)} entr(ies) with deleted sources")
             if PUSH and not DRY_RUN:
@@ -1259,29 +1318,29 @@ def main():
     save_cache(cache)
 
     format_ok = True
-    if (all_changes or removals) and not DRY_RUN:
+    if (all_changes or removals or pins) and not DRY_RUN:
         # cwd matters: uv's config discovery walks up from the working directory,
         # and an unsearchable foreign directory (e.g. launched via sudo from
         # another user's home) aborts uv before format.py even runs.
         fmt = subprocess.run(["uv", "run", os.path.join(DATA_DIR, "tools", "format.py"),
-                              *sorted({os.path.join(DATA_DIR, c["_file"]) for c in [*all_changes, *removals]})],
+                              *sorted({os.path.join(DATA_DIR, c["_file"]) for c in [*all_changes, *removals, *pins]})],
                              cwd=DATA_DIR, check=False)
         format_ok = fmt.returncode == 0
         if not format_ok:
             log(f"ERROR: format.py exited {fmt.returncode} — withholding push, changes left staged")
 
     summary = render_summary(all_changes, all_refuted, all_held, all_rejected, skipped_note,
-                             removals, account_flags, bulk_flags, pending)
+                             removals, account_flags, bulk_flags, pending, pins)
     if os.environ.get("SUMMARY_FILE"):
         with open(os.environ["SUMMARY_FILE"], "w") as f:
             f.write(summary)
     print(summary)
 
-    if PUSH and not DRY_RUN and (all_changes or removals):
+    if PUSH and not DRY_RUN and (all_changes or removals or pins):
         if format_ok:
             publish(summary)
-    elif all_changes or removals:
-        log(f"\n{len(all_changes) + len(removals)} change(s) staged in {DATA_DIR} (PUSH not set — nothing pushed)")
+    elif all_changes or removals or pins:
+        log(f"\n{len(all_changes) + len(removals) + len(pins)} change(s) staged in {DATA_DIR} (PUSH not set — nothing pushed)")
 
 
 if __name__ == "__main__":
