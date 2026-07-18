@@ -621,6 +621,20 @@ class ProcessConPinningTest(unittest.TestCase):
         self.assertEqual(stored["source"], did_entry("3abc")["source"])
         self.assertEqual(stored["date"], "2999-06-01")
 
+    def test_exotic_did_falls_back_to_handle_urls(self):
+        # a DID outside SOURCE_URL_RE would originate uncollectable source
+        # URLs — such cons keep fetching (and storing) handle-form URLs
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        con = make_con({}, did="did:web:example.com%3A8443")
+        fn = os.path.join(tmp.name, "testcon.json")
+        with open(fn, "w") as f:
+            json.dump(con, f)
+        with unittest.mock.patch.object(kw, "fetch_posts", return_value=[]) as fp:
+            result = kw.process_con(fn, {}, [])
+        fp.assert_called_once_with("testcon.example")
+        self.assertEqual(result, ([], [], [], [], False))  # no posts → clean bail
+
 
 class MainSmokeTest(unittest.TestCase):
     """End-to-end main() wiring with the network/model/git layers mocked out."""
