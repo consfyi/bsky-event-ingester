@@ -41,6 +41,12 @@ def entry(rkey, date="2999-01-01"):
     }
 
 
+def did_entry(rkey, date="2999-01-01"):
+    """entry() but with an already-DID-pinned source URL."""
+    return {**entry(rkey, date=date),
+            "source": f"https://bsky.app/profile/{DID}/post/{rkey}"}
+
+
 def uri(rkey, did=DID):
     return f"at://{did}/app.bsky.feed.post/{rkey}"
 
@@ -135,7 +141,7 @@ class LivenessTest(unittest.TestCase):
                         "hotel": {"opens": entry("3live")}})
         fn = self.write_con(con)
         self.seed_pending("3dead")  # already seen dead on an earlier day
-        removals, flags, bulk, pending = self.check([fn], alive_rkeys={"3live"})
+        removals, flags, bulk, pending, pins = self.check([fn], alive_rkeys={"3live"})
         self.assertEqual((flags, bulk, pending), ([], [], []))
         self.assertEqual([(r["event_id"], r["category"], r["kind"], r["date"]) for r in removals],
                          [("testcon-2999", "panels", "opens", "2999-01-01")])
@@ -148,7 +154,7 @@ class LivenessTest(unittest.TestCase):
         con = make_con({"panels": {"opens": entry("3dead")}})
         fn = self.write_con(con)
         before = copy.deepcopy(con)
-        removals, flags, bulk, pending = self.check(
+        removals, flags, bulk, pending, pins = self.check(
             [fn, self.write_alive_companion()], alive_rkeys={"3ok"})
         self.assertEqual((removals, flags, bulk), ([], [], []))
         self.assertEqual([(p["event_id"], p["category"], p["kind"]) for p in pending],
@@ -168,7 +174,7 @@ class LivenessTest(unittest.TestCase):
         first = (datetime.datetime.now(datetime.timezone.utc)
                  - datetime.timedelta(hours=19)).isoformat()
         self.seed_pending("3dead", first_seen=first)
-        removals, _, _, pending = self.check(
+        removals, _, _, pending, _ = self.check(
             [fn, self.write_alive_companion()], alive_rkeys={"3ok"})
         self.assertEqual(removals, [])
         self.assertEqual(len(pending), 1)
@@ -182,7 +188,7 @@ class LivenessTest(unittest.TestCase):
         first = (datetime.datetime.now(datetime.timezone.utc)
                  - datetime.timedelta(hours=21)).isoformat()
         self.seed_pending("3dead", first_seen=first)
-        removals, _, _, pending = self.check(
+        removals, _, _, pending, _ = self.check(
             [fn, self.write_alive_companion()], alive_rkeys={"3ok"})
         self.assertEqual(len(removals), 1)
         self.assertEqual(pending, [])
@@ -199,16 +205,38 @@ class LivenessTest(unittest.TestCase):
         con = make_con({"panels": {"opens": entry("3live")}})
         fn = self.write_con(con)
         self.seed_pending("3live")  # earlier sweep missed it; it's back
-        removals, _, _, pending = self.check([fn], alive_rkeys={"3live"})
+        removals, _, _, pending, _ = self.check([fn], alive_rkeys={"3live"})
         self.assertEqual((removals, pending), ([], []))
         self.assertEqual(self.read_pending(), {})
 
-    def test_alive_sources_untouched(self):
+    def test_alive_did_form_sources_untouched(self):
+        con = make_con({"panels": {"opens": did_entry("3live")}})
+        fn = self.write_con(con)
+        before = copy.deepcopy(con)
+        removals, flags, bulk, pending, pins = self.check([fn], alive_rkeys={"3live"})
+        self.assertEqual((removals, flags, bulk, pending, pins), ([], [], [], [], []))
+        self.assertEqual(self.read_con(fn), before)
+
+    def test_alive_handle_source_pinned_to_did(self):
+        # CON-26: an alive handle-form source is rewritten to the repo DID that
+        # just proved it alive, so a later account migration can't fake deletion
+        con = make_con({"panels": {"opens": entry("3live")}})
+        fn = self.write_con(con)
+        removals, flags, bulk, pending, pins = self.check([fn], alive_rkeys={"3live"})
+        self.assertEqual((removals, flags, bulk, pending), ([], [], [], []))
+        self.assertEqual([(p["event_id"], p["category"], p["kind"]) for p in pins],
+                         [("testcon-2999", "panels", "opens")])
+        got = self.read_con(fn)["events"][0]["keyDates"]["panels"]["opens"]
+        self.assertEqual(got["source"], f"https://bsky.app/profile/{DID}/post/3live")
+        self.assertEqual(got["date"], "2999-01-01")  # pinning never touches the date
+
+    def test_dry_run_reports_pins_without_writing(self):
         con = make_con({"panels": {"opens": entry("3live")}})
         fn = self.write_con(con)
         before = copy.deepcopy(con)
-        removals, flags, bulk, pending = self.check([fn], alive_rkeys={"3live"})
-        self.assertEqual((removals, flags, bulk, pending), ([], [], [], []))
+        with unittest.mock.patch.object(kw, "DRY_RUN", True):
+            _, _, _, _, pins = self.check([fn], alive_rkeys={"3live"})
+        self.assertEqual(len(pins), 1)
         self.assertEqual(self.read_con(fn), before)
 
     def test_replaced_slot_not_removed(self):
@@ -216,7 +244,7 @@ class LivenessTest(unittest.TestCase):
         # liveness check runs — the dead old post is no longer referenced
         con = make_con({"panels": {"opens": entry("3newpost", date="2999-02-02")}})
         fn = self.write_con(con)
-        removals, _, _, _ = self.check([fn], alive_rkeys={"3newpost"})
+        removals, _, _, _, _ = self.check([fn], alive_rkeys={"3newpost"})
         self.assertEqual(removals, [])
         self.assertEqual(self.read_con(fn)["events"][0]["keyDates"]["panels"]["opens"]["date"],
                          "2999-02-02")
@@ -233,7 +261,7 @@ class LivenessTest(unittest.TestCase):
                         "hotel": {"opens": entry("3bbb")}})
         fn = self.write_con(con)
         before = copy.deepcopy(con)
-        removals, flags, bulk, pending = self.check(
+        removals, flags, bulk, pending, pins = self.check(
             [fn, self.write_alive_companion()], alive_rkeys={"3ok"}, profile_ok=False)
         self.assertEqual((removals, bulk, pending), ([], [], []))
         self.assertEqual(len(flags), 2)
@@ -244,7 +272,7 @@ class LivenessTest(unittest.TestCase):
         con = make_con({"panels": {"opens": entry("3aaa")}})
         fn = self.write_con(con)
         self.seed_pending("3aaa")
-        removals, flags, bulk, _ = self.check(
+        removals, flags, bulk, _, _ = self.check(
             [fn, self.write_alive_companion()], alive_rkeys={"3ok"}, profile_ok=True)
         self.assertEqual(len(removals), 1)
         self.assertEqual((flags, bulk), ([], []))
@@ -263,7 +291,7 @@ class LivenessTest(unittest.TestCase):
         first = (datetime.datetime.now(datetime.timezone.utc)
                  - datetime.timedelta(hours=21)).isoformat()
         self.seed_pending("3aaa", "3bbb", first_seen=first)  # past the 20h window
-        removals, flags, bulk, pending = self.check(
+        removals, flags, bulk, pending, pins = self.check(
             [fn, self.write_alive_companion()], alive_rkeys={"3ok"}, profile_ok=True)
         self.assertEqual((removals, flags, pending), ([], [], []))
         self.assertEqual([(b["event_id"], b["category"], b["kind"]) for b in bulk],
@@ -286,12 +314,19 @@ class LivenessTest(unittest.TestCase):
                  - datetime.timedelta(hours=21)).isoformat()
         self.seed_pending("3aaa", "3bbb", first_seen=first)
         self.check([fn, self.write_alive_companion()], alive_rkeys={"3ok"})  # hold fires
-        removals, flags, bulk, pending = self.check(
+        removals, flags, bulk, pending, pins = self.check(
             [fn, self.write_alive_companion()], alive_rkeys={"3ok", "3bbb"})
         self.assertEqual((removals, flags, bulk), ([], [], []))
         self.assertEqual([(p["event_id"], p["category"], p["kind"]) for p in pending],
                          [("testcon-2999", "panels", "opens")])
-        self.assertEqual(self.read_con(fn), before)
+        after = self.read_con(fn)["events"][0]["keyDates"]
+        # the still-dead source is untouched; the alive-again one keeps its
+        # date and only had its source URL DID-pinned
+        self.assertEqual(after["panels"]["opens"],
+                         before["events"][0]["keyDates"]["panels"]["opens"])
+        self.assertEqual(after["hotel"]["opens"]["date"], "2999-01-01")
+        self.assertEqual(after["hotel"]["opens"]["source"],
+                         f"https://bsky.app/profile/{DID}/post/3bbb")
 
     def test_zero_alive_dataset_skips_check(self):
         # a degraded appview can answer 200 with an empty posts array for live
@@ -300,7 +335,7 @@ class LivenessTest(unittest.TestCase):
         fn = self.write_con(con)
         before = copy.deepcopy(con)
         self.seed_pending("3aaa")  # even a confirmed-dead uri must not be removed
-        removals, flags, bulk, pending = self.check([fn], alive_rkeys=set())
+        removals, flags, bulk, pending, pins = self.check([fn], alive_rkeys=set())
         self.assertEqual((removals, flags, bulk, pending), ([], [], [], []))
         self.assertEqual(self.read_con(fn), before)
         self.assertEqual(self.read_pending(), {uri("3aaa"): {"first_seen": "2000-01-01"}})
@@ -312,7 +347,7 @@ class LivenessTest(unittest.TestCase):
         for garbage in ("not-a-date", 12345):
             with open(self.pending_file, "w") as f:
                 json.dump({uri("3dead"): {"first_seen": garbage}}, f)
-            removals, _, _, pending = self.check(
+            removals, _, _, pending, _ = self.check(
                 [fn, self.write_alive_companion()], alive_rkeys={"3ok"})
             self.assertEqual(removals, [], garbage)
             self.assertEqual(len(pending), 1, garbage)
@@ -322,7 +357,7 @@ class LivenessTest(unittest.TestCase):
         con = make_con({"panels": {"opens": entry("3aaa")}})
         fn = self.write_con(con)
         before = copy.deepcopy(con)
-        removals, flags, bulk, pending = self.check([fn], alive_rkeys=set(), fail_getposts=True)
+        removals, flags, bulk, pending, pins = self.check([fn], alive_rkeys=set(), fail_getposts=True)
         self.assertEqual((removals, flags, bulk, pending), ([], [], [], []))
         self.assertEqual(self.read_con(fn), before)
         self.assertEqual(self.read_pending(), {})  # error path never writes pending
@@ -333,7 +368,7 @@ class LivenessTest(unittest.TestCase):
         before = copy.deepcopy(con)
         self.seed_pending("3aaa")
         with unittest.mock.patch.object(kw, "DRY_RUN", True):
-            removals, _, _, _ = self.check(
+            removals, _, _, _, _ = self.check(
                 [fn, self.write_alive_companion()], alive_rkeys={"3ok"})
         self.assertEqual(len(removals), 1)
         self.assertEqual(self.read_con(fn), before)
@@ -363,7 +398,7 @@ class LivenessTest(unittest.TestCase):
             return real_replace(src, dst)
 
         with unittest.mock.patch.object(kw.os, "replace", flaky_replace):
-            removals, flags, bulk, pending = self.check(
+            removals, flags, bulk, pending, pins = self.check(
                 [good_fn, bad_fn, self.write_alive_companion()], alive_rkeys={"3ok"})
         # the earlier file's removal survived and reached disk...
         self.assertEqual([r["event_id"] for r in removals], ["testcon-2999"])
@@ -381,7 +416,7 @@ class LivenessTest(unittest.TestCase):
         self.seed_pending("3dead")
         with unittest.mock.patch.object(kw, "save_dead_pending",
                                         side_effect=OSError("disk full")):
-            removals, flags, bulk, pending = self.check(
+            removals, flags, bulk, pending, pins = self.check(
                 [fn, self.write_alive_companion()], alive_rkeys={"3ok"})
         self.assertEqual(len(removals), 1)
         self.assertNotIn("keyDates", self.read_con(fn)["events"][0])
@@ -403,7 +438,7 @@ class LivenessTest(unittest.TestCase):
             return inner(method, params)
 
         with unittest.mock.patch.object(kw, "appget", tracking):
-            removals, flags, bulk, _ = kw.check_source_liveness([fn])
+            removals, flags, bulk, _, _ = kw.check_source_liveness([fn])
         self.assertEqual([len(c) for c in calls], [25, 4])
         self.assertEqual(len(removals), 28)
         self.assertEqual((flags, bulk), ([], []))
@@ -424,11 +459,13 @@ class SummaryTest(unittest.TestCase):
         r = {"_file": "testcon.json", "event_id": "testcon-2999", "category": "panels",
              "kind": "opens", **entry("3aaa")}
         body = kw.render_summary([], [], [], [], "", removals=[r], account_flags=[r],
-                                 bulk_flags=[r], pending=[r])
+                                 bulk_flags=[r], pending=[r], pins=[r])
         self.assertIn("Source post deleted — entry removed", body)
         self.assertIn("Source post missing — will remove next sweep if still gone", body)
         self.assertIn("Source account unreachable", body)
         self.assertIn("Every source post missing but account is live", body)
+        self.assertIn("Source URLs pinned to account DID", body)
+        self.assertIn("**testcon.json** — 1 source URL(s) pinned", body)
         self.assertIn("testcon-2999", body)
 
     def test_non_bsky_source_never_rendered_as_link(self):
@@ -469,6 +506,37 @@ class SummaryTest(unittest.TestCase):
         self.assertIn("testcon-2999", body)
 
 
+class SourceIdentTest(unittest.TestCase):
+    def test_pin_source_url(self):
+        handle_url = entry("3aaa")["source"]
+        pinned = kw.pin_source_url(handle_url, DID)
+        self.assertEqual(pinned, f"https://bsky.app/profile/{DID}/post/3aaa")
+        # already pinned, non-bsky, and malformed inputs pass through untouched
+        self.assertEqual(kw.pin_source_url(pinned, "did:plc:other"), pinned)
+        for url in ("https://testcon.example/reg", "", None):
+            self.assertEqual(kw.pin_source_url(url, DID), url)
+
+    def test_fetch_posts_builds_urls_from_actor(self):
+        feed = {"feed": [{"post": {
+            "uri": f"at://{DID}/app.bsky.feed.post/3abc",
+            "record": {"text": "registration opens tomorrow", "createdAt": "2998-12-01"}}}]}
+        with unittest.mock.patch.object(kw, "appget", lambda method, params: feed):
+            posts = kw.fetch_posts(DID)
+        self.assertEqual([p["url"] for p in posts],
+                         [f"https://bsky.app/profile/{DID}/post/3abc"])
+
+    def test_handle_form_rejection_suppresses_did_form_candidate(self):
+        # a /reject recorded before pinning must keep suppressing the same post
+        rej = [{"event_id": "testcon-2999", "category": "panels", "kind": "opens",
+                "date": "2999-01-01", "source": entry("3aaa")["source"], "reason": "no"}]
+        cand = {"event_id": "testcon-2999", "category": "panels", "kind": "opens",
+                "date": "2999-01-01", "source": did_entry("3aaa")["source"]}
+        self.assertIsNotNone(kw.is_rejected(rej, cand))
+        # ...but a genuinely different post still isn't suppressed
+        other = {**cand, "source": did_entry("3zzz")["source"]}
+        self.assertIsNone(kw.is_rejected(rej, other))
+
+
 class PruneOutstandingTest(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -482,6 +550,16 @@ class PruneOutstandingTest(unittest.TestCase):
     def ledger_entry(category, rkey):
         return {"event_id": "testcon-2999", "category": category, "kind": "opens",
                 **entry(rkey)}
+
+    def test_did_pinned_removal_prunes_handle_form_ledger_entry(self):
+        # CON-26: after a backfill pin, a liveness removal carries the DID-form
+        # URL while the ledger may still hold the handle form — same post, so
+        # the entry must still be pruned (else next run resurrects the slot)
+        stale = self.ledger_entry("panels", "3aaa")  # handle-form source
+        kw.save_outstanding({kw.outstanding_key(stale): stale})
+        kw.prune_outstanding_removals([
+            {"_file": "testcon.json", **stale, "source": did_entry("3aaa")["source"]}])
+        self.assertEqual(kw.load_outstanding(), {})
 
     def test_matching_slot_and_source_dropped_others_kept(self):
         matched = self.ledger_entry("panels", "3aaa")
@@ -543,7 +621,7 @@ class MainSmokeTest(unittest.TestCase):
         with unittest.mock.patch.object(
                  kw, "process_con", return_value=([dict(applied)], [], [], [], True)) as pc, \
              unittest.mock.patch.object(
-                 kw, "check_source_liveness", return_value=([removal], [], [], [])) as liveness, \
+                 kw, "check_source_liveness", return_value=([removal], [], [], [], [])) as liveness, \
              unittest.mock.patch.object(kw, "publish") as publish, \
              unittest.mock.patch.object(kw.subprocess, "run", return_value=ok) as sprun:
             kw.main()
@@ -573,7 +651,7 @@ class MainSmokeTest(unittest.TestCase):
         with unittest.mock.patch.object(
                  kw, "process_con", return_value=([], [], [], [], True)), \
              unittest.mock.patch.object(
-                 kw, "check_source_liveness", return_value=([removal], [], [], [])), \
+                 kw, "check_source_liveness", return_value=([removal], [], [], [], [])), \
              unittest.mock.patch.object(kw, "publish") as publish, \
              unittest.mock.patch.object(kw.subprocess, "run", return_value=bad):
             kw.main()
@@ -593,7 +671,7 @@ class MainSmokeTest(unittest.TestCase):
         with unittest.mock.patch.object(kw, "MAX_EXTRACTS", 10), \
              unittest.mock.patch.object(kw, "process_con", side_effect=pc), \
              unittest.mock.patch.object(
-                 kw, "check_source_liveness", return_value=([], [], [], [])) as liveness, \
+                 kw, "check_source_liveness", return_value=([], [], [], [], [])) as liveness, \
              unittest.mock.patch.object(kw, "publish"), \
              unittest.mock.patch.object(kw.subprocess, "run", return_value=ok):
             kw.main()
