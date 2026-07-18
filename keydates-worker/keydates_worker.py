@@ -979,7 +979,13 @@ def process_con(fn, cache, rejections, provided_posts=None, extra_post=None):
     events = upcoming_events(con)
     if not events:
         return [], [], [], [], False
-    posts = provided_posts if provided_posts is not None else fetch_posts(bsky["did"])
+    actor = bsky["did"]
+    if not SOURCE_URL_RE.match(f"https://bsky.app/profile/{actor}/post/3x") and bsky.get("handle"):
+        # an exotic DID outside SOURCE_URL_RE (e.g. percent-encoded did:web)
+        # would originate uncollectable source URLs that the liveness sweep
+        # can never re-collect — keep handle-form URLs for such cons
+        actor = bsky["handle"]
+    posts = provided_posts if provided_posts is not None else fetch_posts(actor)
     # pin every post URL to the con's DID before it can become a stored source:
     # feed, spool, and provided posts all belong to this con's repo by
     # construction, and DID-form sources survive account migration (CON-26).
