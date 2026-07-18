@@ -515,6 +515,10 @@ class SourceIdentTest(unittest.TestCase):
         self.assertEqual(kw.pin_source_url(pinned, "did:plc:other"), pinned)
         for url in ("https://testcon.example/reg", "", None):
             self.assertEqual(kw.pin_source_url(url, DID), url)
+        # a DID that would make the URL uncollectable (outside SOURCE_URL_RE)
+        # leaves the original handle-form URL in place
+        self.assertEqual(kw.pin_source_url(handle_url, "did:web:example.com%3A8443"),
+                         handle_url)
 
     def test_fetch_posts_builds_urls_from_actor(self):
         feed = {"feed": [{"post": {

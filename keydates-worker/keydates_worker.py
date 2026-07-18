@@ -468,7 +468,13 @@ def pin_source_url(url, did):
     fake a deletion later (CON-26)."""
     m = SOURCE_URL_RE.match(url or "")
     if m and not m.group(1).startswith("did:"):
-        return f"https://bsky.app/profile/{did}/post/{m.group(2)}"
+        pinned = f"https://bsky.app/profile/{did}/post/{m.group(2)}"
+        # never trade a collectable URL for an uncollectable one: an exotic
+        # DID (e.g. did:web with percent-encoding) could fall outside
+        # SOURCE_URL_RE, and a source that can't be re-collected can't be
+        # liveness-checked at all
+        if SOURCE_URL_RE.match(pinned):
+            return pinned
     return url
 
 
