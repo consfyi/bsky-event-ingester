@@ -980,11 +980,15 @@ def process_con(fn, cache, rejections, provided_posts=None, extra_post=None):
     if not events:
         return [], [], [], [], False
     actor = bsky["did"]
-    if not SOURCE_URL_RE.match(f"https://bsky.app/profile/{actor}/post/3x") and bsky.get("handle"):
+    if not SOURCE_URL_RE.match(f"https://bsky.app/profile/{actor}/post/3x"):
         # an exotic DID outside SOURCE_URL_RE (e.g. percent-encoded did:web)
         # would originate uncollectable source URLs that the liveness sweep
         # can never re-collect — keep handle-form URLs for such cons
-        actor = bsky["handle"]
+        if bsky.get("handle"):
+            actor = bsky["handle"]
+        else:
+            log(f"{os.path.basename(fn)}: exotic DID and no handle — "
+                "sources from this con can't be liveness-checked")
     posts = provided_posts if provided_posts is not None else fetch_posts(actor)
     # pin every post URL to the con's DID before it can become a stored source:
     # feed, spool, and provided posts all belong to this con's repo by
