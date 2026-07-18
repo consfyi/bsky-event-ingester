@@ -585,6 +585,43 @@ class PruneOutstandingTest(unittest.TestCase):
         self.assertEqual(kw.load_outstanding(), {kw.outstanding_key(e): e})
 
 
+class ProcessConPinningTest(unittest.TestCase):
+    def test_process_con_pins_posts_and_dedupes_spool_twin(self):
+        # ingestion-time pinning: a handle-form feed post is normalized to DID
+        # form before extraction, its DID-form spooled twin dedupes against it,
+        # and the stored source ends up DID-form
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        con = make_con({})
+        fn = os.path.join(tmp.name, "testcon.json")
+        with open(fn, "w") as f:
+            json.dump(con, f)
+        post = {"url": entry("3abc")["source"], "asOf": "2999-05-01T00:00:00.000Z",
+                "text": "registration opens June 1"}
+        did_twin = {**post, "url": did_entry("3abc")["source"]}
+        seen = {}
+
+        def fake_extract(con_, events, posts):
+            seen["posts"] = posts
+            return [{"event_id": "testcon-2999", "category": "registration",
+                     "kind": "opens", "date": "2999-06-01",
+                     "source": posts[0]["url"], "confidence": 0.95}]
+
+        with unittest.mock.patch.object(kw, "extract_for_con", side_effect=fake_extract), \
+             unittest.mock.patch.object(kw, "verify_proposals",
+                                        side_effect=lambda proposals, cache: (proposals, [], [])):
+            changes, refuted, held, rejected, did_extract = kw.process_con(
+                fn, {}, [], provided_posts=[post], extra_post=did_twin)
+        self.assertTrue(did_extract)
+        self.assertEqual([p["url"] for p in seen["posts"]],
+                         [did_entry("3abc")["source"]])  # pinned AND twin deduped
+        self.assertEqual(len(changes), 1)
+        with open(fn) as f:
+            stored = json.load(f)["events"][0]["keyDates"]["registration"]["opens"]
+        self.assertEqual(stored["source"], did_entry("3abc")["source"])
+        self.assertEqual(stored["date"], "2999-06-01")
+
+
 class MainSmokeTest(unittest.TestCase):
     """End-to-end main() wiring with the network/model/git layers mocked out."""
 
