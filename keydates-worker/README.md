@@ -41,8 +41,9 @@ two cron days. `MAX_EXTRACTS` guards runaway usage.
    - **repo PAT** — `consfyi/data` only, Contents + Pull requests write →
      used by `git push` / `gh pr create` (configure via `gh auth login` or a
      credential helper for the checkout)
-3. Two wrapper scripts, both chmod 600 / owned by the worker user. They share
-   the same env block and differ only in the final `exec` line.
+3. Two wrapper scripts, both chmod 700 (executable, owner-only) / owned by the
+   worker user; the token files they read stay chmod 600. They share the same
+   env block and differ only in the final `exec` line.
 
    `/usr/local/bin/keydates-worker` — called by the ingester with the spool
    file; handles one real-time post:
