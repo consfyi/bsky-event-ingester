@@ -3,3 +3,4 @@ db.*
 signing.key
 config.toml
 __pycache__/
+.claude/worktrees/

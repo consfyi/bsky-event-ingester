@@ -49,6 +49,10 @@ two cron days. `MAX_EXTRACTS` guards runaway usage.
    export GITHUB_TOKEN=$(cat /home/fbl/.keydates-models-token)
    export DATA_DIR=/home/fbl/consfyi/data-worktree
    export PUSH=1
+   # optional: page the ops Telegram bot (same bot as the labeler health
+   # monitor) when a sweep's source-liveness guardrails fire; unset = log-only
+   export OPS_TELEGRAM_BOT_TOKEN=$(cat /home/fbl/.ops-telegram-token)
+   export OPS_TELEGRAM_CHAT_ID=-1001234567890
    exec python3 /home/fbl/consfyi/keydates-worker/keydates_worker.py --post-file "$1"
    ```
 4. Weekly sweep backstop, spread over two days (crontab):
@@ -56,7 +60,8 @@ two cron days. `MAX_EXTRACTS` guards runaway usage.
    23 9 * * 1  /usr/local/bin/keydates-sweep 1/2
    23 9 * * 2  /usr/local/bin/keydates-sweep 2/2
    ```
-   (same wrapper with `--sweep --shard $1` instead of `--post-file`.)
+   (same wrapper with `--sweep --shard $1` instead of `--post-file`. The ops-bot
+   alerts fire only in sweep mode, where the liveness check runs.)
 
 ## Ingester config (bsky-event-ingester config.toml)
 
