@@ -362,6 +362,21 @@ class LivenessTest(unittest.TestCase):
         self.assertEqual(self.read_con(fn), before)
         self.assertEqual(self.read_pending(), {})  # error path never writes pending
 
+    def test_getposts_error_notifies_ops(self):
+        # the skip is silent-to-humans today (stderr only) — CON-18 pages ops
+        fn = self.write_con(make_con({"panels": {"opens": entry("3aaa")}}))
+        with unittest.mock.patch.object(kw, "ops_notify") as notify:
+            self.check([fn], alive_rkeys=set(), fail_getposts=True)
+        notify.assert_called_once()
+        self.assertIn("SKIPPED", notify.call_args[0][0])
+
+    def test_zero_alive_notifies_ops(self):
+        fn = self.write_con(make_con({"panels": {"opens": entry("3aaa")}}))
+        with unittest.mock.patch.object(kw, "ops_notify") as notify:
+            self.check([fn], alive_rkeys=set())
+        notify.assert_called_once()
+        self.assertIn("degradation", notify.call_args[0][0])
+
     def test_dry_run_reports_without_writing(self):
         con = make_con({"panels": {"opens": entry("3aaa")}})
         fn = self.write_con(con)
@@ -771,10 +786,166 @@ class MainSmokeTest(unittest.TestCase):
         publish.assert_not_called()  # nothing to publish, but we got there cleanly
         self.assertTrue(os.path.exists(self.summary_file))
 
+    def test_liveness_flags_notify_ops_without_publishing(self):
+        # CON-18: a sweep whose only outcome is held/pending findings publishes
+        # nothing (no file changed), yet ops must still be paged with the counts
+        flag = {"event_id": "testcon-2999", "category": "panels", "kind": "opens",
+                "date": "2999-01-01", "source": entry("3aaa")["source"],
+                "asOf": "2998-12-01T00:00:00.000Z", "_file": "con-a.json"}
+        ok = unittest.mock.Mock(returncode=0, stdout="")
+        with unittest.mock.patch.object(
+                 kw, "process_con", return_value=([], [], [], [], True)), \
+             unittest.mock.patch.object(
+                 kw, "check_source_liveness",
+                 return_value=([], [flag], [], [flag], [])), \
+             unittest.mock.patch.object(kw, "publish") as publish, \
+             unittest.mock.patch.object(kw, "ops_notify") as notify, \
+             unittest.mock.patch.object(kw.subprocess, "run", return_value=ok):
+            kw.main()
+        publish.assert_not_called()  # nothing changed on disk
+        notify.assert_called_once()
+        msg = notify.call_args[0][0]
+        self.assertIn("account unreachable", msg)
+        self.assertIn("will auto-remove next sweep", msg)
+
+    def test_bulk_flags_page_ops_without_publishing(self):
+        # CON-18: a sweep whose only outcome is a bulk hold (every source dead
+        # but the account still live) changes no files, so it publishes nothing
+        # — ops must still be paged with the count
+        flag = {"event_id": "testcon-2999", "category": "panels", "kind": "opens",
+                "date": "2999-01-01", "source": entry("3aaa")["source"],
+                "asOf": "2998-12-01T00:00:00.000Z", "_file": "con-a.json"}
+        ok = unittest.mock.Mock(returncode=0, stdout="")
+        with unittest.mock.patch.object(
+                 kw, "process_con", return_value=([], [], [], [], True)), \
+             unittest.mock.patch.object(
+                 kw, "check_source_liveness",
+                 return_value=([], [], [flag], [], [])), \
+             unittest.mock.patch.object(kw, "publish") as publish, \
+             unittest.mock.patch.object(kw, "ops_notify") as notify, \
+             unittest.mock.patch.object(kw.subprocess, "run", return_value=ok):
+            kw.main()
+        publish.assert_not_called()  # nothing changed on disk
+        notify.assert_called_once()
+        self.assertIn("every source dead but account live", notify.call_args[0][0])
+
+    def test_removals_context_line_rides_the_ops_alert(self):
+        # T2: when a pending finding pages ops and removals also happened this
+        # sweep, the removed-count line rides along in the same alert
+        flag = {"event_id": "testcon-2999", "category": "panels", "kind": "opens",
+                "date": "2999-01-01", "source": entry("3aaa")["source"],
+                "asOf": "2998-12-01T00:00:00.000Z", "_file": "con-a.json"}
+        removal = {"event_id": "testcon-2999", "category": "hotel", "kind": "opens",
+                   "date": "2999-02-02", "source": entry("3bbb")["source"],
+                   "asOf": "2998-12-01T00:00:00.000Z", "_file": "con-a.json"}
+        ok = unittest.mock.Mock(returncode=0, stdout="")
+        with unittest.mock.patch.object(
+                 kw, "process_con", return_value=([], [], [], [], True)), \
+             unittest.mock.patch.object(
+                 kw, "check_source_liveness",
+                 return_value=([removal], [], [], [flag], [])), \
+             unittest.mock.patch.object(kw, "publish"), \
+             unittest.mock.patch.object(kw, "ops_notify") as notify, \
+             unittest.mock.patch.object(kw.subprocess, "run", return_value=ok):
+            kw.main()
+        notify.assert_called_once()
+        self.assertIn("entr(ies) removed — source post deleted", notify.call_args[0][0])
+
+    def test_liveness_crash_pages_ops(self):
+        # D2: a crash in the liveness check leaves every findings list empty, so
+        # the findings alert never fires — the same silent-guardrail failure
+        # CON-18 targets, via the crash path. Page ops from the except block so
+        # an aborted sweep still reaches a human.
+        ok = unittest.mock.Mock(returncode=0, stdout="")
+        with unittest.mock.patch.object(
+                 kw, "process_con", return_value=([], [], [], [], True)), \
+             unittest.mock.patch.object(
+                 kw, "check_source_liveness", side_effect=RuntimeError("bad con structure")), \
+             unittest.mock.patch.object(kw, "publish"), \
+             unittest.mock.patch.object(kw, "ops_notify") as notify, \
+             unittest.mock.patch.object(kw.subprocess, "run", return_value=ok):
+            kw.main()  # must not raise
+        notify.assert_called_once()
+        self.assertIn("abort", notify.call_args[0][0].lower())
+
+    def test_liveness_crash_alert_truncates_long_exception(self):
+        # a verbose exception must not push the crash page past Telegram's
+        # 4096-char cap and make the one page that matters silently fail
+        ok = unittest.mock.Mock(returncode=0, stdout="")
+        with unittest.mock.patch.object(
+                 kw, "process_con", return_value=([], [], [], [], True)), \
+             unittest.mock.patch.object(
+                 kw, "check_source_liveness",
+                 side_effect=RuntimeError("X" * 1000)), \
+             unittest.mock.patch.object(kw, "publish"), \
+             unittest.mock.patch.object(kw, "ops_notify") as notify, \
+             unittest.mock.patch.object(kw.subprocess, "run", return_value=ok):
+            kw.main()
+        msg = notify.call_args[0][0]
+        self.assertIn("X" * 500, msg)          # keeps a useful prefix
+        self.assertNotIn("X" * 501, msg)       # but no more than the cap
+
 
 class UserAgentTest(unittest.TestCase):
     def test_appview_user_agent_has_contact_path(self):
         self.assertIn("(+https://cons.fyi)", kw.APPVIEW_USER_AGENT)
+
+
+class OpsNotifyTest(unittest.TestCase):
+    """The ops-bot send path (CON-18) — best-effort, never raises, degrades to
+    log-only when unconfigured, and honours DRY_RUN."""
+
+    def test_unconfigured_is_silent_noop(self):
+        opener = unittest.mock.Mock(side_effect=AssertionError("must not hit the network"))
+        with unittest.mock.patch.object(kw, "OPS_TELEGRAM_BOT_TOKEN", ""), \
+             unittest.mock.patch.object(kw, "OPS_TELEGRAM_CHAT_ID", ""), \
+             unittest.mock.patch.object(kw.urllib.request, "urlopen", opener):
+            kw.ops_notify("hi")  # must not raise, must not send
+        opener.assert_not_called()
+
+    def test_partial_config_is_silent_noop(self):
+        # only one of the two secrets set (either order) must stay log-only —
+        # ops_notify needs BOTH the bot token and the chat id to send
+        for token, chat in (("tok", ""), ("", "-1")):
+            opener = unittest.mock.Mock(side_effect=AssertionError("must not hit the network"))
+            with unittest.mock.patch.object(kw, "OPS_TELEGRAM_BOT_TOKEN", token), \
+                 unittest.mock.patch.object(kw, "OPS_TELEGRAM_CHAT_ID", chat), \
+                 unittest.mock.patch.object(kw, "DRY_RUN", False), \
+                 unittest.mock.patch.object(kw.urllib.request, "urlopen", opener):
+                kw.ops_notify("hi")
+            opener.assert_not_called()
+
+    def test_sends_when_configured(self):
+        opener = unittest.mock.Mock(return_value=unittest.mock.MagicMock())
+        with unittest.mock.patch.object(kw, "OPS_TELEGRAM_BOT_TOKEN", "tok123"), \
+             unittest.mock.patch.object(kw, "OPS_TELEGRAM_CHAT_ID", "-1009"), \
+             unittest.mock.patch.object(kw, "DRY_RUN", False), \
+             unittest.mock.patch.object(kw.urllib.request, "urlopen", opener):
+            kw.ops_notify("hello ops")
+        opener.assert_called_once()
+        req = opener.call_args[0][0]
+        self.assertIn("/bottok123/sendMessage", req.full_url)
+        body = req.data.decode()
+        self.assertIn("chat_id=-1009", body)
+        self.assertIn("hello+ops", body)
+
+    def test_send_errors_are_swallowed(self):
+        opener = unittest.mock.Mock(side_effect=OSError("telegram down"))
+        with unittest.mock.patch.object(kw, "OPS_TELEGRAM_BOT_TOKEN", "tok"), \
+             unittest.mock.patch.object(kw, "OPS_TELEGRAM_CHAT_ID", "-1"), \
+             unittest.mock.patch.object(kw, "DRY_RUN", False), \
+             unittest.mock.patch.object(kw.urllib.request, "urlopen", opener):
+            kw.ops_notify("boom")  # must not raise
+        opener.assert_called_once()
+
+    def test_dry_run_does_not_send(self):
+        opener = unittest.mock.Mock(side_effect=AssertionError("DRY_RUN must not send"))
+        with unittest.mock.patch.object(kw, "OPS_TELEGRAM_BOT_TOKEN", "tok"), \
+             unittest.mock.patch.object(kw, "OPS_TELEGRAM_CHAT_ID", "-1"), \
+             unittest.mock.patch.object(kw, "DRY_RUN", True), \
+             unittest.mock.patch.object(kw.urllib.request, "urlopen", opener):
+            kw.ops_notify("dry")
+        opener.assert_not_called()
 
 
 def proposal(date, rkey, asof="2999-01-01T00:00:00.000Z", slot=("testcon-2999", "performances", "opens")):

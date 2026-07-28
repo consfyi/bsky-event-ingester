@@ -41,22 +41,40 @@ two cron days. `MAX_EXTRACTS` guards runaway usage.
    - **repo PAT** — `consfyi/data` only, Contents + Pull requests write →
      used by `git push` / `gh pr create` (configure via `gh auth login` or a
      credential helper for the checkout)
-3. Wrapper script `/usr/local/bin/keydates-worker` (called by the ingester
-   with the spool file as its argument):
+3. Two wrapper scripts, both chmod 700 (executable, owner-only) / owned by the
+   worker user; the token files they read stay chmod 600. They share the same
+   env block and differ only in the final `exec` line.
+
+   `/usr/local/bin/keydates-worker` — called by the ingester with the spool
+   file; handles one real-time post:
    ```sh
    #!/bin/sh
-   # token files and this wrapper must be chmod 600 / owned by the worker user
    export GITHUB_TOKEN=$(cat /home/fbl/.keydates-models-token)
    export DATA_DIR=/home/fbl/consfyi/data-worktree
    export PUSH=1
    exec python3 /home/fbl/consfyi/keydates-worker/keydates_worker.py --post-file "$1"
    ```
-4. Weekly sweep backstop, spread over two days (crontab):
+
+   `/usr/local/bin/keydates-sweep` — called by cron; runs the weekly liveness
+   sweep. This is the wrapper that needs the ops-bot env: the source-liveness
+   guardrails (and their alerts) run only in `--sweep` mode. Both unset =
+   log-only.
+   ```sh
+   #!/bin/sh
+   export GITHUB_TOKEN=$(cat /home/fbl/.keydates-models-token)
+   export DATA_DIR=/home/fbl/consfyi/data-worktree
+   export PUSH=1
+   # page the ops Telegram bot (same bot as the labeler health monitor) when a
+   # source-liveness guardrail fires
+   export OPS_TELEGRAM_BOT_TOKEN=$(cat /home/fbl/.ops-telegram-token)
+   export OPS_TELEGRAM_CHAT_ID=-1001234567890
+   exec python3 /home/fbl/consfyi/keydates-worker/keydates_worker.py --sweep --shard "$1"
    ```
+4. Weekly sweep backstop, spread over two days (crontab):
+   ```cron
    23 9 * * 1  /usr/local/bin/keydates-sweep 1/2
    23 9 * * 2  /usr/local/bin/keydates-sweep 2/2
    ```
-   (same wrapper with `--sweep --shard $1` instead of `--post-file`.)
 
 ## Ingester config (bsky-event-ingester config.toml)
 

@@ -39,6 +39,8 @@ Env:
   SUMMARY_FILE      write the markdown report here (also printed)
   CACHE_FILE        verdict cache path (default: ~/.cache/keydates-worker/verdict_cache.json)
   MAX_EXTRACTS      stop after N actual extract calls this run (quota guard; default 120)
+  OPS_TELEGRAM_BOT_TOKEN / OPS_TELEGRAM_CHAT_ID
+                    ops-bot alerts for silent sweep-liveness guardrails (both unset = log-only)
 
 Usage:
   keydates_worker.py --sweep [--shard 1/2]
@@ -69,6 +71,10 @@ DRY_RUN = os.environ.get("DRY_RUN") == "1"
 PUSH = os.environ.get("PUSH") == "1"
 MAX_EXTRACTS = int(os.environ.get("MAX_EXTRACTS", "120"))
 CACHE_FILE = os.environ.get("CACHE_FILE", os.path.expanduser("~/.cache/keydates-worker/verdict_cache.json"))
+# dedicated ops Telegram bot, shared with the labeler health monitor (CON-10);
+# both unset degrades to log-only, exactly like the monitor workflow (CON-18)
+OPS_TELEGRAM_BOT_TOKEN = os.environ.get("OPS_TELEGRAM_BOT_TOKEN", "")
+OPS_TELEGRAM_CHAT_ID = os.environ.get("OPS_TELEGRAM_CHAT_ID", "")
 REJECTIONS_FILE = os.path.join(DATA_DIR, ".github", "keydates_rejections.json")
 BOT_BRANCH = "bot/bsky-keydates"
 
@@ -595,6 +601,8 @@ def check_source_liveness(files):
         res = appget("app.bsky.feed.getPosts", {"uris": batch})
         if "posts" not in res:  # appview error after retries — never remove on a failed lookup
             log("source liveness: getPosts failed; skipping the check this run")
+            ops_notify("⚠️ keydates sweep: source-liveness check SKIPPED this run — "
+                       "getPosts failed (appview error after retries). No source deletions were processed.")
             return [], [], [], [], []
         alive = {p.get("uri") for p in res["posts"]}
         dead.update(u for u in batch if u not in alive)
@@ -602,6 +610,8 @@ def check_source_liveness(files):
         # a degraded appview can answer 200 with an empty posts array; zero
         # alive posts across the whole dataset is that, not mass deletion
         log("source liveness: no source came back alive; assuming appview degradation, skipping")
+        ops_notify("⚠️ keydates sweep: source-liveness check SKIPPED this run — "
+                   "zero sources came back alive (likely appview degradation). No source deletions were processed.")
         return [], [], [], [], []
 
     pending_state = load_dead_pending()
@@ -871,6 +881,33 @@ def prune_outstanding_removals(removals):
 # --- pipeline -------------------------------------------------------------------
 def log(msg):
     print(msg, file=sys.stderr, flush=True)
+
+
+def ops_notify(text):
+    """Best-effort ops alert via the dedicated ops Telegram bot (CON-18), the
+    same bot the labeler health monitor uses (CON-10). Additive to the stderr
+    log lines, never a replacement: this must never raise or block a sweep, and
+    both secrets unset is a silent no-op (log-only, like the monitor). DRY_RUN
+    shows the text in the log instead of sending."""
+    if not OPS_TELEGRAM_BOT_TOKEN or not OPS_TELEGRAM_CHAT_ID:
+        return
+    if DRY_RUN:
+        log(f"ops_notify (DRY_RUN, not sent): {text}")
+        return
+    try:
+        data = urllib.parse.urlencode({
+            "chat_id": OPS_TELEGRAM_CHAT_ID,
+            "text": text,
+            "disable_web_page_preview": "true",
+        }).encode()
+        req = urllib.request.Request(
+            f"https://api.telegram.org/bot{OPS_TELEGRAM_BOT_TOKEN}/sendMessage",
+            data=data, method="POST",
+            headers={"Content-Type": "application/x-www-form-urlencoded"})
+        with urllib.request.urlopen(req, timeout=20):
+            pass
+    except Exception as e:
+        log(f"ops_notify: could not send ops alert: {e}")
 
 
 def extract_for_con(con, events, posts):
@@ -1314,6 +1351,16 @@ def main():
             # a malformed con structure must not kill the cache save, summary,
             # and publish for the whole run
             log(f"ERROR in source liveness check: {e}")
+            # a crash here leaves every findings list empty, so the findings
+            # alert below never fires — the same silent-guardrail failure CON-18
+            # guards against, via the crash path. Page ops so an aborted sweep
+            # still reaches a human.
+            # cap the interpolated error: a verbose exception could push the POST
+            # past Telegram's 4096-char limit and make the one page that matters
+            # (the crash run) silently fail to send
+            ops_notify("⚠️ keydates sweep: source-liveness check ABORTED this run "
+                       f"(crashed before producing findings): {str(e)[:500]}. Guardrail "
+                       "did not run — check the worker logs.")
         if pending:
             log(f"source liveness: {len(pending)} missing source(s) pending a second sighting")
         if bulk_flags:
@@ -1330,6 +1377,24 @@ def main():
             # via the removal entry itself)
             gone = {slot_key(r) for r in removals}
             all_changes = [c for c in all_changes if slot_key(c) not in gone]
+
+        # findings that otherwise reach a human only on runs that also publish
+        # (CON-18): held/pending entries surface only in the PR body today, so a
+        # sweep whose sole outcome is a hold or a first-dead sighting is silent.
+        # Ping the ops bot with the counts regardless of whether this run pushes.
+        if bulk_flags or account_flags or pending:
+            alert = ["⚠️ keydates sweep: source-liveness findings need a look"]
+            if bulk_flags:
+                alert.append(f"• {len(bulk_flags)} entr(ies) held — every source dead but account live (migration?)")
+            if account_flags:
+                alert.append(f"• {len(account_flags)} entr(ies) held — source account unreachable (deactivated/suspended?)")
+            if pending:
+                alert.append(f"• {len(pending)} source(s) missing — will auto-remove next sweep if still gone")
+            if removals:
+                alert.append(f"• {len(removals)} entr(ies) removed — source post deleted")
+            alert.append("See the keydates bot PR: "
+                         "https://github.com/consfyi/data/pulls?q=is%3Apr+is%3Aopen+head%3Abot%2Fbsky-keydates")
+            ops_notify("\n".join(alert))
 
     save_cache(cache)
 
