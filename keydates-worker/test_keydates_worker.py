@@ -1004,9 +1004,12 @@ class SameRunConflictTest(unittest.TestCase):
 
 class RecencyReminderTest(unittest.TestCase):
     def test_amend_carries_prev_and_renders_reminder(self):
-        con = make_con({"performances": {"opens": entry("3aaa", date="2999-05-13")}})
-        newer = {**proposal("2999-07-15", "3bbb", asof="2999-06-01T00:00:00.000Z"),
-                 "_file": "testcon.json", "_post_text": "dance battle open"}
+        # a closes amend (deadline moved) still carries _prev + the reminder;
+        # opens-moved-later no longer amends (CON-30), so exercise closes here
+        con = make_con({"registration": {"closes": entry("3aaa", date="2999-05-13")}})
+        newer = {**proposal("2999-07-15", "3bbb", asof="2999-06-01T00:00:00.000Z",
+                            slot=("testcon-2999", "registration", "closes")),
+                 "_file": "testcon.json", "_post_text": "deadline extended"}
         changes = kw.merge(con, [newer])
         self.assertEqual(len(changes), 1)
         self.assertEqual(changes[0]["_prev"]["date"], "2999-05-13")
@@ -1023,6 +1026,49 @@ class RecencyReminderTest(unittest.TestCase):
         self.assertEqual(len(changes), 1)
         self.assertNotIn("_prev", changes[0])
         self.assertNotIn("recency-wins", kw.render_summary(changes, [], [], [], ""))
+
+
+class OpensRecencyTest(unittest.TestCase):
+    """CON-30: recency-wins is asymmetric for opens — a newer post can correct
+    an opens earlier but never drag it later (that's a reminder, not a re-open).
+    closes keeps full recency-wins in both directions."""
+
+    def _newer(self, date, slot):
+        # a strictly newer post (asOf 2999-06-01 beats entry()'s 2998-12-01)
+        return {**proposal(date, "3bbb", asof="2999-06-01T00:00:00.000Z", slot=slot),
+                "_file": "testcon.json", "_post_text": "sign up now"}
+
+    def _date(self, con, cat, kind):
+        return con["events"][0]["keyDates"][cat][kind]["date"]
+
+    def test_opens_not_moved_later_by_a_newer_post(self):
+        # existing opens 05-03; a newer "sign up now!" post says 06-08 -> ignored
+        con = make_con({"panels": {"opens": entry("3aaa", date="2999-05-03")}})
+        changes = kw.merge(con, [self._newer("2999-06-08", ("testcon-2999", "panels", "opens"))])
+        self.assertEqual(changes, [])
+        self.assertEqual(self._date(con, "panels", "opens"), "2999-05-03")
+
+    def test_opens_corrected_earlier_still_applies(self):
+        # a genuine correction to an EARLIER open date still wins
+        con = make_con({"panels": {"opens": entry("3aaa", date="2999-06-08")}})
+        changes = kw.merge(con, [self._newer("2999-05-03", ("testcon-2999", "panels", "opens"))])
+        self.assertEqual(len(changes), 1)
+        self.assertEqual(self._date(con, "panels", "opens"), "2999-05-03")
+        self.assertEqual(changes[0]["_prev"]["date"], "2999-06-08")  # an amend still carries _prev
+
+    def test_closes_still_moves_later(self):
+        # closes keeps recency-wins: a later deadline (extension) applies
+        con = make_con({"registration": {"closes": entry("3aaa", date="2999-07-27")}})
+        changes = kw.merge(con, [self._newer("2999-08-02", ("testcon-2999", "registration", "closes"))])
+        self.assertEqual(len(changes), 1)
+        self.assertEqual(self._date(con, "registration", "closes"), "2999-08-02")
+
+    def test_closes_still_moves_earlier(self):
+        # and a moved-up deadline (tails-of-summer 07-27 -> 07-24) applies too
+        con = make_con({"registration": {"closes": entry("3aaa", date="2999-07-27")}})
+        changes = kw.merge(con, [self._newer("2999-07-24", ("testcon-2999", "registration", "closes"))])
+        self.assertEqual(len(changes), 1)
+        self.assertEqual(self._date(con, "registration", "closes"), "2999-07-24")
 
 
 if __name__ == "__main__":
