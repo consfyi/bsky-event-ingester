@@ -428,6 +428,13 @@ def merge(con, dates):
             continue  # never clobber a human-curated value
         if existing is not None and (d["asOf"] or "") <= (existing.get("asOf") or ""):
             continue  # recency-wins: only a newer source post may supersede
+        # opens only ever get corrected earlier or left alone (CON-30): a newer
+        # post that moves an existing opens LATER is almost always a "sign up
+        # now!" reminder of an already-open thing (or a distinct sub-instance),
+        # not a real re-opening. closes keeps full recency-wins, since genuine
+        # deadline extensions/move-ups must still apply.
+        if existing is not None and d["kind"] == "opens" and existing.get("date") and d["date"] > existing["date"]:
+            continue
         new_val = {
             "date": d["date"], "source": d["source"], "asOf": d["asOf"],
             "confidence": round(d["confidence"], 2),
