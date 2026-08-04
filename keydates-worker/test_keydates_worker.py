@@ -1206,12 +1206,35 @@ class TokenPaceTest(unittest.TestCase):
     def test_over_budget_waits(self):
         clock = {"t": 1000.0}
         slept = []
+
+        def fake_sleep(s):
+            slept.append(s)
+            clock["t"] += s  # a real clock advances while we sleep
+
         with unittest.mock.patch.object(kw, "MODEL_TPM", 8000):
             # first 6000, then a 3000 call would reach 9000 > 8000 -> must wait
-            kw.token_pace("m", 6000, now=lambda: clock["t"], sleep=lambda s: slept.append(s))
-            got = kw.token_pace("m", 3000, now=lambda: clock["t"], sleep=lambda s: slept.append(s))
+            kw.token_pace("m", 6000, now=lambda: clock["t"], sleep=fake_sleep)
+            got = kw.token_pace("m", 3000, now=lambda: clock["t"], sleep=fake_sleep)
         self.assertEqual(len(slept), 1)
         self.assertGreater(got, 0.0)
+
+    def test_loops_until_recent_samples_fit(self):
+        # window already over MODEL_TPM with THREE live samples (11000). Waiting
+        # only for the single oldest to age out leaves 8000+500 > 8000, so the
+        # limiter must sleep again until the incoming call actually fits (M1).
+        clock = {"t": 1059.0}
+        slept = []
+
+        def fake_sleep(s):
+            slept.append(s)
+            clock["t"] += s
+
+        kw._token_window["m"] = [(1000.0, 3000), (1058.0, 4000), (1059.0, 4000)]
+        with unittest.mock.patch.object(kw, "MODEL_TPM", 8000):
+            kw.token_pace("m", 500, now=lambda: clock["t"], sleep=fake_sleep)
+        self.assertGreaterEqual(len(slept), 2)  # single-oldest wait wasn't enough
+        live = [s for s in kw._token_window["m"] if clock["t"] - s[0] < 60]
+        self.assertLessEqual(sum(tok for _, tok in live), 8000)
 
     def test_window_ages_out_after_60s(self):
         slept = []
@@ -1229,6 +1252,121 @@ class TokenPaceTest(unittest.TestCase):
             got = kw.token_pace("b", 7000, now=lambda: 1000.0, sleep=lambda s: slept.append(s))
         self.assertEqual(slept, [])  # model b has its own empty window
         self.assertEqual(got, 0.0)
+
+
+class ChatErrorTest(unittest.TestCase):
+    """CON-34: chat()'s HTTPError branches — 413 (request too large) and a
+    first-attempt 400 both return None rather than raising or retrying forever."""
+
+    def _raise(self, code):
+        def fake(req, timeout=None):
+            raise kw.urllib.error.HTTPError(
+                req.full_url, code, "err", {}, io.BytesIO(b"error body"))
+        return fake
+
+    def test_413_returns_none(self):
+        with unittest.mock.patch.object(kw, "MODEL_API_KEY", "k"), \
+             unittest.mock.patch.object(kw, "token_pace", lambda *a, **k: 0.0), \
+             unittest.mock.patch.object(kw.urllib.request, "urlopen", self._raise(413)):
+            self.assertIsNone(kw.chat("m", "s", "u", kw.EXTRACT_SCHEMA, "keydates"))
+
+    def test_400_first_attempt_returns_none(self):
+        with unittest.mock.patch.object(kw, "MODEL_API_KEY", "k"), \
+             unittest.mock.patch.object(kw, "token_pace", lambda *a, **k: 0.0), \
+             unittest.mock.patch.object(kw.urllib.request, "urlopen", self._raise(400)):
+            self.assertIsNone(kw.chat("m", "s", "u", kw.EXTRACT_SCHEMA, "keydates"))
+
+    def test_retry_after_fractional_over_cap_raises_dailycap(self):
+        # a fractional Retry-After over the 300s cap must parse (int("301.5")
+        # would ValueError) and be treated as the daily quota being gone (N1)
+        def fake(req, timeout=None):
+            raise kw.urllib.error.HTTPError(
+                req.full_url, 429, "slow",
+                {"Retry-After": "301.5"}, io.BytesIO(b""))
+        with unittest.mock.patch.object(kw, "MODEL_API_KEY", "k"), \
+             unittest.mock.patch.object(kw, "token_pace", lambda *a, **k: 0.0), \
+             unittest.mock.patch.object(kw.urllib.request, "urlopen", fake):
+            with self.assertRaises(kw.DailyCapHit):
+                kw.chat("m", "s", "u", kw.EXTRACT_SCHEMA, "keydates")
+
+    def test_retry_after_http_date_falls_back_and_retries(self):
+        # an HTTP-date Retry-After must not crash: fall back to 60s and retry (N1)
+        calls = {"n": 0}
+        body = {"choices": [{"message": {"content": json.dumps({"dates": []})}}]}
+
+        def fake(req, timeout=None):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                raise kw.urllib.error.HTTPError(
+                    req.full_url, 429, "slow",
+                    {"Retry-After": "Wed, 21 Oct 2026 07:28:00 GMT"}, io.BytesIO(b""))
+            return io.BytesIO(json.dumps(body).encode())
+
+        with unittest.mock.patch.object(kw, "MODEL_API_KEY", "k"), \
+             unittest.mock.patch.object(kw, "token_pace", lambda *a, **k: 0.0), \
+             unittest.mock.patch.object(kw.time, "sleep", lambda s: None), \
+             unittest.mock.patch.object(kw.urllib.request, "urlopen", fake):
+            out = kw.chat("m", "s", "u", kw.EXTRACT_SCHEMA, "keydates")
+        self.assertEqual(out, {"dates": []})
+        self.assertEqual(calls["n"], 2)
+
+
+class VerifyBatchBudgetTest(unittest.TestCase):
+    """M2: verify_proposals splits a large batch so each request stays under the
+    per-request token budget, instead of 413-ing and stranding proposals as
+    permanently 'unavailable'."""
+
+    def _proposal(self, i):
+        return {
+            "event_id": f"e{i}", "category": "registration", "kind": "opens",
+            "date": "2999-01-01", "source": f"https://bsky.app/profile/x/post/3v{i:02d}",
+            "asOf": "2999-01-01T00:00:00Z", "confidence": 0.9,
+            "_con_name": "Testcon", "_ev_dates": ("2999-01-01", "2999-02-01"),
+            "_siblings": [], "_post_text": "registration opens " + "x" * 4000,
+        }
+
+    def test_large_batch_split_under_request_budget(self):
+        proposals = [self._proposal(i) for i in range(20)]
+        sent = []
+
+        def fake_chat(model, system, user, schema, name):
+            sent.append(user)
+            items = json.loads(user)["items"]
+            return {"verdicts": [{"index": it["index"], "verdict": "confirm",
+                                  "reason": "ok"} for it in items]}
+
+        with unittest.mock.patch.object(kw, "chat", side_effect=fake_chat):
+            confirmed, refuted, held = kw.verify_proposals(proposals, {})
+        for user in sent:
+            self.assertLessEqual(
+                kw.estimate_tokens(kw.VERIFY_SYSTEM, user), kw.MODEL_MAX_REQUEST_TOKENS)
+        self.assertEqual(len(confirmed), 20)  # every proposal still verified
+        # a single 8-item batch of these would blow the budget -> many requests
+        self.assertGreater(len(sent), len(kw.VERIFY_MODELS))
+
+
+class ProviderConfigTest(unittest.TestCase):
+    """CON-34: env-driven provider config resolves correctly across reload."""
+
+    def tearDown(self):
+        import importlib
+        importlib.reload(kw)  # restore module config from the ambient environ
+
+    def test_groq_api_key_alias_resolves(self):
+        import importlib
+        with unittest.mock.patch.dict(os.environ, clear=False):
+            os.environ.pop("MODEL_API_KEY", None)
+            os.environ["GROQ_API_KEY"] = "groq-secret"
+            importlib.reload(kw)
+            self.assertEqual(kw.MODEL_API_KEY, "groq-secret")
+
+    def test_base_url_trailing_slash_no_double_slash(self):
+        import importlib
+        with unittest.mock.patch.dict(
+                os.environ, {"MODEL_BASE_URL": "https://api.example/v1/"}, clear=False):
+            importlib.reload(kw)
+            self.assertEqual(kw.MODEL_CHAT_URL, "https://api.example/v1/chat/completions")
+            self.assertEqual(kw.MODEL_CATALOG_URL, "https://api.example/v1/models")
 
 
 if __name__ == "__main__":

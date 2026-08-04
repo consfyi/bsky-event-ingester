@@ -40,8 +40,10 @@ Env:
   PUSH=1            allow git commit+push+PR (default OFF: writes files only)
   EXTRACT_MODEL     default openai/gpt-oss-20b
   VERIFY_MODELS     comma-separated, default openai/gpt-oss-120b,openai/gpt-oss-20b
-  MODEL_MAX_REQUEST_TOKENS  est. per-request token budget for payload trimming (default 7000)
   MODEL_TPM         per-model tokens-per-minute budget for pacing (default 8000)
+  MODEL_MAX_OUTPUT_TOKENS   per-request output allowance (max_tokens; default 3000)
+  MODEL_MAX_REQUEST_TOKENS  est. per-request INPUT budget for trimming; default
+                    reserves MODEL_MAX_OUTPUT_TOKENS + 15% slack out of MODEL_TPM
   SUMMARY_FILE      write the markdown report here (also printed)
   CACHE_FILE        verdict cache path (default: ~/.cache/keydates-worker/verdict_cache.json)
   MAX_EXTRACTS      stop after N actual extract calls this run (quota guard; default 120)
@@ -98,11 +100,17 @@ APPVIEW_USER_AGENT = "consfyi/bsky-event-ingester (+https://cons.fyi)"
 TODAY = datetime.datetime.now(datetime.timezone.utc).date()
 CATEGORIES = ["registration", "hotel", "dealers", "panels", "performances", "djs", "volunteers"]
 VERIFY_BATCH = 8
-# Groq free tier is token-per-minute limited (8000 TPM for gpt-oss). The ~6k-token
-# EXTRACT_SYSTEM prompt means system+payload must fit one request's TPM, so we
-# budget the whole request (not just the payload) and pace by tokens, not RPM.
-MODEL_MAX_REQUEST_TOKENS = int(os.environ.get("MODEL_MAX_REQUEST_TOKENS", "7000"))
+# Groq free tier is token-per-minute limited (8000 TPM for gpt-oss). A request is
+# billed prompt + max_tokens against that window, so the trim/pace budget must
+# reserve the output allowance — not just fit the payload. (EXTRACT_SYSTEM is
+# ~850 tokens; the request's OUTPUT allowance is the big reservation.)
 MODEL_TPM = int(os.environ.get("MODEL_TPM", "8000"))
+MODEL_MAX_OUTPUT_TOKENS = int(os.environ.get("MODEL_MAX_OUTPUT_TOKENS", "3000"))
+# per-request INPUT budget for payload trimming: reserve the output allowance the
+# request is also billed for, plus ~15% slack because estimate_tokens (chars/4)
+# under-counts JSON/date-heavy text. Guarantees est(prompt) + output < MODEL_TPM.
+MODEL_MAX_REQUEST_TOKENS = int(os.environ.get(
+    "MODEL_MAX_REQUEST_TOKENS", str(int((MODEL_TPM - MODEL_MAX_OUTPUT_TOKENS) / 1.15))))
 
 # cheap pre-filter so we only spend model calls on date-relevant posts.
 # KEEP IN SYNC with relevant_re in bsky-event-ingester/src/con_posts.rs
@@ -264,17 +272,12 @@ def estimate_tokens(*texts):
     return sum(len(t) for t in texts) // 4
 
 
-def _now():
-    """Monotonic clock, injectable in tests so token pacing never really sleeps."""
-    return time.monotonic()
-
-
 # per-model rolling 60s window of (timestamp, tokens) samples, so back-to-back
 # sweep calls stay under the provider's per-minute token budget (MODEL_TPM)
 _token_window: dict[str, list] = {}
 
 
-def token_pace(model, tokens, now=_now, sleep=time.sleep):
+def token_pace(model, tokens, now=time.monotonic, sleep=time.sleep):
     """Block until sending `tokens` more for `model` keeps its rolling-60s token
     usage at or under MODEL_TPM, then record the sample. Returns seconds slept.
     `now`/`sleep` are injectable so tests exercise the decision without waiting."""
@@ -282,15 +285,18 @@ def token_pace(model, tokens, now=_now, sleep=time.sleep):
     window = [s for s in _token_window.get(model, []) if t - s[0] < 60]
     used = sum(tok for _, tok in window)
     slept = 0.0
-    if window and used + tokens > MODEL_TPM:
-        # wait just until the oldest sample ages out of the 60s window (window is
-        # kept in call order, so window[0] is the oldest live sample)
+    # age out the oldest live samples one at a time until the incoming call fits;
+    # a single wait for window[0] can leave two other recent samples still over
+    # the cap, so recompute after each sleep (window[0] is the oldest live sample)
+    while window and used + tokens > MODEL_TPM:
         wait = 60 - (t - window[0][0])
-        if wait > 0:
-            sleep(wait)
-            slept = wait
-            t = now()
-            window = [s for s in window if t - s[0] < 60]
+        if wait <= 0:
+            break
+        sleep(wait)
+        slept += wait
+        t = now()
+        window = [s for s in window if t - s[0] < 60]
+        used = sum(tok for _, tok in window)
     window.append((t, tokens))
     _token_window[model] = window
     return slept
@@ -304,11 +310,12 @@ def chat(model: str, system: str, user: str, schema: dict, schema_name: str):
     body = json.dumps({
         "model": model,
         "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
-        "max_tokens": 3000,
+        "max_tokens": MODEL_MAX_OUTPUT_TOKENS,
         "response_format": {"type": "json_schema", "json_schema": {
             "name": schema_name, "strict": True, "schema": schema}},
     }).encode()
-    est_tokens = estimate_tokens(system, user)
+    # pace on the real TPM cost Groq bills: input estimate + the output allowance
+    est_tokens = estimate_tokens(system, user) + MODEL_MAX_OUTPUT_TOKENS
     for attempt in range(4):
         token_pace(model, est_tokens)
         req = urllib.request.Request(
@@ -324,7 +331,13 @@ def chat(model: str, system: str, user: str, schema: dict, schema_name: str):
             return json.loads(content)
         except urllib.error.HTTPError as e:
             if e.code == 429:
-                retry_after = int(e.headers.get("Retry-After") or "60")
+                # Retry-After is RFC-legal as an int, a fractional value, or an
+                # HTTP-date; parse defensively (base URL is swappable) — fall back
+                # to 60s on anything float() can't take, before the daily-cap check
+                try:
+                    retry_after = int(float(e.headers.get("Retry-After") or "60"))
+                except ValueError:
+                    retry_after = 60
                 if retry_after > 300:
                     raise DailyCapHit(model)
                 log(f"  429 on {model}, sleeping {retry_after}s")
@@ -967,10 +980,10 @@ def ops_notify(text):
 
 
 def extract_for_con(con, events, posts):
-    # budget the WHOLE request (EXTRACT_SYSTEM is ~6k tokens on its own), not just
-    # the payload, so system+payload fits one request under Groq's per-minute token
-    # cap. Trim oldest posts first (feed is newest-first; recency-wins makes old
-    # posts expendable); always keep at least one post.
+    # budget the WHOLE request against MODEL_MAX_REQUEST_TOKENS (which already
+    # reserves the output allowance), not just the payload, so prompt+output fits
+    # one request under Groq's per-minute token cap. Trim oldest posts first (feed
+    # is newest-first; recency-wins makes old posts expendable); keep >=1 post.
     payload = {"convention": con["name"], "editions": events, "posts": posts}
     while (len(payload["posts"]) > 1
            and estimate_tokens(EXTRACT_SYSTEM, json.dumps(payload, ensure_ascii=False))
@@ -994,9 +1007,8 @@ def verify_proposals(proposals, cache):
         else:
             pending.append(p)
 
-    for lo in range(0, len(pending), VERIFY_BATCH):
-        batch = pending[lo:lo + VERIFY_BATCH]
-        items = [{
+    def verify_item(p, i):
+        return {
             "index": i,
             "convention": p["_con_name"],
             "edition": {"id": p["event_id"], "startDate": p["_ev_dates"][0], "endDate": p["_ev_dates"][1]},
@@ -1004,7 +1016,30 @@ def verify_proposals(proposals, cache):
             "claim": {k2: p[k2] for k2 in ("category", "kind", "date", "confidence")},
             "post_text": p["_post_text"],
             "post_timestamp": p["asOf"],
-        } for i, p in enumerate(batch)]
+        }
+
+    # pack proposals into batches bounded by BOTH the item cap and the per-request
+    # token budget (system+items+output must fit MODEL_TPM). Without the token
+    # bound a full VERIFY_BATCH of large posts 413s, chat() returns None, every
+    # verdict reads "unavailable", and the proposals are held and re-tried every
+    # run forever with no progress (M2). A lone item too big to shrink is still
+    # sent (like extract's single oversized post) and left to the 413 path.
+    batches, cur = [], []
+    for p in pending:
+        trial = cur + [p]
+        user = json.dumps({"items": [verify_item(q, i) for i, q in enumerate(trial)]},
+                          ensure_ascii=False)
+        if cur and (len(trial) > VERIFY_BATCH
+                    or estimate_tokens(VERIFY_SYSTEM, user) > MODEL_MAX_REQUEST_TOKENS):
+            batches.append(cur)
+            cur = [p]
+        else:
+            cur = trial
+    if cur:
+        batches.append(cur)
+
+    for batch in batches:
+        items = [verify_item(p, i) for i, p in enumerate(batch)]
         user = json.dumps({"items": items}, ensure_ascii=False)
         verdicts_by_model = {}
         for m in VERIFY_MODELS:
