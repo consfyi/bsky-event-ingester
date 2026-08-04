@@ -1,11 +1,11 @@
 # keydates-worker
 
 Extracts convention key dates from con Bluesky posts and stages them as PRs
-against `consfyi/data`, using **GitHub Models** (free tier, `models: read`
-PAT — no card, paid usage is opt-in-only) for extraction + verification.
+against `consfyi/data`, using an **OpenAI-compatible model provider** (Groq by
+default, free tier — swappable via `MODEL_BASE_URL`) for extraction + verification.
 
-Pipeline: gpt-4.1-mini extract (hardened exclusion prompt) → gpt-4.1 AND
-gpt-4o adversarial verify, **unanimity required** → validated merge guardrails
+Pipeline: gpt-oss-20b extract (hardened exclusion prompt) → gpt-oss-120b AND
+gpt-oss-20b adversarial verify, **unanimity required** → validated merge guardrails
 (confidence ≥ 0.8, never overwrite curated values, recency-wins, same-date
 re-announcements skipped pre-verify, rejections file, previous-edition
 timestamp gate) → rolling PR on `bot/bsky-keydates`.
@@ -19,28 +19,32 @@ show/creator apps, sub-group volunteer calls, soft closes, wrong edition).
 
 ```sh
 # one con, no writes, ~3 model calls
-GITHUB_TOKEN=$(gh auth token) DRY_RUN=1 DATA_DIR=./data \
+MODEL_API_KEY=$GROQ_API_KEY DRY_RUN=1 DATA_DIR=./data \
   python3 keydates_worker.py --series anthrocon
 
 # full sweep, writes files but never pushes (PUSH unset)
-GITHUB_TOKEN=$(gh auth token) DATA_DIR=./data \
+MODEL_API_KEY=$GROQ_API_KEY DATA_DIR=./data \
   python3 keydates_worker.py --sweep
 ```
 
-Quota (free tier, per model per day): extract ~150, verify ~50 each. A full
-77-con sweep fits in one day; `--shard 1/2` / `--shard 2/2` splits it across
-two cron days. `MAX_EXTRACTS` guards runaway usage.
+Provider is swappable via `MODEL_BASE_URL` (default
+`https://api.groq.com/openai/v1`); any OpenAI-compatible endpoint exposing
+`/chat/completions` and `/models` works. Groq's free tier is token-per-minute
+limited (8000 TPM for gpt-oss); the worker budgets each request against
+`MODEL_MAX_REQUEST_TOKENS` (default 7000) and paces calls against `MODEL_TPM`
+(default 8000). `--shard 1/2` / `--shard 2/2` splits a full sweep across two
+cron days, and `MAX_EXTRACTS` guards runaway usage.
 
 ## Droplet deployment
 
 1. Clone `consfyi/data` somewhere the `fbl` user can write, e.g.
    `~/consfyi/data-worktree` (this is the worker's staging checkout).
-2. Create two fine-grained PATs (Sparky's account, ≤1yr, set rotation
-   reminders):
-   - **models PAT** — account permission "Models: read" only → `GITHUB_TOKEN`
-   - **repo PAT** — `consfyi/data` only, Contents + Pull requests write →
-     used by `git push` / `gh pr create` (configure via `gh auth login` or a
-     credential helper for the checkout)
+2. Provision two credentials (set rotation reminders):
+   - **model API key** — a Groq API key (or any OpenAI-compatible provider's
+     key) → `MODEL_API_KEY`. Override `MODEL_BASE_URL` to switch providers.
+   - **repo PAT** — fine-grained PAT (Sparky's account, ≤1yr), `consfyi/data`
+     only, Contents + Pull requests write → used by `git push` / `gh pr create`
+     (configure via `gh auth login` or a credential helper for the checkout)
 3. Two wrapper scripts, both chmod 700 (executable, owner-only) / owned by the
    worker user; the token files they read stay chmod 600. They share the same
    env block and differ only in the final `exec` line.
@@ -49,7 +53,7 @@ two cron days. `MAX_EXTRACTS` guards runaway usage.
    file; handles one real-time post:
    ```sh
    #!/bin/sh
-   export GITHUB_TOKEN=$(cat /home/fbl/.keydates-models-token)
+   export MODEL_API_KEY=$(cat /home/fbl/.keydates-model-key)
    export DATA_DIR=/home/fbl/consfyi/data-worktree
    export PUSH=1
    exec python3 /home/fbl/consfyi/keydates-worker/keydates_worker.py --post-file "$1"
@@ -61,7 +65,7 @@ two cron days. `MAX_EXTRACTS` guards runaway usage.
    log-only.
    ```sh
    #!/bin/sh
-   export GITHUB_TOKEN=$(cat /home/fbl/.keydates-models-token)
+   export MODEL_API_KEY=$(cat /home/fbl/.keydates-model-key)
    export DATA_DIR=/home/fbl/consfyi/data-worktree
    export PUSH=1
    # page the ops Telegram bot (same bot as the labeler health monitor) when a

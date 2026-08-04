@@ -5,6 +5,7 @@ Run: python3 -m unittest discover -s keydates-worker
 """
 import copy
 import datetime
+import io
 import json
 import os
 import sys
@@ -1069,6 +1070,165 @@ class OpensRecencyTest(unittest.TestCase):
         changes = kw.merge(con, [self._newer("2999-07-24", ("testcon-2999", "registration", "closes"))])
         self.assertEqual(len(changes), 1)
         self.assertEqual(self._date(con, "registration", "closes"), "2999-07-24")
+
+
+class ChatClientTest(unittest.TestCase):
+    """CON-34: chat() posts to the configured (swappable) provider endpoint with
+    the API key as a Bearer token and a real User-Agent."""
+
+    def test_posts_to_configured_provider_with_auth_and_ua(self):
+        captured = {}
+        body = {"choices": [{"message": {"content": json.dumps({"dates": []})}}]}
+
+        def fake_urlopen(req, timeout=None):
+            captured["req"] = req
+            return io.BytesIO(json.dumps(body).encode())
+
+        with unittest.mock.patch.object(kw, "MODEL_API_KEY", "secret-key"), \
+             unittest.mock.patch.object(kw, "MODEL_CHAT_URL",
+                                        "https://api.example/v1/chat/completions"), \
+             unittest.mock.patch.object(kw, "token_pace", lambda *a, **k: 0.0), \
+             unittest.mock.patch.object(kw.urllib.request, "urlopen", fake_urlopen):
+            out = kw.chat("openai/gpt-oss-20b", "sys", "usr", kw.EXTRACT_SCHEMA, "keydates")
+        self.assertEqual(out, {"dates": []})
+        req = captured["req"]
+        self.assertEqual(req.full_url, "https://api.example/v1/chat/completions")
+        self.assertEqual(req.get_method(), "POST")
+        # urllib capitalizes header keys: Authorization / User-agent
+        self.assertEqual(req.headers["Authorization"], "Bearer secret-key")
+        self.assertTrue(req.headers["User-agent"])  # a non-empty UA (Groq WAF needs it)
+        self.assertEqual(json.loads(req.data)["model"], "openai/gpt-oss-20b")
+
+    def test_missing_api_key_raises_systemexit(self):
+        with unittest.mock.patch.object(kw, "MODEL_API_KEY", ""):
+            with self.assertRaises(SystemExit):
+                kw.chat("m", "s", "u", kw.EXTRACT_SCHEMA, "keydates")
+
+
+class CatalogCheckTest(unittest.TestCase):
+    """CON-34: catalog_check() GETs <base>/models (OpenAI {"data":[{"id"}]} shape)
+    and fails fast when a configured model is absent."""
+
+    def _urlopen(self, ids):
+        captured = {}
+
+        def fake(req, timeout=None):
+            captured["req"] = req
+            return io.BytesIO(json.dumps({"data": [{"id": i} for i in ids]}).encode())
+
+        return fake, captured
+
+    def test_gets_models_endpoint_and_passes_when_present(self):
+        fake, captured = self._urlopen(["openai/gpt-oss-20b", "openai/gpt-oss-120b"])
+        with unittest.mock.patch.object(kw, "MODEL_API_KEY", "k"), \
+             unittest.mock.patch.object(kw, "MODEL_CATALOG_URL", "https://api.example/v1/models"), \
+             unittest.mock.patch.object(kw, "EXTRACT_MODEL", "openai/gpt-oss-20b"), \
+             unittest.mock.patch.object(kw, "VERIFY_MODELS", ["openai/gpt-oss-120b"]), \
+             unittest.mock.patch.object(kw.urllib.request, "urlopen", fake):
+            kw.catalog_check()  # must not raise
+        self.assertEqual(captured["req"].full_url, "https://api.example/v1/models")
+        self.assertEqual(captured["req"].get_method(), "GET")
+
+    def test_raises_when_configured_model_missing(self):
+        fake, _ = self._urlopen(["openai/gpt-oss-20b"])  # 120b absent
+        with unittest.mock.patch.object(kw, "MODEL_API_KEY", "k"), \
+             unittest.mock.patch.object(kw, "EXTRACT_MODEL", "openai/gpt-oss-20b"), \
+             unittest.mock.patch.object(kw, "VERIFY_MODELS", ["openai/gpt-oss-120b"]), \
+             unittest.mock.patch.object(kw.urllib.request, "urlopen", fake):
+            with self.assertRaises(SystemExit):
+                kw.catalog_check()
+
+
+class TrimmingTest(unittest.TestCase):
+    """CON-34: extract_for_con trims the payload so the ESTIMATED whole-request
+    size (system prompt + payload) stays under MODEL_MAX_REQUEST_TOKENS, keeping
+    at least one post."""
+
+    def test_over_budget_con_trimmed_under_request_budget(self):
+        # many long posts: their JSON alone dwarfs the request-token budget
+        posts = [{"asOf": f"2999-01-{i:02d}T00:00:00Z",
+                  "text": "registration opens " + "x" * 4000,
+                  "url": f"https://bsky.app/profile/x/post/3p{i:02d}"}
+                 for i in range(1, 40)]
+        events = [{"id": "e", "name": "E", "startDate": "2999-01-01", "endDate": "2999-02-01"}]
+        con = {"name": "Testcon"}
+        captured = {}
+
+        def fake_chat(model, system, user, schema, name):
+            captured["user"] = user
+            return {"dates": []}
+
+        with unittest.mock.patch.object(kw, "chat", side_effect=fake_chat):
+            kw.extract_for_con(con, events, posts)
+        user = captured["user"]
+        est = kw.estimate_tokens(kw.EXTRACT_SYSTEM, user)
+        self.assertLessEqual(est, kw.MODEL_MAX_REQUEST_TOKENS)
+        sent = json.loads(user)["posts"]
+        self.assertGreaterEqual(len(sent), 1)          # never trims below one post
+        self.assertLess(len(sent), len(posts))         # trimming actually occurred
+
+    def test_single_oversized_post_kept(self):
+        # one post larger than the whole budget must still be sent (can't drop it)
+        posts = [{"asOf": "2999-01-01T00:00:00Z",
+                  "text": "x" * (kw.MODEL_MAX_REQUEST_TOKENS * 8),
+                  "url": "https://bsky.app/profile/x/post/3big"}]
+        events = [{"id": "e", "name": "E", "startDate": "2999-01-01", "endDate": "2999-02-01"}]
+        captured = {}
+
+        def fake_chat(model, system, user, schema, name):
+            captured["user"] = user
+            return {"dates": []}
+
+        with unittest.mock.patch.object(kw, "chat", side_effect=fake_chat):
+            kw.extract_for_con({"name": "T"}, events, posts)
+        self.assertEqual(len(json.loads(captured["user"])["posts"]), 1)
+
+
+class TokenPaceTest(unittest.TestCase):
+    """CON-34: the rolling-60s token limiter sleeps before a call that would
+    push a model's per-minute token use over MODEL_TPM, with an injected clock
+    so the decision is tested without real waiting."""
+
+    def setUp(self):
+        kw._token_window.clear()
+        self.addCleanup(kw._token_window.clear)
+
+    def test_under_budget_does_not_wait(self):
+        clock = {"t": 1000.0}
+        slept = []
+        with unittest.mock.patch.object(kw, "MODEL_TPM", 8000):
+            # two calls of 3000 tokens = 6000 in the window, under 8000
+            kw.token_pace("m", 3000, now=lambda: clock["t"], sleep=lambda s: slept.append(s))
+            got = kw.token_pace("m", 3000, now=lambda: clock["t"], sleep=lambda s: slept.append(s))
+        self.assertEqual(slept, [])
+        self.assertEqual(got, 0.0)
+
+    def test_over_budget_waits(self):
+        clock = {"t": 1000.0}
+        slept = []
+        with unittest.mock.patch.object(kw, "MODEL_TPM", 8000):
+            # first 6000, then a 3000 call would reach 9000 > 8000 -> must wait
+            kw.token_pace("m", 6000, now=lambda: clock["t"], sleep=lambda s: slept.append(s))
+            got = kw.token_pace("m", 3000, now=lambda: clock["t"], sleep=lambda s: slept.append(s))
+        self.assertEqual(len(slept), 1)
+        self.assertGreater(got, 0.0)
+
+    def test_window_ages_out_after_60s(self):
+        slept = []
+        with unittest.mock.patch.object(kw, "MODEL_TPM", 8000):
+            kw.token_pace("m", 6000, now=lambda: 1000.0, sleep=lambda s: slept.append(s))
+            # 61s later the earlier sample has aged out; a fresh 6000 fits again
+            got = kw.token_pace("m", 6000, now=lambda: 1061.0, sleep=lambda s: slept.append(s))
+        self.assertEqual(slept, [])
+        self.assertEqual(got, 0.0)
+
+    def test_per_model_windows_are_independent(self):
+        slept = []
+        with unittest.mock.patch.object(kw, "MODEL_TPM", 8000):
+            kw.token_pace("a", 7000, now=lambda: 1000.0, sleep=lambda s: slept.append(s))
+            got = kw.token_pace("b", 7000, now=lambda: 1000.0, sleep=lambda s: slept.append(s))
+        self.assertEqual(slept, [])  # model b has its own empty window
+        self.assertEqual(got, 0.0)
 
 
 if __name__ == "__main__":
