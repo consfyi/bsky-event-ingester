@@ -1310,6 +1310,63 @@ class ChatErrorTest(unittest.TestCase):
         self.assertEqual(out, {"dates": []})
         self.assertEqual(calls["n"], 2)
 
+    def test_retry_after_nonfinite_or_negative_falls_back_and_retries(self):
+        # F1: "inf" overflows int(float(...)) (OverflowError) and "-5" would reach
+        # time.sleep(-5); both must fall back to the 60s retry, not crash chat().
+        body = {"choices": [{"message": {"content": json.dumps({"dates": []})}}]}
+        for header in ("inf", "1e400", "-5"):
+            with self.subTest(retry_after=header):
+                calls = {"n": 0}
+                slept = []
+
+                def fake(req, timeout=None):
+                    calls["n"] += 1
+                    if calls["n"] == 1:
+                        raise kw.urllib.error.HTTPError(
+                            req.full_url, 429, "slow",
+                            {"Retry-After": header}, io.BytesIO(b""))
+                    return io.BytesIO(json.dumps(body).encode())
+
+                with unittest.mock.patch.object(kw, "MODEL_API_KEY", "k"), \
+                     unittest.mock.patch.object(kw, "token_pace", lambda *a, **k: 0.0), \
+                     unittest.mock.patch.object(kw.time, "sleep", lambda s: slept.append(s)), \
+                     unittest.mock.patch.object(kw.urllib.request, "urlopen", fake):
+                    out = kw.chat("m", "s", "u", kw.EXTRACT_SCHEMA, "keydates")
+                self.assertEqual(out, {"dates": []})
+                self.assertEqual(calls["n"], 2)
+                self.assertEqual(slept, [60])  # sane fallback, never negative
+
+
+class BudgetInvariantTest(unittest.TestCase):
+    """M1/F2: the default token budget reserves the output allowance so a whole
+    request (input estimate + output) stays under the per-minute TPM cap."""
+
+    def test_default_budget_reserves_output(self):
+        # if someone reverts the derivation to a payload-only bound, this fails
+        self.assertLessEqual(
+            kw.MODEL_MAX_REQUEST_TOKENS + kw.MODEL_MAX_OUTPUT_TOKENS, kw.MODEL_TPM)
+
+    def test_chat_paces_on_input_plus_output(self):
+        # spy on the tokens arg chat() hands token_pace: it must include the
+        # output allowance, not just the prompt estimate (M1 output reservation)
+        seen = {}
+        body = {"choices": [{"message": {"content": json.dumps({"dates": []})}}]}
+
+        def spy(model, tokens, *a, **k):
+            seen["tokens"] = tokens
+            return 0.0
+
+        def fake(req, timeout=None):
+            return io.BytesIO(json.dumps(body).encode())
+
+        with unittest.mock.patch.object(kw, "MODEL_API_KEY", "k"), \
+             unittest.mock.patch.object(kw, "token_pace", spy), \
+             unittest.mock.patch.object(kw.urllib.request, "urlopen", fake):
+            kw.chat("m", "sys", "user", kw.EXTRACT_SCHEMA, "keydates")
+        self.assertEqual(
+            seen["tokens"],
+            kw.estimate_tokens("sys", "user") + kw.MODEL_MAX_OUTPUT_TOKENS)
+
 
 class VerifyBatchBudgetTest(unittest.TestCase):
     """M2: verify_proposals splits a large batch so each request stays under the

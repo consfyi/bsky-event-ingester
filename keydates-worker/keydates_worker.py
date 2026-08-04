@@ -333,10 +333,14 @@ def chat(model: str, system: str, user: str, schema: dict, schema_name: str):
             if e.code == 429:
                 # Retry-After is RFC-legal as an int, a fractional value, or an
                 # HTTP-date; parse defensively (base URL is swappable) — fall back
-                # to 60s on anything float() can't take, before the daily-cap check
+                # to 60s on anything float() can't take, before the daily-cap check.
+                # int(float("inf"))/"1e400" raise OverflowError, and a negative value
+                # would reach time.sleep(-n); clamp both back to the 60s fallback.
                 try:
                     retry_after = int(float(e.headers.get("Retry-After") or "60"))
-                except ValueError:
+                    if retry_after < 0:
+                        retry_after = 60
+                except (ValueError, OverflowError):
                     retry_after = 60
                 if retry_after > 300:
                     raise DailyCapHit(model)
