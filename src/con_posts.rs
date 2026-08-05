@@ -109,6 +109,10 @@ pub async fn service(
 ) -> Result<(), anyhow::Error> {
     std::fs::create_dir_all(&options.spool_dir)?;
 
+    // reprocess anything a prior run left behind on a non-zero worker exit
+    // (CON-35): retained spool files are retries, drained once on startup.
+    drain_spool(&options, std::time::Duration::from_secs(7 * 24 * 3600)).await;
+
     let mut cursor = read_cursor(db_pool).await?;
     let mut fire_state = FireState {
         last_fired: std::collections::HashMap::new(),
@@ -318,27 +322,204 @@ fn handle_post(
             Ok(mut child) => {
                 let series = series.clone();
                 tokio::spawn(async move {
-                    match child.wait().await {
-                        Ok(status) => {
-                            log::info!("con_posts: worker for {series} exited: {status}");
-                            if status.success() {
-                                // processed: reclaim the spool file so the dir
-                                // doesn't grow forever
-                                if let Err(e) = tokio::fs::remove_file(&path).await {
-                                    log::warn!(
-                                        "con_posts: could not remove spool file {}: {e}",
-                                        path.display()
-                                    );
-                                }
-                            }
-                        }
-                        Err(e) => log::error!("con_posts: worker for {series} failed: {e}"),
-                    }
+                    reap_worker(&series, &path, child.wait().await).await;
                 });
             }
             Err(e) => {
                 log::error!("con_posts: failed to spawn worker for {series}: {e}");
             }
         }
+    }
+}
+
+/// Log a finished worker's exit and reclaim its spool file only on success.
+///
+/// A NON-ZERO exit is logged at warn (not info) and the spool file is RETAINED:
+/// the worker signals a wholesale backend/extraction outage that way (CON-35),
+/// and the old unconditional exit-0 delete lost 4 days of spooled posts during a
+/// silent provider outage. A retained file is reprocessed by `drain_spool` on the
+/// next ingester start, once the backend has recovered.
+async fn reap_worker(
+    series: &str,
+    path: &std::path::Path,
+    wait: Result<std::process::ExitStatus, std::io::Error>,
+) {
+    match wait {
+        Ok(status) if status.success() => {
+            log::info!("con_posts: worker for {series} exited: {status}");
+            if let Err(e) = tokio::fs::remove_file(path).await {
+                log::warn!(
+                    "con_posts: could not remove spool file {}: {e}",
+                    path.display()
+                );
+            }
+        }
+        Ok(status) => {
+            log::warn!(
+                "con_posts: worker for {series} exited non-zero ({status}); retaining spool file {} for retry",
+                path.display()
+            );
+        }
+        Err(e) => log::error!("con_posts: worker for {series} failed: {e}"),
+    }
+}
+
+/// Series id embedded in a spool filename (`{time_us}-{series}.json`), for logs.
+fn spool_series(path: &std::path::Path) -> String {
+    path.file_stem()
+        .and_then(|stem| stem.to_str())
+        .and_then(|stem| stem.split_once('-').map(|(_, series)| series.to_string()))
+        .unwrap_or_else(|| "unknown".to_string())
+}
+
+/// On startup, reprocess spool files left behind by prior non-zero worker exits
+/// (CON-35): the realtime path only removes a file on a successful exit, so
+/// anything still on disk is a retry. Run the worker on each once, sequentially.
+///
+/// Safety bound: a file whose mtime is older than `max_age` is skipped (and left
+/// in place), so a permanently-failing entry can't be reprocessed on every
+/// restart forever.
+async fn drain_spool(options: &Options, max_age: std::time::Duration) {
+    let Some(cmd) = &options.worker_cmd else {
+        return;
+    };
+    let mut dir = match tokio::fs::read_dir(&options.spool_dir).await {
+        Ok(dir) => dir,
+        Err(e) => {
+            log::error!("con_posts: could not scan spool dir for drain: {e}");
+            return;
+        }
+    };
+    let mut paths = Vec::new();
+    while let Ok(Some(entry)) = dir.next_entry().await {
+        let path = entry.path();
+        if path.extension().and_then(|ext| ext.to_str()) == Some("json") {
+            paths.push(path);
+        }
+    }
+    paths.sort(); // deterministic, oldest time_us first
+
+    for path in paths {
+        let series = spool_series(&path);
+        let too_old = tokio::fs::metadata(&path)
+            .await
+            .and_then(|m| m.modified())
+            .ok()
+            .and_then(|modified| modified.elapsed().ok())
+            .is_some_and(|age| age > max_age);
+        if too_old {
+            log::warn!(
+                "con_posts: spool file {} older than {}s, skipping drain",
+                path.display(),
+                max_age.as_secs()
+            );
+            continue;
+        }
+        let mut parts = cmd.split_whitespace();
+        let Some(program) = parts.next() else {
+            return;
+        };
+        let mut command = tokio::process::Command::new(program);
+        command.args(parts).arg(&path);
+        log::info!("con_posts: draining leftover spool file {}", path.display());
+        match command.spawn() {
+            Ok(mut child) => reap_worker(&series, &path, child.wait().await).await,
+            Err(e) => log::error!("con_posts: failed to spawn drain worker for {series}: {e}"),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // unique scratch dir without pulling in a tempfile dev-dependency
+    fn scratch_dir() -> std::path::PathBuf {
+        static N: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+        let n = N.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let dir = std::env::temp_dir().join(format!(
+            "con_posts_drain_test_{}_{n}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    fn drain_opts(dir: &std::path::Path, cmd: &str) -> Options {
+        Options {
+            spool_dir: dir.to_path_buf(),
+            worker_cmd: Some(cmd.to_string()),
+            debounce: std::time::Duration::ZERO,
+            daily_cap: 0,
+            commit_cursor_every: std::time::Duration::ZERO,
+        }
+    }
+
+    #[test]
+    fn spool_series_parses_filename() {
+        assert_eq!(
+            spool_series(std::path::Path::new("/spool/12345-anthrocon.json")),
+            "anthrocon"
+        );
+        // extra hyphens belong to the series slug, not the time_us prefix
+        assert_eq!(
+            spool_series(std::path::Path::new("/spool/99-further-confusion.json")),
+            "further-confusion"
+        );
+    }
+
+    #[tokio::test]
+    async fn drain_reprocesses_and_reclaims_leftover_on_success() {
+        let dir = scratch_dir();
+        let spool = dir.join("123-testcon.json");
+        std::fs::write(&spool, b"{}").unwrap();
+        // `true` exits 0 -> the leftover file is reprocessed and reclaimed
+        drain_spool(&drain_opts(&dir, "true"), std::time::Duration::from_secs(3600)).await;
+        assert!(
+            !spool.exists(),
+            "a successfully-drained spool file must be reclaimed"
+        );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[tokio::test]
+    async fn drain_retains_leftover_on_nonzero_exit() {
+        let dir = scratch_dir();
+        let spool = dir.join("123-testcon.json");
+        std::fs::write(&spool, b"{}").unwrap();
+        // `false` exits 1 -> retained for the next start's drain (no data loss)
+        drain_spool(&drain_opts(&dir, "false"), std::time::Duration::from_secs(3600)).await;
+        assert!(
+            spool.exists(),
+            "a non-zero worker exit must retain the spool file for retry"
+        );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[tokio::test]
+    async fn drain_skips_files_past_age_bound() {
+        let dir = scratch_dir();
+        let spool = dir.join("123-testcon.json");
+        std::fs::write(&spool, b"{}").unwrap();
+        // max_age 0: the just-written file is already "too old" -> the worker
+        // (which would delete it on success) must never run, so it survives
+        drain_spool(&drain_opts(&dir, "true"), std::time::Duration::ZERO).await;
+        assert!(
+            spool.exists(),
+            "a file past the age bound must be skipped, not reprocessed forever"
+        );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[tokio::test]
+    async fn drain_ignores_non_json_and_missing_dir() {
+        let dir = scratch_dir();
+        std::fs::write(dir.join("notes.txt"), b"x").unwrap();
+        // non-.json entries are left untouched...
+        drain_spool(&drain_opts(&dir, "false"), std::time::Duration::from_secs(3600)).await;
+        assert!(dir.join("notes.txt").exists());
+        std::fs::remove_dir_all(&dir).ok();
+        // ...and a missing spool dir is a clean no-op, not a panic
+        drain_spool(&drain_opts(&dir, "true"), std::time::Duration::from_secs(3600)).await;
     }
 }
