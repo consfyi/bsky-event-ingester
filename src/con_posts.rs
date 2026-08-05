@@ -426,7 +426,11 @@ async fn periodic_drain(
 /// worker on a file a realtime `handle_post` worker is still processing (which
 /// would race `remove_file` and log a false outage); the upper bound stops a
 /// permanently-failing entry from being reprocessed on every pass forever.
-async fn drain_spool(options: &Options, min_age: std::time::Duration, max_age: std::time::Duration) {
+async fn drain_spool(
+    options: &Options,
+    min_age: std::time::Duration,
+    max_age: std::time::Duration,
+) {
     let Some(cmd) = &options.worker_cmd else {
         return;
     };
@@ -500,10 +504,8 @@ mod tests {
     fn scratch_dir() -> std::path::PathBuf {
         static N: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
         let n = N.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        let dir = std::env::temp_dir().join(format!(
-            "con_posts_drain_test_{}_{n}",
-            std::process::id()
-        ));
+        let dir =
+            std::env::temp_dir().join(format!("con_posts_drain_test_{}_{n}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         dir
     }
