@@ -30,9 +30,10 @@ MODEL_API_KEY=$GROQ_API_KEY DATA_DIR=./data \
 Provider is swappable via `MODEL_BASE_URL` (default
 `https://api.groq.com/openai/v1`); any OpenAI-compatible endpoint exposing
 `/chat/completions` and `/models` works. Groq's free tier is token-per-minute
-limited (8000 TPM for gpt-oss); the worker budgets each request against
-`MODEL_MAX_REQUEST_TOKENS` (default 7000) and paces calls against `MODEL_TPM`
-(default 8000). `--shard 1/2` / `--shard 2/2` splits a full sweep across two
+limited (8000 TPM for gpt-oss); the worker budgets each request's INPUT against
+`MODEL_MAX_REQUEST_TOKENS` (default derived as `(MODEL_TPM - MODEL_MAX_OUTPUT_TOKENS)/1.15`
+≈ 4347 — reserving the output allowance so input+output stays under TPM) and paces
+calls against `MODEL_TPM` (default 8000). `--shard 1/2` / `--shard 2/2` splits a full sweep across two
 cron days, and `MAX_EXTRACTS` guards runaway usage.
 
 ## Droplet deployment

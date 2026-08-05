@@ -78,8 +78,9 @@ MODEL_CATALOG_URL = f"{MODEL_BASE_URL}/models"
 MODEL_API_KEY = os.environ.get("MODEL_API_KEY") or os.environ.get("GROQ_API_KEY", "")
 # strict json_schema structured output is Groq-supported only on gpt-oss models,
 # so keep BOTH extract and verify on gpt-oss (see CON-34)
-EXTRACT_MODEL = os.environ.get("EXTRACT_MODEL", "openai/gpt-oss-20b")
-VERIFY_MODELS = os.environ.get("VERIFY_MODELS", "openai/gpt-oss-120b,openai/gpt-oss-20b").split(",")
+EXTRACT_MODEL = os.environ.get("EXTRACT_MODEL", "openai/gpt-oss-20b").strip()
+VERIFY_MODELS = [m.strip() for m in os.environ.get(
+    "VERIFY_MODELS", "openai/gpt-oss-120b,openai/gpt-oss-20b").split(",") if m.strip()]
 DATA_DIR = os.path.abspath(os.environ.get("DATA_DIR", "."))
 DRY_RUN = os.environ.get("DRY_RUN") == "1"
 PUSH = os.environ.get("PUSH") == "1"

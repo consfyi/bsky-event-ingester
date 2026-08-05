@@ -1319,7 +1319,7 @@ class ChatErrorTest(unittest.TestCase):
                 calls = {"n": 0}
                 slept = []
 
-                def fake(req, timeout=None):
+                def fake(req, timeout=None, calls=calls, header=header):
                     calls["n"] += 1
                     if calls["n"] == 1:
                         raise kw.urllib.error.HTTPError(
@@ -1329,7 +1329,7 @@ class ChatErrorTest(unittest.TestCase):
 
                 with unittest.mock.patch.object(kw, "MODEL_API_KEY", "k"), \
                      unittest.mock.patch.object(kw, "token_pace", lambda *a, **k: 0.0), \
-                     unittest.mock.patch.object(kw.time, "sleep", lambda s: slept.append(s)), \
+                     unittest.mock.patch.object(kw.time, "sleep", lambda s, slept=slept: slept.append(s)), \
                      unittest.mock.patch.object(kw.urllib.request, "urlopen", fake):
                     out = kw.chat("m", "s", "u", kw.EXTRACT_SCHEMA, "keydates")
                 self.assertEqual(out, {"dates": []})
