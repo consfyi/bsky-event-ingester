@@ -109,9 +109,21 @@ pub async fn service(
 ) -> Result<(), anyhow::Error> {
     std::fs::create_dir_all(&options.spool_dir)?;
 
-    // reprocess anything a prior run left behind on a non-zero worker exit
-    // (CON-35): retained spool files are retries, drained once on startup.
-    drain_spool(&options, std::time::Duration::from_secs(7 * 24 * 3600)).await;
+    // Shared so the periodic drain task can read spool_dir/worker_cmd alongside
+    // the firehose loop below.
+    let options = std::sync::Arc::new(options);
+
+    // Reprocess spool files left behind by prior non-zero worker exits (CON-35).
+    // Run as a PERIODIC background task, NOT a blocking startup drain: a file
+    // retained during an outage is retried automatically once the backend
+    // recovers, with no operator restart, and the drain never delays firehose
+    // resume past the jetstream cursor backfill window. The 7-day age bound
+    // survives as a backstop for a genuinely-stuck file.
+    tokio::spawn(periodic_drain(
+        options.clone(),
+        std::time::Duration::from_secs(600),
+        std::time::Duration::from_secs(7 * 24 * 3600),
+    ));
 
     let mut cursor = read_cursor(db_pool).await?;
     let mut fire_state = FireState {
@@ -372,9 +384,25 @@ fn spool_series(path: &std::path::Path) -> String {
         .unwrap_or_else(|| "unknown".to_string())
 }
 
-/// On startup, reprocess spool files left behind by prior non-zero worker exits
-/// (CON-35): the realtime path only removes a file on a successful exit, so
-/// anything still on disk is a retry. Run the worker on each once, sequentially.
+/// Re-drain the spool on a fixed interval, forever. The first tick fires
+/// immediately, so this subsumes the old startup drain while keeping it off the
+/// firehose critical path. Each pass is sequential (`drain_spool`); passes never
+/// overlap because we `await` one before ticking again.
+async fn periodic_drain(
+    options: std::sync::Arc<Options>,
+    every: std::time::Duration,
+    max_age: std::time::Duration,
+) {
+    let mut interval = tokio::time::interval(every);
+    loop {
+        interval.tick().await;
+        drain_spool(&options, max_age).await;
+    }
+}
+
+/// Reprocess spool files left behind by prior non-zero worker exits (CON-35):
+/// the realtime path only removes a file on a successful exit, so anything still
+/// on disk is a retry. Run the worker on each once, sequentially.
 ///
 /// Safety bound: a file whose mtime is older than `max_age` is skipped (and left
 /// in place), so a permanently-failing entry can't be reprocessed on every
@@ -507,6 +535,35 @@ mod tests {
         assert!(
             spool.exists(),
             "a file past the age bound must be skipped, not reprocessed forever"
+        );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[tokio::test]
+    async fn periodic_drain_retries_file_that_appears_after_start() {
+        let dir = scratch_dir();
+        // Start the periodic drainer on an empty dir; a fast interval so the
+        // test doesn't wait 10 minutes. First tick fires immediately.
+        let opts = std::sync::Arc::new(drain_opts(&dir, "true"));
+        let task = tokio::spawn(periodic_drain(
+            opts,
+            std::time::Duration::from_millis(20),
+            std::time::Duration::from_secs(3600),
+        ));
+        // A file spooled *after* the drainer started (i.e. after "recovery")
+        // must be picked up on a later pass without any restart.
+        let spool = dir.join("123-testcon.json");
+        std::fs::write(&spool, b"{}").unwrap();
+        for _ in 0..50 {
+            if !spool.exists() {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        }
+        task.abort();
+        assert!(
+            !spool.exists(),
+            "periodic drain must retry a file that appears after start, no restart needed"
         );
         std::fs::remove_dir_all(&dir).ok();
     }

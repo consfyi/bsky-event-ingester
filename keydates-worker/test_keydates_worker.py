@@ -601,6 +601,48 @@ class PruneOutstandingTest(unittest.TestCase):
         self.assertEqual(kw.load_outstanding(), {kw.outstanding_key(e): e})
 
 
+class LoadOutstandingCorruptTest(unittest.TestCase):
+    """CON-35 M2: a corrupt outstanding.json must reset to {} but page ops first,
+    so the silent drop of every applied-but-unmerged change reaches a human."""
+
+    def test_corrupt_ledger_resets_and_pages_ops(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        path = os.path.join(tmp.name, "outstanding.json")
+        with open(path, "w") as f:
+            f.write("{not valid json")
+        with unittest.mock.patch.object(kw, "OUTSTANDING_FILE", path), \
+             unittest.mock.patch.object(kw, "ops_notify") as notify:
+            result = kw.load_outstanding()
+        self.assertEqual(result, {})
+        notify.assert_called_once()
+        self.assertIn("outstanding ledger", notify.call_args[0][0])
+        self.assertIn("corrupt", notify.call_args[0][0])
+
+
+class PublishFailureTest(unittest.TestCase):
+    """CON-35 M3: when the PR push/update fails, the changes are committed to the
+    bot branch locally but never reached the PR — publish() must page ops once
+    and re-raise so the run's exit code reflects the failure."""
+
+    def test_pr_push_failure_pages_ops_and_reraises(self):
+        # git("status") reports one changed con file so publish proceeds to push;
+        # git("push", ...) then raises CalledProcessError
+        def fake_git(*args, check=True):
+            if args[0] == "status":
+                return unittest.mock.Mock(stdout=" M con-a.json\n")
+            if args[0] == "push":
+                raise kw.subprocess.CalledProcessError(1, ["git", "push"])
+            return unittest.mock.Mock(stdout="")
+        with unittest.mock.patch.object(kw, "git", side_effect=fake_git), \
+             unittest.mock.patch.object(kw, "ops_notify") as notify, \
+             unittest.mock.patch.object(kw, "DATA_DIR", "/tmp/data"):
+            with self.assertRaises(kw.subprocess.CalledProcessError):
+                kw.publish("summary body")
+        notify.assert_called_once()
+        self.assertIn("publishing the bot PR failed", notify.call_args[0][0])
+
+
 class ProcessConPinningTest(unittest.TestCase):
     def test_process_con_pins_posts_and_dedupes_spool_twin(self):
         # ingestion-time pinning: a handle-form feed post is normalized to DID
@@ -759,11 +801,37 @@ class MainSmokeTest(unittest.TestCase):
              unittest.mock.patch.object(
                  kw, "check_source_liveness", return_value=([removal], [], [], [], [])), \
              unittest.mock.patch.object(kw, "publish") as publish, \
+             unittest.mock.patch.object(kw, "ops_notify") as notify, \
              unittest.mock.patch.object(kw.subprocess, "run", return_value=bad):
             kw.main()
         publish.assert_not_called()  # format.py exited 1 — nothing may be pushed
+        # N1: the format failure must page ops, not just log
+        self.assertTrue(any("format.py failed" in c.args[0] for c in notify.call_args_list))
         with open(self.summary_file) as f:
             self.assertIn("Source post deleted", f.read())
+
+    def test_format_timeout_withholds_publish_and_pages_ops(self):
+        # N1: format.py hanging (TimeoutExpired -> rc="timeout") is a failure too —
+        # publish must be withheld and ops paged, same as a non-zero exit
+        removal = {"event_id": "testcon-2999", "category": "panels", "kind": "opens",
+                   "date": "2999-01-01", "source": entry("3aaa")["source"],
+                   "asOf": "2998-12-01T00:00:00.000Z", "_file": "con-a.json"}
+        # only format.py hangs; git and everything else still return cleanly
+        def run(cmd, *a, **k):
+            if any("format.py" in str(arg) for arg in cmd):
+                raise kw.subprocess.TimeoutExpired(cmd, 300)
+            return unittest.mock.Mock(returncode=0, stdout="")
+        with unittest.mock.patch.object(
+                 kw, "process_con", return_value=([], [], [], [], True)), \
+             unittest.mock.patch.object(
+                 kw, "check_source_liveness", return_value=([removal], [], [], [], [])), \
+             unittest.mock.patch.object(kw, "publish") as publish, \
+             unittest.mock.patch.object(kw, "ops_notify") as notify, \
+             unittest.mock.patch.object(kw.subprocess, "run", side_effect=run):
+            kw.main()
+        publish.assert_not_called()  # format hung — nothing may be pushed
+        self.assertTrue(any("format.py failed (timeout)" in c.args[0]
+                            for c in notify.call_args_list))
 
     def test_unextracted_con_excluded_from_liveness(self):
         # finding 2: a con whose extraction pass didn't run this sweep (e.g. its
@@ -1553,8 +1621,14 @@ class WholesaleVerdictTest(unittest.TestCase):
                 unittest.mock.patch.object(kw, "catalog_check", lambda: None),
                 unittest.mock.patch.object(kw, "OPS_TELEGRAM_BOT_TOKEN", "tok"),
                 unittest.mock.patch.object(kw, "OPS_TELEGRAM_CHAT_ID", "-1"),
-                unittest.mock.patch.object(kw, "reset_run_health",
-                                           lambda: kw._run_health.update(**health)),
+                # zero every field first (tests share the process-wide
+                # _run_health), then apply only the keys this case names
+                unittest.mock.patch.object(
+                    kw, "reset_run_health",
+                    lambda: (kw._run_health.update(
+                                 attempted=0, succeeded=0, backend_failures=0,
+                                 appview_failures=0),
+                             kw._run_health.update(**health))),
                 unittest.mock.patch.object(kw, "process_con",
                                            return_value=([], [], [], [], True)),
                 unittest.mock.patch.object(kw, "check_source_liveness",
@@ -1584,11 +1658,24 @@ class WholesaleVerdictTest(unittest.TestCase):
         self.assertEqual(code, 1)
         notify.assert_called_once()
 
-    def test_sweep_zero_attempts_exits_nonzero(self):
-        # silent appview outage: appget swallows errors, every con skipped -> 0 attempts
-        code, _ = self._run(["kw", "--sweep"],
-                            {"attempted": 0, "succeeded": 0, "backend_failures": 0})
+    def test_sweep_appview_down_exits_nonzero(self):
+        # appview unreachable: appget exhausted its retries on every con, so no
+        # chat() call ran (attempted==0) but appview_failures>0 marks the outage
+        code, notify = self._run(
+            ["kw", "--sweep"],
+            {"attempted": 0, "succeeded": 0, "backend_failures": 0, "appview_failures": 2})
         self.assertEqual(code, 1)
+        notify.assert_called_once()
+
+    def test_quiet_sweep_no_relevant_posts_exits_zero(self):
+        # S1: a shard where cons simply had no RELEVANT posts reaches no chat()
+        # call (attempted==0) with a HEALTHY appview (appview_failures==0). This
+        # is a genuinely quiet run, not an outage — it must NOT page and exit 0.
+        code, notify = self._run(
+            ["kw", "--sweep"],
+            {"attempted": 0, "succeeded": 0, "backend_failures": 0, "appview_failures": 0})
+        self.assertIsNone(code)
+        notify.assert_not_called()
 
     def test_quiet_week_all_empty_exits_zero(self):
         # every con extracted successfully and returned {"dates": []} — NOT an outage
@@ -1610,6 +1697,77 @@ class WholesaleVerdictTest(unittest.TestCase):
                                  {"attempted": 1, "succeeded": 0, "backend_failures": 1})
         self.assertEqual(code, 1)
         notify.assert_called_once()
+
+
+class SweepShortCircuitTest(unittest.TestCase):
+    """CON-35 S2: on a total backend outage a --sweep must bail after a few
+    BackendUnavailable signals instead of grinding every con through its retries,
+    so the end-of-run verdict pages in minutes, not hours."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.data_dir = os.path.join(self.tmp.name, "data")
+        os.makedirs(self.data_dir)
+        # more cons than the failure limit, so a full grind would call every one
+        for i in range(8):
+            with open(os.path.join(self.data_dir, f"con-{i}.json"), "w") as f:
+                json.dump({"events": []}, f)
+        self.state = os.path.join(self.tmp.name, "state")
+
+    def _run(self, backend_down):
+        import contextlib
+        notify = unittest.mock.Mock()
+
+        def pc(*a, **k):
+            # each con's extraction hits the down backend
+            if backend_down:
+                kw._run_health["backend_failures"] += 1
+            return ([], [], [], [], True)
+
+        with contextlib.ExitStack() as stack:
+            for p in [
+                unittest.mock.patch.object(kw, "DATA_DIR", self.data_dir),
+                unittest.mock.patch.object(kw, "CACHE_FILE", os.path.join(self.state, "verdict_cache.json")),
+                unittest.mock.patch.object(kw, "OUTSTANDING_FILE", os.path.join(self.state, "outstanding.json")),
+                unittest.mock.patch.object(kw, "DEAD_PENDING_FILE", os.path.join(self.state, "dead_pending.json")),
+                unittest.mock.patch.object(kw, "REJECTIONS_FILE", os.path.join(self.state, "no_rej.json")),
+                unittest.mock.patch.object(kw, "PUSH", False),
+                unittest.mock.patch.object(kw, "DRY_RUN", False),
+                unittest.mock.patch.object(kw, "SWEEP_BACKEND_FAILURE_LIMIT", 3),
+                unittest.mock.patch.object(kw, "catalog_check", lambda: None),
+                unittest.mock.patch.object(kw, "OPS_TELEGRAM_BOT_TOKEN", "tok"),
+                unittest.mock.patch.object(kw, "OPS_TELEGRAM_CHAT_ID", "-1"),
+                unittest.mock.patch.object(kw, "reset_run_health",
+                                           lambda: kw._run_health.update(
+                                               attempted=0, succeeded=0,
+                                               backend_failures=0, appview_failures=0)),
+                unittest.mock.patch.object(kw, "process_con", side_effect=pc),
+                unittest.mock.patch.object(kw, "check_source_liveness",
+                                           return_value=([], [], [], [], [])),
+                unittest.mock.patch.object(kw, "ops_notify", notify),
+                unittest.mock.patch.object(sys, "argv", ["kw", "--sweep"]),
+            ]:
+                stack.enter_context(p)
+            code = None
+            try:
+                kw.main()
+            except SystemExit as e:
+                code = e.code
+            return code, notify, kw.process_con.call_count
+
+    def test_sweep_bails_after_threshold_when_backend_down(self):
+        code, notify, calls = self._run(backend_down=True)
+        # limit is 3: break fires once backend_failures reaches 3, so only ~3 of
+        # the 8 cons are processed rather than all of them
+        self.assertEqual(calls, 3)
+        self.assertEqual(code, 1)  # end-of-run verdict pages + exits non-zero
+        notify.assert_called_once()
+
+    def test_healthy_sweep_processes_every_con(self):
+        # sanity: with the backend up, the short-circuit never trips
+        code, notify, calls = self._run(backend_down=False)
+        self.assertEqual(calls, 8)
 
 
 class SweepFailFastTest(unittest.TestCase):

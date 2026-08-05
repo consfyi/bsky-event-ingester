@@ -85,6 +85,9 @@ DATA_DIR = os.path.abspath(os.environ.get("DATA_DIR", "."))
 DRY_RUN = os.environ.get("DRY_RUN") == "1"
 PUSH = os.environ.get("PUSH") == "1"
 MAX_EXTRACTS = int(os.environ.get("MAX_EXTRACTS", "120"))
+# S2: abort a --sweep after this many BackendUnavailable signals so a total
+# outage pages in minutes, not after grinding every con through its retries.
+SWEEP_BACKEND_FAILURE_LIMIT = int(os.environ.get("SWEEP_BACKEND_FAILURE_LIMIT", "3"))
 CACHE_FILE = os.environ.get("CACHE_FILE", os.path.expanduser("~/.cache/keydates-worker/verdict_cache.json"))
 # dedicated ops Telegram bot, shared with the labeler health monitor (CON-10);
 # both unset degrades to log-only, exactly like the monitor workflow (CON-18)
@@ -282,11 +285,14 @@ class BackendUnavailable(Exception):
 #   succeeded        — chat() calls that returned a dict, INCLUDING a valid empty
 #                      {"dates": []} (a genuinely quiet week is NOT an outage)
 #   backend_failures — chat() calls that raised BackendUnavailable
-_run_health = {"attempted": 0, "succeeded": 0, "backend_failures": 0}
+#   appview_failures — appget() calls that exhausted every retry (appview down);
+#                      lets the verdict tell "appview unreachable" apart from a
+#                      genuinely quiet shard where cons simply had no relevant posts
+_run_health = {"attempted": 0, "succeeded": 0, "backend_failures": 0, "appview_failures": 0}
 
 
 def reset_run_health():
-    _run_health.update(attempted=0, succeeded=0, backend_failures=0)
+    _run_health.update(attempted=0, succeeded=0, backend_failures=0, appview_failures=0)
 
 
 def estimate_tokens(*texts):
@@ -450,6 +456,9 @@ def appget(method, params):
                 return json.load(r)
         except Exception:
             time.sleep(1.0)
+    # every retry exhausted: the appview is unreachable, not just quiet. Record it
+    # so the end-of-run verdict can page on an appview outage (S1).
+    _run_health["appview_failures"] += 1
     return {}
 
 
@@ -1513,6 +1522,15 @@ def main():
         all_rejected += rejected
         if changes or refuted or held:
             log(f"{base}: +{len(changes)} applied, {len(refuted)} refuted, {len(held)} held")
+        # S2: on a total backend outage, grinding through every con (4 retries ×
+        # sleeps + up to 120s timeout each) delays the end-of-run page by tens of
+        # minutes to hours. Once the backend is clearly down, stop the sweep — the
+        # verdict below then pages + exits non-zero immediately. --sweep only;
+        # realtime is a single post and must never short-circuit.
+        if args.sweep and _run_health["backend_failures"] >= SWEEP_BACKEND_FAILURE_LIMIT:
+            log(f"backend down ({_run_health['backend_failures']} failures) — "
+                "aborting sweep early; end-of-run verdict will page")
+            break
 
     if PUSH and not DRY_RUN:
         all_changes += reapply_outstanding(all_changes, rejections)
@@ -1609,16 +1627,24 @@ def main():
     # CON-35 wholesale-failure verdict (cache/state/summary/publish are already
     # persisted above, so exiting now loses nothing). Fire ONCE and exit non-zero
     # when EITHER (a) any BackendUnavailable was seen this run, OR (b) a --sweep
-    # with targets made zero successful backend calls (a silent appview outage
-    # skips every con -> attempted==0; a backend outage gives attempted>0,
-    # succeeded==0). A valid empty extraction counts as a success, so a quiet week
-    # does NOT fire; and a lone realtime malformed post (None, no BackendUnavailable)
-    # does NOT fire — realtime must still exit 0 so con_posts.rs reclaims its spool
-    # file. Non-zero exit is what makes con_posts.rs RETAIN the spool file (F),
-    # stopping the silent-deletion data loss, and lets the drainer retry it later.
+    # with targets made zero successful backend calls AND that zero is explained
+    # by a real outage — either the model backend was reached and failed
+    # (attempted>0) or the appview was unreachable (appview_failures>0). A --sweep
+    # shard where cons simply had no RELEVANT posts reaches no chat() call at all
+    # (attempted==0) with a HEALTHY appview (appview_failures==0), so it is a
+    # genuinely quiet run and must NOT page (S1). A valid empty extraction counts
+    # as a success, so a quiet week does NOT fire; and a lone realtime malformed
+    # post (None, no BackendUnavailable) does NOT fire — realtime must still exit 0
+    # so con_posts.rs reclaims its spool file. Non-zero exit is what makes
+    # con_posts.rs RETAIN the spool file (F), stopping the silent-deletion data
+    # loss, and lets the drainer retry it later.
     backend_failures = _run_health["backend_failures"]
+    appview_failures = _run_health["appview_failures"]
+    succeeded = _run_health["succeeded"]
+    attempted = _run_health["attempted"]
     wholesale_failure = backend_failures > 0 or (
-        args.sweep and len(targets) > 0 and _run_health["succeeded"] == 0)
+        args.sweep and len(targets) > 0 and succeeded == 0
+        and (attempted > 0 or appview_failures > 0))
     if wholesale_failure:
         ops_notify(
             "🚨 keydates: wholesale backend failure this run — "

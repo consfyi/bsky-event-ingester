@@ -36,6 +36,10 @@ limited (8000 TPM for gpt-oss); the worker budgets each request's INPUT against
 calls against `MODEL_TPM` (default 8000). `--shard 1/2` / `--shard 2/2` splits a full sweep across two
 cron days, and `MAX_EXTRACTS` guards runaway usage.
 
+`MODEL_BASE_URL` is a key-bearing endpoint: every request to it sends
+`Authorization: Bearer $MODEL_API_KEY`. Point it only at a trusted provider —
+an attacker-controlled URL would receive the API key.
+
 ## Droplet deployment
 
 Runs as the `fbl` service user alongside the ingester. The worker ships inside the
