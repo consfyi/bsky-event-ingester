@@ -1522,6 +1522,7 @@ def main():
     processed = []  # files that got a full pass this run (liveness only checks these)
     extracts = 0
     skipped_note = ""
+    daily_cap_hit = False
     for fn, provided, extra_post in targets:
         if not os.path.exists(fn):
             log(f"missing: {fn}")
@@ -1534,6 +1535,7 @@ def main():
                 fn, cache, rejections, provided, extra_post)
         except DailyCapHit as e:
             skipped_note = f"Daily quota hit on {e}; remaining cons pick up next run."
+            daily_cap_hit = True
             break
         except Exception as e:
             # one corrupt con file or feed hiccup must not kill the sweep
@@ -1683,8 +1685,13 @@ def main():
     # threshold — otherwise a single-con shard under a total appview outage
     # (appview_failures==1) would exit 0 silently. The >=2 arm still covers the
     # partial/quiet multi-con shard (one blip < len(targets) doesn't page).
+    # A benign daily-quota exhaustion (DailyCapHit) can leave attempted>0 with
+    # zero successes on a --sweep; that is already handled via skipped_note and
+    # must NOT trip the sweep zero-success arm (false ops page / alarm fatigue).
+    # backend_failures>0 still pages even if a cap was also hit — a real outage
+    # is never masked by a cap.
     wholesale_failure = backend_failures > 0 or (
-        args.sweep and len(targets) > 0 and succeeded == 0
+        args.sweep and len(targets) > 0 and succeeded == 0 and not daily_cap_hit
         and (attempted > 0 or appview_failures >= 2
              or appview_failures == len(targets)))
     if wholesale_failure:

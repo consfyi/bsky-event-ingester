@@ -1659,9 +1659,12 @@ class WholesaleVerdictTest(unittest.TestCase):
             json.dump({"series": "con-a", "url": "u",
                        "asOf": "2999-01-01T00:00:00Z", "text": "t"}, f)
 
-    def _run(self, argv, health):
+    def _run(self, argv, health, process_con_side_effect=None):
         import contextlib
         notify = unittest.mock.Mock()
+        process_con_kwargs = ({"side_effect": process_con_side_effect}
+                              if process_con_side_effect is not None
+                              else {"return_value": ([], [], [], [], True)})
         with contextlib.ExitStack() as stack:
             for p in [
                 unittest.mock.patch.object(kw, "DATA_DIR", self.data_dir),
@@ -1683,7 +1686,7 @@ class WholesaleVerdictTest(unittest.TestCase):
                                  appview_failures=0),
                              kw._run_health.update(**health))),
                 unittest.mock.patch.object(kw, "process_con",
-                                           return_value=([], [], [], [], True)),
+                                           **process_con_kwargs),
                 unittest.mock.patch.object(kw, "check_source_liveness",
                                            return_value=([], [], [], [], [])),
                 unittest.mock.patch.object(kw, "ops_notify", notify),
@@ -1776,6 +1779,30 @@ class WholesaleVerdictTest(unittest.TestCase):
             {"attempted": 0, "succeeded": 0, "backend_failures": 0, "appview_failures": 1})
         self.assertEqual(code, 1)
         notify.assert_called_once()
+
+    def test_sweep_daily_cap_hit_on_first_con_exits_zero(self):
+        # Benign daily-quota exhaustion: the FIRST extract raises DailyCapHit
+        # (chat() has already bumped attempted to 1 before raising, succeeded==0),
+        # the sweep sets daily_cap_hit and breaks. This is ordinary recurring
+        # quota exhaustion handled via skipped_note — it must NOT fire the
+        # wholesale-failure ops page and must exit 0.
+        code, notify = self._run(
+            ["kw", "--sweep"],
+            {"attempted": 1, "succeeded": 0, "backend_failures": 0},
+            process_con_side_effect=kw.DailyCapHit("openai/gpt-oss-20b"))
+        self.assertIsNone(code)
+        notify.assert_not_called()
+
+    def test_sweep_backend_outage_still_pages_when_cap_also_hit(self):
+        # A genuine backend outage (backend_failures>0) must still page even if a
+        # DailyCapHit also occurred — the cap must not mask a real outage.
+        code, notify = self._run(
+            ["kw", "--sweep"],
+            {"attempted": 1, "succeeded": 0, "backend_failures": 1},
+            process_con_side_effect=kw.DailyCapHit("openai/gpt-oss-20b"))
+        self.assertEqual(code, 1)
+        notify.assert_called_once()
+        self.assertIn("wholesale backend failure", notify.call_args[0][0])
 
     def test_realtime_backend_failure_page_rate_limited(self):
         # F3: two realtime backend-failure runs within the cooldown page ONCE,
