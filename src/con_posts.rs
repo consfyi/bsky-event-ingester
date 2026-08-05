@@ -122,6 +122,10 @@ pub async fn service(
     tokio::spawn(periodic_drain(
         options.clone(),
         std::time::Duration::from_secs(600),
+        // min_age: a file must survive one full drain cycle before it's
+        // eligible, so a realtime handle_post worker still processing it isn't
+        // double-spawned (which would race remove_file and log a false outage).
+        std::time::Duration::from_secs(600),
         std::time::Duration::from_secs(7 * 24 * 3600),
     ));
 
@@ -324,12 +328,9 @@ fn handle_post(
     );
 
     if let Some(cmd) = &options.worker_cmd {
-        let mut parts = cmd.split_whitespace();
-        let Some(program) = parts.next() else {
+        let Some(mut command) = build_worker_command(cmd, &path) else {
             return;
         };
-        let mut command = tokio::process::Command::new(program);
-        command.args(parts).arg(&path);
         match command.spawn() {
             Ok(mut child) => {
                 let series = series.clone();
@@ -342,6 +343,17 @@ fn handle_post(
             }
         }
     }
+}
+
+/// Build the worker process command for a spooled file: split the configured
+/// `worker_cmd` into program + args and append the spool path. Returns None if
+/// the command string is empty. Shared by the realtime and drain spawn paths.
+fn build_worker_command(cmd: &str, path: &std::path::Path) -> Option<tokio::process::Command> {
+    let mut parts = cmd.split_whitespace();
+    let program = parts.next()?;
+    let mut command = tokio::process::Command::new(program);
+    command.args(parts).arg(path);
+    Some(command)
 }
 
 /// Log a finished worker's exit and reclaim its spool file only on success.
@@ -391,12 +403,13 @@ fn spool_series(path: &std::path::Path) -> String {
 async fn periodic_drain(
     options: std::sync::Arc<Options>,
     every: std::time::Duration,
+    min_age: std::time::Duration,
     max_age: std::time::Duration,
 ) {
     let mut interval = tokio::time::interval(every);
     loop {
         interval.tick().await;
-        drain_spool(&options, max_age).await;
+        drain_spool(&options, min_age, max_age).await;
     }
 }
 
@@ -404,10 +417,12 @@ async fn periodic_drain(
 /// the realtime path only removes a file on a successful exit, so anything still
 /// on disk is a retry. Run the worker on each once, sequentially.
 ///
-/// Safety bound: a file whose mtime is older than `max_age` is skipped (and left
-/// in place), so a permanently-failing entry can't be reprocessed on every
-/// restart forever.
-async fn drain_spool(options: &Options, max_age: std::time::Duration) {
+/// Age bounds: a file is only drained when its mtime age is `> min_age AND
+/// <= max_age`. The lower bound keeps the periodic drain from double-spawning a
+/// worker on a file a realtime `handle_post` worker is still processing (which
+/// would race `remove_file` and log a false outage); the upper bound stops a
+/// permanently-failing entry from being reprocessed on every pass forever.
+async fn drain_spool(options: &Options, min_age: std::time::Duration, max_age: std::time::Duration) {
     let Some(cmd) = &options.worker_cmd else {
         return;
     };
@@ -429,13 +444,20 @@ async fn drain_spool(options: &Options, max_age: std::time::Duration) {
 
     for path in paths {
         let series = spool_series(&path);
-        let too_old = tokio::fs::metadata(&path)
+        let age = tokio::fs::metadata(&path)
             .await
             .and_then(|m| m.modified())
             .ok()
-            .and_then(|modified| modified.elapsed().ok())
-            .is_some_and(|age| age > max_age);
-        if too_old {
+            .and_then(|modified| modified.elapsed().ok());
+        if age.is_some_and(|age| age <= min_age) {
+            log::info!(
+                "con_posts: spool file {} younger than {}s, skipping drain (may be in-flight)",
+                path.display(),
+                min_age.as_secs()
+            );
+            continue;
+        }
+        if age.is_some_and(|age| age > max_age) {
             log::warn!(
                 "con_posts: spool file {} older than {}s, skipping drain",
                 path.display(),
@@ -443,12 +465,9 @@ async fn drain_spool(options: &Options, max_age: std::time::Duration) {
             );
             continue;
         }
-        let mut parts = cmd.split_whitespace();
-        let Some(program) = parts.next() else {
+        let Some(mut command) = build_worker_command(cmd, &path) else {
             return;
         };
-        let mut command = tokio::process::Command::new(program);
-        command.args(parts).arg(&path);
         log::info!("con_posts: draining leftover spool file {}", path.display());
         match command.spawn() {
             Ok(mut child) => reap_worker(&series, &path, child.wait().await).await,
@@ -501,8 +520,15 @@ mod tests {
         let dir = scratch_dir();
         let spool = dir.join("123-testcon.json");
         std::fs::write(&spool, b"{}").unwrap();
-        // `true` exits 0 -> the leftover file is reprocessed and reclaimed
-        drain_spool(&drain_opts(&dir, "true"), std::time::Duration::from_secs(3600)).await;
+        // `true` exits 0 -> the leftover file is reprocessed and reclaimed.
+        // min_age ZERO: a fresh file is older than min_age and younger than
+        // max_age, so it lands in the eligible band and IS drained.
+        drain_spool(
+            &drain_opts(&dir, "true"),
+            std::time::Duration::ZERO,
+            std::time::Duration::from_secs(3600),
+        )
+        .await;
         assert!(
             !spool.exists(),
             "a successfully-drained spool file must be reclaimed"
@@ -516,7 +542,12 @@ mod tests {
         let spool = dir.join("123-testcon.json");
         std::fs::write(&spool, b"{}").unwrap();
         // `false` exits 1 -> retained for the next start's drain (no data loss)
-        drain_spool(&drain_opts(&dir, "false"), std::time::Duration::from_secs(3600)).await;
+        drain_spool(
+            &drain_opts(&dir, "false"),
+            std::time::Duration::ZERO,
+            std::time::Duration::from_secs(3600),
+        )
+        .await;
         assert!(
             spool.exists(),
             "a non-zero worker exit must retain the spool file for retry"
@@ -531,10 +562,36 @@ mod tests {
         std::fs::write(&spool, b"{}").unwrap();
         // max_age 0: the just-written file is already "too old" -> the worker
         // (which would delete it on success) must never run, so it survives
-        drain_spool(&drain_opts(&dir, "true"), std::time::Duration::ZERO).await;
+        drain_spool(
+            &drain_opts(&dir, "true"),
+            std::time::Duration::ZERO,
+            std::time::Duration::ZERO,
+        )
+        .await;
         assert!(
             spool.exists(),
             "a file past the age bound must be skipped, not reprocessed forever"
+        );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[tokio::test]
+    async fn drain_skips_files_below_min_age() {
+        let dir = scratch_dir();
+        let spool = dir.join("123-testcon.json");
+        std::fs::write(&spool, b"{}").unwrap();
+        // min_age high: a just-written file may still be in-flight in a realtime
+        // handle_post worker, so the periodic drain must NOT reprocess (and
+        // delete) it yet -- doing so would double-spawn and log a false outage.
+        drain_spool(
+            &drain_opts(&dir, "true"),
+            std::time::Duration::from_secs(600),
+            std::time::Duration::from_secs(3600),
+        )
+        .await;
+        assert!(
+            spool.exists(),
+            "a file younger than min_age must be skipped (may be in-flight)"
         );
         std::fs::remove_dir_all(&dir).ok();
     }
@@ -548,6 +605,7 @@ mod tests {
         let task = tokio::spawn(periodic_drain(
             opts,
             std::time::Duration::from_millis(20),
+            std::time::Duration::ZERO,
             std::time::Duration::from_secs(3600),
         ));
         // A file spooled *after* the drainer started (i.e. after "recovery")
@@ -573,10 +631,20 @@ mod tests {
         let dir = scratch_dir();
         std::fs::write(dir.join("notes.txt"), b"x").unwrap();
         // non-.json entries are left untouched...
-        drain_spool(&drain_opts(&dir, "false"), std::time::Duration::from_secs(3600)).await;
+        drain_spool(
+            &drain_opts(&dir, "false"),
+            std::time::Duration::ZERO,
+            std::time::Duration::from_secs(3600),
+        )
+        .await;
         assert!(dir.join("notes.txt").exists());
         std::fs::remove_dir_all(&dir).ok();
         // ...and a missing spool dir is a clean no-op, not a panic
-        drain_spool(&drain_opts(&dir, "true"), std::time::Duration::from_secs(3600)).await;
+        drain_spool(
+            &drain_opts(&dir, "true"),
+            std::time::Duration::ZERO,
+            std::time::Duration::from_secs(3600),
+        )
+        .await;
     }
 }

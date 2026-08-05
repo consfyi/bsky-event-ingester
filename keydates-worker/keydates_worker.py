@@ -393,7 +393,10 @@ def chat(model: str, system: str, user: str, schema: dict, schema_name: str):
                 # so this should be rare — log it loudly rather than swallow it silently.
                 log(f"  413 request too large on {model} (TPM cap): {e.read()[:200]!r}")
                 return None
-            if e.code == 400 and attempt == 0:
+            if e.code == 400:
+                # a 400 is a request the backend rejects, not a backend outage —
+                # treat it as "no result" on ANY attempt, so a persistent 400 after
+                # a transient first attempt isn't misclassified as BackendUnavailable.
                 log(f"  400 on {model}: {e.read()[:200]!r}")
                 return None
             if attempt == 3:
@@ -1629,10 +1632,11 @@ def main():
     # when EITHER (a) any BackendUnavailable was seen this run, OR (b) a --sweep
     # with targets made zero successful backend calls AND that zero is explained
     # by a real outage — either the model backend was reached and failed
-    # (attempted>0) or the appview was unreachable (appview_failures>0). A --sweep
-    # shard where cons simply had no RELEVANT posts reaches no chat() call at all
-    # (attempted==0) with a HEALTHY appview (appview_failures==0), so it is a
-    # genuinely quiet run and must NOT page (S1). A valid empty extraction counts
+    # (attempted>0) or the appview was unreachable on >=2 fetches
+    # (appview_failures>=2, so one transient blip on an all-quiet shard doesn't
+    # false-page). A --sweep shard where cons simply had no RELEVANT posts reaches
+    # no chat() call at all (attempted==0) with a HEALTHY appview
+    # (appview_failures==0), so it is a genuinely quiet run and must NOT page (S1). A valid empty extraction counts
     # as a success, so a quiet week does NOT fire; and a lone realtime malformed
     # post (None, no BackendUnavailable) does NOT fire — realtime must still exit 0
     # so con_posts.rs reclaims its spool file. Non-zero exit is what makes
@@ -1644,7 +1648,7 @@ def main():
     attempted = _run_health["attempted"]
     wholesale_failure = backend_failures > 0 or (
         args.sweep and len(targets) > 0 and succeeded == 0
-        and (attempted > 0 or appview_failures > 0))
+        and (attempted > 0 or appview_failures >= 2))
     if wholesale_failure:
         ops_notify(
             "🚨 keydates: wholesale backend failure this run — "

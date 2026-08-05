@@ -1568,6 +1568,26 @@ class BackendUnavailableTest(unittest.TestCase):
         self.assertEqual(kw._run_health["succeeded"], 0)
         self.assertEqual(kw._run_health["attempted"], 1)
 
+    def test_persistent_400_after_transient_returns_none_not_backend_failure(self):
+        # N2: a 400 on a LATER attempt (after a transient 5xx blip) is still a
+        # rejected request, not a backend outage — it must return None on ANY
+        # attempt, not survive to attempt 3 and be raised as BackendUnavailable.
+        calls = {"n": 0}
+
+        def fake(req, timeout=None):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                raise kw.urllib.error.HTTPError(req.full_url, 503, "err", {}, io.BytesIO(b"body"))
+            raise kw.urllib.error.HTTPError(req.full_url, 400, "err", {}, io.BytesIO(b"body"))
+
+        with unittest.mock.patch.object(kw, "MODEL_API_KEY", "k"), \
+             unittest.mock.patch.object(kw, "token_pace", lambda *a, **k: 0.0), \
+             unittest.mock.patch.object(kw.time, "sleep", lambda s: None), \
+             unittest.mock.patch.object(kw.urllib.request, "urlopen", fake):
+            self.assertIsNone(kw.chat("m", "s", "u", kw.EXTRACT_SCHEMA, "keydates"))
+        self.assertEqual(kw._run_health["backend_failures"], 0)
+        self.assertEqual(calls["n"], 2)
+
     def test_malformed_output_returns_none_not_backend_failure(self):
         with unittest.mock.patch.object(kw, "MODEL_API_KEY", "k"), \
              unittest.mock.patch.object(kw, "token_pace", lambda *a, **k: 0.0), \
@@ -1585,6 +1605,35 @@ class BackendUnavailableTest(unittest.TestCase):
         self.assertEqual(out, {"dates": []})
         self.assertEqual(kw._run_health["succeeded"], 1)
         self.assertEqual(kw._run_health["backend_failures"], 0)
+
+
+class AppgetFailureTest(unittest.TestCase):
+    """M2: appget() records an appview_failures signal when every retry is
+    exhausted, so the end-of-run verdict can page on an appview outage (S1)."""
+
+    def setUp(self):
+        kw.reset_run_health()
+        self.addCleanup(kw.reset_run_health)
+
+    def test_exhausted_retries_returns_empty_and_marks_failure(self):
+        def fake(req, timeout=None):
+            raise kw.urllib.error.URLError("connection refused")
+        with unittest.mock.patch.object(kw.time, "sleep", lambda s: None), \
+             unittest.mock.patch.object(kw.urllib.request, "urlopen", fake):
+            out = kw.appget("app.bsky.feed.getAuthorFeed", {"actor": "did:x"})
+        self.assertEqual(out, {})
+        self.assertEqual(kw._run_health["appview_failures"], 1)
+
+    def test_exhausted_retries_on_httperror_marks_failure(self):
+        # HTTPError is a URLError subclass but appget catches broadly; a 5xx on
+        # every attempt is still an exhausted-retry appview failure.
+        def fake(req, timeout=None):
+            raise kw.urllib.error.HTTPError(req.full_url, 502, "err", {}, io.BytesIO(b"body"))
+        with unittest.mock.patch.object(kw.time, "sleep", lambda s: None), \
+             unittest.mock.patch.object(kw.urllib.request, "urlopen", fake):
+            out = kw.appget("app.bsky.feed.getAuthorFeed", {"actor": "did:x"})
+        self.assertEqual(out, {})
+        self.assertEqual(kw._run_health["appview_failures"], 1)
 
 
 class WholesaleVerdictTest(unittest.TestCase):
@@ -1659,13 +1708,24 @@ class WholesaleVerdictTest(unittest.TestCase):
         notify.assert_called_once()
 
     def test_sweep_appview_down_exits_nonzero(self):
-        # appview unreachable: appget exhausted its retries on every con, so no
-        # chat() call ran (attempted==0) but appview_failures>0 marks the outage
+        # appview unreachable: appget exhausted its retries on multiple cons, so
+        # no chat() call ran (attempted==0) but appview_failures>=2 marks the
+        # outage (N1: >=2, so a lone blip on a quiet shard doesn't false-page)
         code, notify = self._run(
             ["kw", "--sweep"],
             {"attempted": 0, "succeeded": 0, "backend_failures": 0, "appview_failures": 2})
         self.assertEqual(code, 1)
         notify.assert_called_once()
+
+    def test_quiet_sweep_single_appview_blip_exits_zero(self):
+        # N1: one transient appview failure on an all-quiet shard (no chat() call,
+        # nothing else failed) is a blip, not an outage — it must NOT page and
+        # exit 0. appview_failures must reach >=2 for the appview arm to fire.
+        code, notify = self._run(
+            ["kw", "--sweep"],
+            {"attempted": 0, "succeeded": 0, "backend_failures": 0, "appview_failures": 1})
+        self.assertIsNone(code)
+        notify.assert_not_called()
 
     def test_quiet_sweep_no_relevant_posts_exits_zero(self):
         # S1: a shard where cons simply had no RELEVANT posts reaches no chat()
