@@ -122,10 +122,14 @@ pub async fn service(
     tokio::spawn(periodic_drain(
         options.clone(),
         std::time::Duration::from_secs(600),
-        // min_age: a file must survive one full drain cycle before it's
-        // eligible, so a realtime handle_post worker still processing it isn't
-        // double-spawned (which would race remove_file and log a false outage).
-        std::time::Duration::from_secs(600),
+        // min_age: a file must age past the worst-case realtime worker runtime
+        // before it's eligible, so a handle_post worker still processing it
+        // isn't double-spawned (which would race remove_file and log a false
+        // outage). A rate-limited worker can sleep ~300s per 429 across
+        // attempts/models, exceeding 600s, so hold at 1800s (30 min) —
+        // comfortably above worst case. The 600s drain interval means a
+        // genuinely-retained outage file is still retried within ~30 min.
+        std::time::Duration::from_secs(1800),
         std::time::Duration::from_secs(7 * 24 * 3600),
     ));
 
@@ -449,7 +453,19 @@ async fn drain_spool(options: &Options, min_age: std::time::Duration, max_age: s
             .and_then(|m| m.modified())
             .ok()
             .and_then(|modified| modified.elapsed().ok());
-        if age.is_some_and(|age| age <= min_age) {
+        // Fail SAFE on an unknown age (metadata/mtime/elapsed error — the file
+        // was removed mid-scan by a just-finished realtime worker, or a
+        // backward clock jump): treat it as INELIGIBLE and skip, rather than
+        // draining it and either spawning a worker on a missing path or
+        // draining a genuinely-fresh in-flight file (CON-35).
+        let Some(age) = age else {
+            log::info!(
+                "con_posts: spool file {} age unknown, skipping drain (fail-safe)",
+                path.display()
+            );
+            continue;
+        };
+        if age <= min_age {
             log::info!(
                 "con_posts: spool file {} younger than {}s, skipping drain (may be in-flight)",
                 path.display(),
@@ -457,7 +473,7 @@ async fn drain_spool(options: &Options, min_age: std::time::Duration, max_age: s
             );
             continue;
         }
-        if age.is_some_and(|age| age > max_age) {
+        if age > max_age {
             log::warn!(
                 "con_posts: spool file {} older than {}s, skipping drain",
                 path.display(),
@@ -592,6 +608,28 @@ mod tests {
         assert!(
             spool.exists(),
             "a file younger than min_age must be skipped (may be in-flight)"
+        );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn drain_skips_file_with_unknown_age() {
+        // A broken symlink (target missing) makes metadata() error, so the age
+        // is None. Fail-safe: the worker (which would delete on success) must
+        // never run on it, so the dangling link survives untouched.
+        let dir = scratch_dir();
+        let link = dir.join("123-testcon.json");
+        std::os::unix::fs::symlink(dir.join("does-not-exist"), &link).unwrap();
+        drain_spool(
+            &drain_opts(&dir, "true"),
+            std::time::Duration::ZERO,
+            std::time::Duration::from_secs(3600),
+        )
+        .await;
+        assert!(
+            std::fs::symlink_metadata(&link).is_ok(),
+            "a spool file whose age can't be read must be skipped, not drained"
         );
         std::fs::remove_dir_all(&dir).ok();
     }

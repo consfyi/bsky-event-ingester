@@ -1647,8 +1647,12 @@ class WholesaleVerdictTest(unittest.TestCase):
         self.addCleanup(self.tmp.cleanup)
         self.data_dir = os.path.join(self.tmp.name, "data")
         os.makedirs(self.data_dir)
-        with open(os.path.join(self.data_dir, "con-a.json"), "w") as f:
-            json.dump({"events": []}, f)
+        # two cons so a --sweep has len(targets)==2: a single appview blip
+        # (appview_failures==1 < 2) is below the F4 full-outage line and must
+        # not page (the single-con full-outage case has its own test).
+        for slug in ("con-a", "con-b"):
+            with open(os.path.join(self.data_dir, slug + ".json"), "w") as f:
+                json.dump({"events": []}, f)
         self.state = os.path.join(self.tmp.name, "state")
         self.post_file = os.path.join(self.tmp.name, "post.json")
         with open(self.post_file, "w") as f:
@@ -1757,6 +1761,41 @@ class WholesaleVerdictTest(unittest.TestCase):
                                  {"attempted": 1, "succeeded": 0, "backend_failures": 1})
         self.assertEqual(code, 1)
         notify.assert_called_once()
+
+    def test_sweep_full_appview_outage_single_con_pages(self):
+        # F4: a --sweep whose shard holds exactly one con under a TOTAL appview
+        # outage (appview_failures==1 == len(targets)) is a full outage, not a
+        # blip — it must page and exit non-zero even below the >=2 threshold.
+        one_con = os.path.join(self.tmp.name, "one_con")
+        os.makedirs(one_con)
+        with open(os.path.join(one_con, "con-a.json"), "w") as f:
+            json.dump({"events": []}, f)
+        self.data_dir = one_con
+        code, notify = self._run(
+            ["kw", "--sweep"],
+            {"attempted": 0, "succeeded": 0, "backend_failures": 0, "appview_failures": 1})
+        self.assertEqual(code, 1)
+        notify.assert_called_once()
+
+    def test_realtime_backend_failure_page_rate_limited(self):
+        # F3: two realtime backend-failure runs within the cooldown page ONCE,
+        # but BOTH still exit non-zero so con_posts.rs retains each spool file.
+        with unittest.mock.patch.object(kw.time, "time", return_value=1000.0):
+            code1, n1 = self._run(["kw", "--post-file", self.post_file],
+                                  {"attempted": 1, "succeeded": 0, "backend_failures": 1})
+            code2, n2 = self._run(["kw", "--post-file", self.post_file],
+                                  {"attempted": 1, "succeeded": 0, "backend_failures": 1})
+        self.assertEqual(code1, 1)
+        self.assertEqual(code2, 1)
+        # a fresh Mock per _run; combined they page exactly once within the window
+        self.assertEqual(n1.call_count + n2.call_count, 1)
+        # once the cooldown elapses, a fresh outage pages again (still exit 1)
+        with unittest.mock.patch.object(
+                kw.time, "time", return_value=1000.0 + kw.REALTIME_PAGE_COOLDOWN + 1):
+            code3, n3 = self._run(["kw", "--post-file", self.post_file],
+                                  {"attempted": 1, "succeeded": 0, "backend_failures": 1})
+        self.assertEqual(code3, 1)
+        n3.assert_called_once()
 
 
 class SweepShortCircuitTest(unittest.TestCase):

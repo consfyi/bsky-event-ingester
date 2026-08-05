@@ -89,6 +89,13 @@ MAX_EXTRACTS = int(os.environ.get("MAX_EXTRACTS", "120"))
 # outage pages in minutes, not after grinding every con through its retries.
 SWEEP_BACKEND_FAILURE_LIMIT = int(os.environ.get("SWEEP_BACKEND_FAILURE_LIMIT", "3"))
 CACHE_FILE = os.environ.get("CACHE_FILE", os.path.expanduser("~/.cache/keydates-worker/verdict_cache.json"))
+# F3 (section-H): during a sustained backend outage con_posts.rs spawns one
+# realtime worker per spooled post, each reaching the wholesale verdict — a page
+# PER POST would flood the ops channel. Rate-limit the realtime page via a
+# cross-process timestamp file (near CACHE_FILE) so an outage pages ~once/hour
+# instead of once/post. Every run still exits non-zero so con_posts.rs retains
+# its spool file. The --sweep page stays unconditional (a sweep runs ~2x/day).
+REALTIME_PAGE_COOLDOWN = int(os.environ.get("REALTIME_PAGE_COOLDOWN", "3600"))
 # dedicated ops Telegram bot, shared with the labeler health monitor (CON-10);
 # both unset degrades to log-only, exactly like the monitor workflow (CON-18)
 OPS_TELEGRAM_BOT_TOKEN = os.environ.get("OPS_TELEGRAM_BOT_TOKEN", "")
@@ -1056,6 +1063,31 @@ def ops_notify(text):
         log(f"ops_notify: could not send ops alert: {e}")
 
 
+def realtime_page_on_cooldown(now):
+    """F3: True if a realtime backend-failure page was already sent within
+    REALTIME_PAGE_COOLDOWN, so the current one should be suppressed. When it
+    returns False (about to page), it records `now` as the last page time in a
+    stamp file beside CACHE_FILE, giving cross-process rate limiting across the
+    per-post workers con_posts.rs spawns during an outage. `now` is injected
+    (time.time()) so the cooldown is testable. Fails loud: any read error is
+    treated as not-on-cooldown so a genuine page is never silently dropped."""
+    path = os.path.join(os.path.dirname(CACHE_FILE), "realtime_page.stamp")
+    try:
+        with open(path) as f:
+            last = float(f.read().strip())
+        if now - last < REALTIME_PAGE_COOLDOWN:
+            return True
+    except (OSError, ValueError):
+        pass  # no stamp yet, or unreadable/corrupt -> page (fail loud)
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w") as f:
+            f.write(str(now))
+    except OSError as e:
+        log(f"realtime page cooldown: could not record stamp: {e}")
+    return False
+
+
 def extract_for_con(con, events, posts):
     # budget the WHOLE request against MODEL_MAX_REQUEST_TOKENS (which already
     # reserves the output allowance), not just the payload, so prompt+output fits
@@ -1646,15 +1678,26 @@ def main():
     appview_failures = _run_health["appview_failures"]
     succeeded = _run_health["succeeded"]
     attempted = _run_health["attempted"]
+    # F4: also treat a shard where EVERY target failed the appview as a full
+    # outage (appview_failures == len(targets)), independent of the >=2 blip
+    # threshold — otherwise a single-con shard under a total appview outage
+    # (appview_failures==1) would exit 0 silently. The >=2 arm still covers the
+    # partial/quiet multi-con shard (one blip < len(targets) doesn't page).
     wholesale_failure = backend_failures > 0 or (
         args.sweep and len(targets) > 0 and succeeded == 0
-        and (attempted > 0 or appview_failures >= 2))
+        and (attempted > 0 or appview_failures >= 2
+             or appview_failures == len(targets)))
     if wholesale_failure:
-        ops_notify(
-            "🚨 keydates: wholesale backend failure this run — "
-            f"{backend_failures} backend-down signal(s); "
-            f"{_run_health['succeeded']}/{_run_health['attempted']} model calls succeeded. "
-            "Exiting non-zero so no spooled post is deleted on a false success.")
+        # F3: the --sweep page is unconditional (runs ~2x/day, no flood risk); a
+        # realtime page is rate-limited so a sustained outage — one worker per
+        # spooled post — pages ~once/hour, not once/post. Either way we still
+        # exit non-zero below so con_posts.rs retains the spool file for retry.
+        if args.sweep or not realtime_page_on_cooldown(time.time()):
+            ops_notify(
+                "🚨 keydates: wholesale backend failure this run — "
+                f"{backend_failures} backend-down signal(s); "
+                f"{_run_health['succeeded']}/{_run_health['attempted']} model calls succeeded. "
+                "Exiting non-zero so no spooled post is deleted on a false success.")
         raise SystemExit(1)
 
 
