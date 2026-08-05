@@ -38,47 +38,38 @@ cron days, and `MAX_EXTRACTS` guards runaway usage.
 
 ## Droplet deployment
 
-1. Clone `consfyi/data` somewhere the `fbl` user can write, e.g.
-   `~/consfyi/data-worktree` (this is the worker's staging checkout).
-2. Provision two credentials (set rotation reminders):
-   - **model API key** — a Groq API key (or any OpenAI-compatible provider's
-     key) → `MODEL_API_KEY`. Override `MODEL_BASE_URL` to switch providers.
-   - **repo PAT** — fine-grained PAT (Sparky's account, ≤1yr), `consfyi/data`
-     only, Contents + Pull requests write → used by `git push` / `gh pr create`
-     (configure via `gh auth login` or a credential helper for the checkout)
-3. Two wrapper scripts, both chmod 700 (executable, owner-only) / owned by the
-   worker user; the token files they read stay chmod 600. They share the same
-   env block and differ only in the final `exec` line.
+Runs as the `fbl` service user alongside the ingester. The worker ships inside the
+ingester repo and deploys via `scripts/deploy.sh ingester`; on the box it lives at
+`/home/fbl/keydates-worker/keydates_worker.py`.
 
-   `/usr/local/bin/keydates-worker` — called by the ingester with the spool
-   file; handles one real-time post:
+1. Clone `consfyi/data` somewhere `fbl` can write — the worker's staging `DATA_DIR`.
+   In PUSH mode the worker hard-resets it each run, so keep it bot-dedicated.
+2. Provision two credentials as chmod-600 files (set rotation reminders):
+   - **model API key** — a Groq API key (or any OpenAI-compatible provider's key)
+     → `MODEL_API_KEY`. Override `MODEL_BASE_URL` to switch providers.
+   - **repo PAT** — fine-grained PAT, `consfyi/data` only, Contents + Pull requests
+     write → used by `git push` / `gh pr create` (via a credential helper on the checkout).
+3. One wrapper `/home/fbl/keydates-run.sh` (chmod 700, owner-only) exports the
+   worker's env from the chmod-600 secret files and forwards its arguments to the
+   worker. The ingester calls it with `--post-file <spool>` (real-time); cron calls
+   it with `--sweep --shard N/2`. The ops-bot vars are only needed for `--sweep` —
+   the source-liveness guardrails and their alerts run only in sweep mode (unset =
+   log-only).
    ```sh
    #!/bin/sh
    export MODEL_API_KEY=$(cat /home/fbl/.keydates-model-key)
-   export DATA_DIR=/home/fbl/consfyi/data-worktree
+   export DATA_DIR=/home/fbl/consfyi/data        # the bot-dedicated data checkout
    export PUSH=1
-   exec python3 /home/fbl/consfyi/keydates-worker/keydates_worker.py --post-file "$1"
-   ```
-
-   `/usr/local/bin/keydates-sweep` — called by cron; runs the weekly liveness
-   sweep. This is the wrapper that needs the ops-bot env: the source-liveness
-   guardrails (and their alerts) run only in `--sweep` mode. Both unset =
-   log-only.
-   ```sh
-   #!/bin/sh
-   export MODEL_API_KEY=$(cat /home/fbl/.keydates-model-key)
-   export DATA_DIR=/home/fbl/consfyi/data-worktree
-   export PUSH=1
-   # page the ops Telegram bot (same bot as the labeler health monitor) when a
-   # source-liveness guardrail fires
+   # ops paging (sweep only). Real channel id (a negative -100… value) lives on the
+   # box, never in this repo — the value below is a placeholder.
    export OPS_TELEGRAM_BOT_TOKEN=$(cat /home/fbl/.ops-telegram-token)
    export OPS_TELEGRAM_CHAT_ID=-1001234567890
-   exec python3 /home/fbl/consfyi/keydates-worker/keydates_worker.py --sweep --shard "$1"
+   exec python3 /home/fbl/keydates-worker/keydates_worker.py "$@"
    ```
-4. Weekly sweep backstop, spread over two days (crontab):
+4. Weekly sweep backstop, sharded across two days at **09:00 UTC** (crontab):
    ```cron
-   23 9 * * 1  /usr/local/bin/keydates-sweep 1/2
-   23 9 * * 2  /usr/local/bin/keydates-sweep 2/2
+   0 9 * * 6  /home/fbl/keydates-run.sh --sweep --shard 1/2
+   0 9 * * 0  /home/fbl/keydates-run.sh --sweep --shard 2/2
    ```
 
 ## Ingester config (bsky-event-ingester config.toml)
@@ -86,7 +77,7 @@ cron days, and `MAX_EXTRACTS` guards runaway usage.
 ```toml
 # real-time detection (off when unset)
 con_posts_spool_dir = "/var/spool/keydates"
-keydates_worker_cmd = "/usr/local/bin/keydates-worker"
+keydates_worker_cmd = "/home/fbl/keydates-run.sh --post-file"   # ingester appends the spool path
 # con_post_debounce_secs = 900
 # con_posts_daily_cap = 30
 
