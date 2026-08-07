@@ -4,8 +4,9 @@
 # dependencies = []
 # ///
 """keydates_worker.py — extract convention key dates from Bluesky posts and stage
-them as changes to a consfyi/data checkout, using GitHub Models (free tier) for
-extraction and verification.
+them as changes to a consfyi/data checkout, using an OpenAI-compatible model
+provider (Groq by default, swappable via MODEL_BASE_URL) for extraction and
+verification.
 
 Designed to run on the cons.fyi droplet (triggered by bsky-event-ingester's
 con-post spool, and weekly via cron in sweep mode), but runs anywhere with a
@@ -13,8 +14,8 @@ data checkout.
 
 Pipeline per con:
   A. fetch recent posts (public Bluesky appview, free) or take a spooled post
-  B. EXTRACT candidate dates  — gpt-4.1-mini (low tier), hardened exclusion prompt
-  C. VERIFY every guardrail-passing proposal — gpt-4.1 AND gpt-4o (high tier),
+  B. EXTRACT candidate dates  — gpt-oss-20b, hardened exclusion prompt
+  C. VERIFY every guardrail-passing proposal — gpt-oss-120b AND gpt-oss-20b,
      unanimous confirm required; split verdicts are held (reported, not applied),
      as are same-run conflicts (two confirmed dates for one slot in one run)
   D. MERGE confirmed dates into the con JSON (confidence gate, never overwrite
@@ -30,12 +31,19 @@ carried ~30% false positives past the confidence gate; the adversarial verify
 stage refuted all of them. Do not weaken stage C.
 
 Env:
-  GITHUB_TOKEN      required — fine-grained PAT with models:read (gh auth token works)
+  MODEL_API_KEY     required — provider API key, sent as the Bearer token
+                    (GROQ_API_KEY accepted as an alias)
+  MODEL_BASE_URL    OpenAI-compatible API base (default https://api.groq.com/openai/v1);
+                    chat = <base>/chat/completions, catalog = <base>/models
   DATA_DIR          path to consfyi/data checkout (default: cwd)
   DRY_RUN=1         full pipeline, no file writes / git ops
   PUSH=1            allow git commit+push+PR (default OFF: writes files only)
-  EXTRACT_MODEL     default openai/gpt-4.1-mini
-  VERIFY_MODELS     comma-separated, default openai/gpt-4.1,openai/gpt-4o
+  EXTRACT_MODEL     default openai/gpt-oss-20b
+  VERIFY_MODELS     comma-separated, default openai/gpt-oss-120b,openai/gpt-oss-20b
+  MODEL_TPM         per-model tokens-per-minute budget for pacing (default 8000)
+  MODEL_MAX_OUTPUT_TOKENS   per-request output allowance (max_tokens; default 3000)
+  MODEL_MAX_REQUEST_TOKENS  est. per-request INPUT budget for trimming; default
+                    reserves MODEL_MAX_OUTPUT_TOKENS + 15% slack out of MODEL_TPM
   SUMMARY_FILE      write the markdown report here (also printed)
   CACHE_FILE        verdict cache path (default: ~/.cache/keydates-worker/verdict_cache.json)
   MAX_EXTRACTS      stop after N actual extract calls this run (quota guard; default 120)
@@ -62,10 +70,17 @@ import urllib.parse
 import urllib.request
 
 # --- config -----------------------------------------------------------------
-GH_MODELS_URL = "https://models.github.ai/inference/chat/completions"
-GH_CATALOG_URL = "https://models.github.ai/catalog/models"
-EXTRACT_MODEL = os.environ.get("EXTRACT_MODEL", "openai/gpt-4.1-mini")
-VERIFY_MODELS = os.environ.get("VERIFY_MODELS", "openai/gpt-4.1,openai/gpt-4o").split(",")
+# Provider is a swappable OpenAI-compatible base (default Groq), NOT hard-coded:
+# chat endpoint is <base>/chat/completions, model catalog is <base>/models.
+MODEL_BASE_URL = os.environ.get("MODEL_BASE_URL", "https://api.groq.com/openai/v1").rstrip("/")
+MODEL_CHAT_URL = f"{MODEL_BASE_URL}/chat/completions"
+MODEL_CATALOG_URL = f"{MODEL_BASE_URL}/models"
+MODEL_API_KEY = os.environ.get("MODEL_API_KEY") or os.environ.get("GROQ_API_KEY", "")
+# strict json_schema structured output is Groq-supported only on gpt-oss models,
+# so keep BOTH extract and verify on gpt-oss (see CON-34)
+EXTRACT_MODEL = os.environ.get("EXTRACT_MODEL", "openai/gpt-oss-20b").strip()
+VERIFY_MODELS = [m.strip() for m in os.environ.get(
+    "VERIFY_MODELS", "openai/gpt-oss-120b,openai/gpt-oss-20b").split(",") if m.strip()]
 DATA_DIR = os.path.abspath(os.environ.get("DATA_DIR", "."))
 DRY_RUN = os.environ.get("DRY_RUN") == "1"
 PUSH = os.environ.get("PUSH") == "1"
@@ -86,9 +101,17 @@ APPVIEW_USER_AGENT = "consfyi/bsky-event-ingester (+https://cons.fyi)"
 TODAY = datetime.datetime.now(datetime.timezone.utc).date()
 CATEGORIES = ["registration", "hotel", "dealers", "panels", "performances", "djs", "volunteers"]
 VERIFY_BATCH = 8
-INPUT_BUDGET_CHARS = 24000  # ~6k tokens; free tier caps requests at 8k in
-# RPM pacing per free-tier docs: low tier 15 RPM, high tier 10 RPM
-MODEL_MIN_INTERVAL = {EXTRACT_MODEL: 4.5, **{m: 6.5 for m in VERIFY_MODELS}}
+# Groq free tier is token-per-minute limited (8000 TPM for gpt-oss). A request is
+# billed prompt + max_tokens against that window, so the trim/pace budget must
+# reserve the output allowance — not just fit the payload. (EXTRACT_SYSTEM is
+# ~850 tokens; the request's OUTPUT allowance is the big reservation.)
+MODEL_TPM = int(os.environ.get("MODEL_TPM", "8000"))
+MODEL_MAX_OUTPUT_TOKENS = int(os.environ.get("MODEL_MAX_OUTPUT_TOKENS", "3000"))
+# per-request INPUT budget for payload trimming: reserve the output allowance the
+# request is also billed for, plus ~15% slack because estimate_tokens (chars/4)
+# under-counts JSON/date-heavy text. Guarantees est(prompt) + output < MODEL_TPM.
+MODEL_MAX_REQUEST_TOKENS = int(os.environ.get(
+    "MODEL_MAX_REQUEST_TOKENS", str(int((MODEL_TPM - MODEL_MAX_OUTPUT_TOKENS) / 1.15))))
 
 # cheap pre-filter so we only spend model calls on date-relevant posts.
 # KEEP IN SYNC with relevant_re in bsky-event-ingester/src/con_posts.rs
@@ -238,61 +261,101 @@ next run; a published false date misleads attendees.
 Return a verdict for every item index you were given."""
 
 
-# --- GitHub Models client ----------------------------------------------------
+# --- model client ------------------------------------------------------------
 class DailyCapHit(Exception):
     pass
 
 
-_last_call: dict[str, float] = {}
+def estimate_tokens(*texts):
+    """Rough token count for budgeting/pacing: ~4 chars per token. Deliberately
+    a coarse over/under estimate — exact tokenization needs the provider's
+    tokenizer (a dep we don't take), and the budget carries slack for it."""
+    return sum(len(t) for t in texts) // 4
 
 
-def _pace(model: str):
-    interval = MODEL_MIN_INTERVAL.get(model, 6.5)
-    elapsed = time.monotonic() - _last_call.get(model, 0.0)
-    if elapsed < interval:
-        time.sleep(interval - elapsed)
+# per-model rolling 60s window of (timestamp, tokens) samples, so back-to-back
+# sweep calls stay under the provider's per-minute token budget (MODEL_TPM)
+_token_window: dict[str, list] = {}
+
+
+def token_pace(model, tokens, now=time.monotonic, sleep=time.sleep):
+    """Block until sending `tokens` more for `model` keeps its rolling-60s token
+    usage at or under MODEL_TPM, then record the sample. Returns seconds slept.
+    `now`/`sleep` are injectable so tests exercise the decision without waiting."""
+    t = now()
+    window = [s for s in _token_window.get(model, []) if t - s[0] < 60]
+    used = sum(tok for _, tok in window)
+    slept = 0.0
+    # age out the oldest live samples one at a time until the incoming call fits;
+    # a single wait for window[0] can leave two other recent samples still over
+    # the cap, so recompute after each sleep (window[0] is the oldest live sample)
+    while window and used + tokens > MODEL_TPM:
+        wait = 60 - (t - window[0][0])
+        if wait <= 0:
+            break
+        sleep(wait)
+        slept += wait
+        t = now()
+        window = [s for s in window if t - s[0] < 60]
+        used = sum(tok for _, tok in window)
+    window.append((t, tokens))
+    _token_window[model] = window
+    return slept
 
 
 def chat(model: str, system: str, user: str, schema: dict, schema_name: str):
     """One structured-output chat call. Returns parsed dict, or None on repeated
-    malformed output. Raises DailyCapHit when the model's daily quota is gone."""
-    token = os.environ.get("GITHUB_TOKEN") or subprocess.run(
-        ["gh", "auth", "token"], capture_output=True, text=True
-    ).stdout.strip()
-    if not token:
-        raise SystemExit("GITHUB_TOKEN not set and `gh auth token` unavailable")
+    malformed output. Raises DailyCapHit when the model's per-day quota is gone."""
+    if not MODEL_API_KEY:
+        raise SystemExit("MODEL_API_KEY (or GROQ_API_KEY) not set")
     body = json.dumps({
         "model": model,
         "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
-        "max_tokens": 3000,
+        "max_tokens": MODEL_MAX_OUTPUT_TOKENS,
         "response_format": {"type": "json_schema", "json_schema": {
             "name": schema_name, "strict": True, "schema": schema}},
     }).encode()
+    # pace on the real TPM cost Groq bills: input estimate + the output allowance
+    est_tokens = estimate_tokens(system, user) + MODEL_MAX_OUTPUT_TOKENS
     for attempt in range(4):
-        _pace(model)
+        token_pace(model, est_tokens)
         req = urllib.request.Request(
-            GH_MODELS_URL, data=body, method="POST",
-            headers={"Authorization": f"Bearer {token}",
+            MODEL_CHAT_URL, data=body, method="POST",
+            headers={"Authorization": f"Bearer {MODEL_API_KEY}",
                      "Content-Type": "application/json",
+                     # a real User-Agent is required or Groq's WAF returns 403/1010
                      "User-Agent": "consfyi/bsky-event-ingester"})
         try:
             with urllib.request.urlopen(req, timeout=120) as r:
-                _last_call[model] = time.monotonic()
                 resp = json.load(r)
             content = resp["choices"][0]["message"]["content"]
             return json.loads(content)
         except urllib.error.HTTPError as e:
-            _last_call[model] = time.monotonic()
             if e.code == 429:
-                retry_after = int(e.headers.get("Retry-After") or "60")
+                # Retry-After is RFC-legal as an int, a fractional value, or an
+                # HTTP-date; parse defensively (base URL is swappable) — fall back
+                # to 60s on anything float() can't take, before the daily-cap check.
+                # int(float("inf"))/"1e400" raise OverflowError, and a negative value
+                # would reach time.sleep(-n); clamp both back to the 60s fallback.
+                try:
+                    retry_after = int(float(e.headers.get("Retry-After") or "60"))
+                    if retry_after < 0:
+                        retry_after = 60
+                except (ValueError, OverflowError):
+                    retry_after = 60
                 if retry_after > 300:
                     raise DailyCapHit(model)
                 log(f"  429 on {model}, sleeping {retry_after}s")
                 time.sleep(retry_after)
                 continue
-            if e.code in (400, 413) and attempt == 0:
-                # token overflow — caller should have budgeted; retry once with a note
-                log(f"  {e.code} on {model}: {e.read()[:200]!r}")
+            if e.code == 413:
+                # Groq TPM "Request too large": the request exceeded the per-request
+                # token cap. extract_for_con budgets against MODEL_MAX_REQUEST_TOKENS,
+                # so this should be rare — log it loudly rather than swallow it silently.
+                log(f"  413 request too large on {model} (TPM cap): {e.read()[:200]!r}")
+                return None
+            if e.code == 400 and attempt == 0:
+                log(f"  400 on {model}: {e.read()[:200]!r}")
                 return None
             if attempt == 3:
                 raise
@@ -304,20 +367,24 @@ def chat(model: str, system: str, user: str, schema: dict, schema_name: str):
 
 
 def catalog_check():
-    """Fail fast if a configured model has vanished from the catalog."""
+    """Fail fast if a configured model has vanished from the provider's model
+    list. GETs <MODEL_BASE_URL>/models (OpenAI shape: {"data": [{"id": ...}]})."""
     try:
         with urllib.request.urlopen(
-            urllib.request.Request(GH_CATALOG_URL, headers={"User-Agent": "consfyi/bsky-event-ingester"}),
+            urllib.request.Request(
+                MODEL_CATALOG_URL,
+                headers={"Authorization": f"Bearer {MODEL_API_KEY}",
+                         "User-Agent": "consfyi/bsky-event-ingester"}),
             timeout=30,
         ) as r:
-            ids = {m["id"] for m in json.load(r)}
+            ids = {m["id"] for m in json.load(r).get("data", [])}
     except Exception as e:
-        log(f"warning: catalog check failed ({e}); proceeding")
+        log(f"warning: model catalog check failed ({e}); proceeding")
         return
     missing = [m for m in [EXTRACT_MODEL, *VERIFY_MODELS] if m not in ids]
     if missing:
         raise SystemExit(
-            f"model(s) {missing} not in the GitHub Models catalog. "
+            f"model(s) {missing} not in the provider model list at {MODEL_CATALOG_URL}. "
             f"Override with EXTRACT_MODEL / VERIFY_MODELS env vars."
         )
 
@@ -918,9 +985,14 @@ def ops_notify(text):
 
 
 def extract_for_con(con, events, posts):
-    # budget: trim oldest posts first (feed is newest-first; recency-wins makes old posts expendable)
+    # budget the WHOLE request against MODEL_MAX_REQUEST_TOKENS (which already
+    # reserves the output allowance), not just the payload, so prompt+output fits
+    # one request under Groq's per-minute token cap. Trim oldest posts first (feed
+    # is newest-first; recency-wins makes old posts expendable); keep >=1 post.
     payload = {"convention": con["name"], "editions": events, "posts": posts}
-    while len(json.dumps(payload)) > INPUT_BUDGET_CHARS and len(payload["posts"]) > 1:
+    while (len(payload["posts"]) > 1
+           and estimate_tokens(EXTRACT_SYSTEM, json.dumps(payload, ensure_ascii=False))
+               > MODEL_MAX_REQUEST_TOKENS):
         payload["posts"] = payload["posts"][:-1]
     user = json.dumps(payload, ensure_ascii=False)
     result = chat(EXTRACT_MODEL, EXTRACT_SYSTEM, user, EXTRACT_SCHEMA, "keydates")
@@ -940,9 +1012,8 @@ def verify_proposals(proposals, cache):
         else:
             pending.append(p)
 
-    for lo in range(0, len(pending), VERIFY_BATCH):
-        batch = pending[lo:lo + VERIFY_BATCH]
-        items = [{
+    def verify_item(p, i):
+        return {
             "index": i,
             "convention": p["_con_name"],
             "edition": {"id": p["event_id"], "startDate": p["_ev_dates"][0], "endDate": p["_ev_dates"][1]},
@@ -950,7 +1021,30 @@ def verify_proposals(proposals, cache):
             "claim": {k2: p[k2] for k2 in ("category", "kind", "date", "confidence")},
             "post_text": p["_post_text"],
             "post_timestamp": p["asOf"],
-        } for i, p in enumerate(batch)]
+        }
+
+    # pack proposals into batches bounded by BOTH the item cap and the per-request
+    # token budget (system+items+output must fit MODEL_TPM). Without the token
+    # bound a full VERIFY_BATCH of large posts 413s, chat() returns None, every
+    # verdict reads "unavailable", and the proposals are held and re-tried every
+    # run forever with no progress (M2). A lone item too big to shrink is still
+    # sent (like extract's single oversized post) and left to the 413 path.
+    batches, cur = [], []
+    for p in pending:
+        trial = cur + [p]
+        user = json.dumps({"items": [verify_item(q, i) for i, q in enumerate(trial)]},
+                          ensure_ascii=False)
+        if cur and (len(trial) > VERIFY_BATCH
+                    or estimate_tokens(VERIFY_SYSTEM, user) > MODEL_MAX_REQUEST_TOKENS):
+            batches.append(cur)
+            cur = [p]
+        else:
+            cur = trial
+    if cur:
+        batches.append(cur)
+
+    for batch in batches:
+        items = [verify_item(p, i) for i, p in enumerate(batch)]
         user = json.dumps({"items": items}, ensure_ascii=False)
         verdicts_by_model = {}
         for m in VERIFY_MODELS:

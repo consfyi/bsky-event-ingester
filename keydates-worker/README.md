@@ -1,11 +1,11 @@
 # keydates-worker
 
 Extracts convention key dates from con Bluesky posts and stages them as PRs
-against `consfyi/data`, using **GitHub Models** (free tier, `models: read`
-PAT — no card, paid usage is opt-in-only) for extraction + verification.
+against `consfyi/data`, using an **OpenAI-compatible model provider** (Groq by
+default, free tier — swappable via `MODEL_BASE_URL`) for extraction + verification.
 
-Pipeline: gpt-4.1-mini extract (hardened exclusion prompt) → gpt-4.1 AND
-gpt-4o adversarial verify, **unanimity required** → validated merge guardrails
+Pipeline: gpt-oss-20b extract (hardened exclusion prompt) → gpt-oss-120b AND
+gpt-oss-20b adversarial verify, **unanimity required** → validated merge guardrails
 (confidence ≥ 0.8, never overwrite curated values, recency-wins, same-date
 re-announcements skipped pre-verify, rejections file, previous-edition
 timestamp gate) → rolling PR on `bot/bsky-keydates`.
@@ -19,61 +19,57 @@ show/creator apps, sub-group volunteer calls, soft closes, wrong edition).
 
 ```sh
 # one con, no writes, ~3 model calls
-GITHUB_TOKEN=$(gh auth token) DRY_RUN=1 DATA_DIR=./data \
+MODEL_API_KEY=$GROQ_API_KEY DRY_RUN=1 DATA_DIR=./data \
   python3 keydates_worker.py --series anthrocon
 
 # full sweep, writes files but never pushes (PUSH unset)
-GITHUB_TOKEN=$(gh auth token) DATA_DIR=./data \
+MODEL_API_KEY=$GROQ_API_KEY DATA_DIR=./data \
   python3 keydates_worker.py --sweep
 ```
 
-Quota (free tier, per model per day): extract ~150, verify ~50 each. A full
-77-con sweep fits in one day; `--shard 1/2` / `--shard 2/2` splits it across
-two cron days. `MAX_EXTRACTS` guards runaway usage.
+Provider is swappable via `MODEL_BASE_URL` (default
+`https://api.groq.com/openai/v1`); any OpenAI-compatible endpoint exposing
+`/chat/completions` and `/models` works. Groq's free tier is token-per-minute
+limited (8000 TPM for gpt-oss); the worker budgets each request's INPUT against
+`MODEL_MAX_REQUEST_TOKENS` (default derived as `(MODEL_TPM - MODEL_MAX_OUTPUT_TOKENS)/1.15`
+≈ 4347 — reserving the output allowance so input+output stays under TPM) and paces
+calls against `MODEL_TPM` (default 8000). `--shard 1/2` / `--shard 2/2` splits a full sweep across two
+cron days, and `MAX_EXTRACTS` guards runaway usage.
 
 ## Droplet deployment
 
-1. Clone `consfyi/data` somewhere the `fbl` user can write, e.g.
-   `~/consfyi/data-worktree` (this is the worker's staging checkout).
-2. Create two fine-grained PATs (Sparky's account, ≤1yr, set rotation
-   reminders):
-   - **models PAT** — account permission "Models: read" only → `GITHUB_TOKEN`
-   - **repo PAT** — `consfyi/data` only, Contents + Pull requests write →
-     used by `git push` / `gh pr create` (configure via `gh auth login` or a
-     credential helper for the checkout)
-3. Two wrapper scripts, both chmod 700 (executable, owner-only) / owned by the
-   worker user; the token files they read stay chmod 600. They share the same
-   env block and differ only in the final `exec` line.
+Runs as the `fbl` service user alongside the ingester. The worker ships inside the
+ingester repo and deploys via `scripts/deploy.sh ingester`; on the box it lives at
+`/home/fbl/keydates-worker/keydates_worker.py`.
 
-   `/usr/local/bin/keydates-worker` — called by the ingester with the spool
-   file; handles one real-time post:
+1. Clone `consfyi/data` somewhere `fbl` can write — the worker's staging `DATA_DIR`.
+   In PUSH mode the worker hard-resets it each run, so keep it bot-dedicated.
+2. Provision two credentials as chmod-600 files (set rotation reminders):
+   - **model API key** — a Groq API key (or any OpenAI-compatible provider's key)
+     → `MODEL_API_KEY`. Override `MODEL_BASE_URL` to switch providers.
+   - **repo PAT** — fine-grained PAT, `consfyi/data` only, Contents + Pull requests
+     write → used by `git push` / `gh pr create` (via a credential helper on the checkout).
+3. One wrapper `/home/fbl/keydates-run.sh` (chmod 700, owner-only) exports the
+   worker's env from the chmod-600 secret files and forwards its arguments to the
+   worker. The ingester calls it with `--post-file <spool>` (real-time); cron calls
+   it with `--sweep --shard N/2`. The ops-bot vars are only needed for `--sweep` —
+   the source-liveness guardrails and their alerts run only in sweep mode (unset =
+   log-only).
    ```sh
    #!/bin/sh
-   export GITHUB_TOKEN=$(cat /home/fbl/.keydates-models-token)
-   export DATA_DIR=/home/fbl/consfyi/data-worktree
+   export MODEL_API_KEY=$(cat /home/fbl/.keydates-model-key)
+   export DATA_DIR=/home/fbl/consfyi/data        # the bot-dedicated data checkout
    export PUSH=1
-   exec python3 /home/fbl/consfyi/keydates-worker/keydates_worker.py --post-file "$1"
-   ```
-
-   `/usr/local/bin/keydates-sweep` — called by cron; runs the weekly liveness
-   sweep. This is the wrapper that needs the ops-bot env: the source-liveness
-   guardrails (and their alerts) run only in `--sweep` mode. Both unset =
-   log-only.
-   ```sh
-   #!/bin/sh
-   export GITHUB_TOKEN=$(cat /home/fbl/.keydates-models-token)
-   export DATA_DIR=/home/fbl/consfyi/data-worktree
-   export PUSH=1
-   # page the ops Telegram bot (same bot as the labeler health monitor) when a
-   # source-liveness guardrail fires
+   # ops paging (sweep only). Real channel id (a negative -100… value) lives on the
+   # box, never in this repo — the value below is a placeholder.
    export OPS_TELEGRAM_BOT_TOKEN=$(cat /home/fbl/.ops-telegram-token)
    export OPS_TELEGRAM_CHAT_ID=-1001234567890
-   exec python3 /home/fbl/consfyi/keydates-worker/keydates_worker.py --sweep --shard "$1"
+   exec python3 /home/fbl/keydates-worker/keydates_worker.py "$@"
    ```
-4. Weekly sweep backstop, spread over two days (crontab):
+4. Weekly sweep backstop, sharded across two days at **09:00 UTC** (crontab):
    ```cron
-   23 9 * * 1  /usr/local/bin/keydates-sweep 1/2
-   23 9 * * 2  /usr/local/bin/keydates-sweep 2/2
+   0 9 * * 6  /home/fbl/keydates-run.sh --sweep --shard 1/2
+   0 9 * * 0  /home/fbl/keydates-run.sh --sweep --shard 2/2
    ```
 
 ## Ingester config (bsky-event-ingester config.toml)
@@ -81,7 +77,7 @@ two cron days. `MAX_EXTRACTS` guards runaway usage.
 ```toml
 # real-time detection (off when unset)
 con_posts_spool_dir = "/var/spool/keydates"
-keydates_worker_cmd = "/usr/local/bin/keydates-worker"
+keydates_worker_cmd = "/home/fbl/keydates-run.sh --post-file"   # ingester appends the spool path
 # con_post_debounce_secs = 900
 # con_posts_daily_cap = 30
 
