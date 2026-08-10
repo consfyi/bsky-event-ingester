@@ -113,23 +113,22 @@ pub async fn service(
     // the firehose loop below.
     let options = std::sync::Arc::new(options);
 
+    // A prior process that crashed mid-worker leaves `.inflight` files claimed;
+    // this new process has no live workers yet, so reclaim them (rename back to
+    // `.json`) once before starting the drain (CON-39). A single dir scan, cheap
+    // enough to run inline before the firehose loop.
+    reclaim_orphaned_inflight(&options).await;
+
     // Reprocess spool files left behind by prior non-zero worker exits (CON-35).
     // Run as a PERIODIC background task, NOT a blocking startup drain: a file
     // retained during an outage is retried automatically once the backend
     // recovers, with no operator restart, and the drain never delays firehose
-    // resume past the jetstream cursor backfill window. The 7-day age bound
-    // survives as a backstop for a genuinely-stuck file.
+    // resume past the jetstream cursor backfill window. Each file is atomically
+    // claimed before its worker spawns (CON-39), so no min-age heuristic is
+    // needed; the 7-day age bound survives as a backstop for a stuck file.
     tokio::spawn(periodic_drain(
         options.clone(),
         std::time::Duration::from_secs(600),
-        // min_age: a file must age past the worst-case realtime worker runtime
-        // before it's eligible, so a handle_post worker still processing it
-        // isn't double-spawned (which would race remove_file and log a false
-        // outage). A rate-limited worker can sleep ~300s per 429 across
-        // attempts/models, exceeding 600s, so hold at 1800s (30 min) —
-        // comfortably above worst case. The 600s drain interval means a
-        // genuinely-retained outage file is still retried within ~30 min.
-        std::time::Duration::from_secs(1800),
         std::time::Duration::from_secs(7 * 24 * 3600),
     ));
 
@@ -332,18 +331,27 @@ fn handle_post(
     );
 
     if let Some(cmd) = &options.worker_cmd {
-        let Some(mut command) = build_worker_command(cmd, &path) else {
+        // claim the file (atomic rename -> .inflight) before spawning, so a
+        // concurrent drain pass can never start a second worker on it (CON-39).
+        // We just wrote it, but a drain tick could race between the write and the
+        // claim — whoever wins the rename owns it; if we lose, the drain has it.
+        let Some(inflight) = claim_spool(&path) else {
+            return;
+        };
+        let Some(mut command) = build_worker_command(cmd, &inflight) else {
+            unclaim_spool(&inflight);
             return;
         };
         match command.spawn() {
             Ok(mut child) => {
                 let series = series.clone();
                 tokio::spawn(async move {
-                    reap_worker(&series, &path, child.wait().await).await;
+                    reap_worker(&series, &inflight, child.wait().await).await;
                 });
             }
             Err(e) => {
                 log::error!("con_posts: failed to spawn worker for {series}: {e}");
+                unclaim_spool(&inflight);
             }
         }
     }
@@ -360,35 +368,108 @@ fn build_worker_command(cmd: &str, path: &std::path::Path) -> Option<tokio::proc
     Some(command)
 }
 
-/// Log a finished worker's exit and reclaim its spool file only on success.
+/// Log a finished worker's exit and dispose of its CLAIMED (`.inflight`) spool
+/// file: on success remove it; on a non-zero exit or a wait error, un-claim it
+/// (rename back to `.json`) so a later drain retries it.
 ///
-/// A NON-ZERO exit is logged at warn (not info) and the spool file is RETAINED:
-/// the worker signals a wholesale backend/extraction outage that way (CON-35),
-/// and the old unconditional exit-0 delete lost 4 days of spooled posts during a
-/// silent provider outage. A retained file is reprocessed by `drain_spool` on the
-/// next ingester start, once the backend has recovered.
+/// A NON-ZERO exit means the worker signalled a wholesale backend/extraction
+/// outage (CON-35) — retaining the post (rather than the old unconditional exit-0
+/// delete) is what stopped 4 days of spooled posts being lost during a silent
+/// provider outage. Because the file was claimed before the spawn (CON-39), no
+/// realtime worker or drain pass can be racing us for it here.
 async fn reap_worker(
     series: &str,
-    path: &std::path::Path,
+    inflight: &std::path::Path,
     wait: Result<std::process::ExitStatus, std::io::Error>,
 ) {
     match wait {
         Ok(status) if status.success() => {
             log::info!("con_posts: worker for {series} exited: {status}");
-            if let Err(e) = tokio::fs::remove_file(path).await {
+            if let Err(e) = tokio::fs::remove_file(inflight).await {
                 log::warn!(
                     "con_posts: could not remove spool file {}: {e}",
-                    path.display()
+                    inflight.display()
                 );
             }
         }
         Ok(status) => {
             log::warn!(
-                "con_posts: worker for {series} exited non-zero ({status}); retaining spool file {} for retry",
+                "con_posts: worker for {series} exited non-zero ({status}); retaining for retry"
+            );
+            unclaim_spool(inflight);
+        }
+        Err(e) => {
+            log::error!("con_posts: worker for {series} failed: {e}");
+            unclaim_spool(inflight);
+        }
+    }
+}
+
+/// Atomically claim a spool file for processing by renaming `<f>.json` →
+/// `<f>.json.inflight`. Returns the claimed path, or None if the rename fails
+/// (another worker already claimed it, or it's gone). The drain only scans
+/// unclaimed `.json` files, so a claimed file can never be double-spawned — this
+/// replaces the old mtime `min_age` heuristic, which couldn't prove a realtime
+/// worker had finished (CON-39).
+fn claim_spool(path: &std::path::Path) -> Option<std::path::PathBuf> {
+    let mut inflight = path.to_path_buf().into_os_string();
+    inflight.push(".inflight");
+    let inflight = std::path::PathBuf::from(inflight);
+    match std::fs::rename(path, &inflight) {
+        Ok(()) => Some(inflight),
+        Err(e) => {
+            log::info!(
+                "con_posts: could not claim {} ({e}); another worker has it",
                 path.display()
             );
+            None
         }
-        Err(e) => log::error!("con_posts: worker for {series} failed: {e}"),
+    }
+}
+
+/// Release a claimed spool file back to its `.json` name so a later drain retries
+/// it (used on a non-zero worker exit and on spawn failure). Sync `rename` so the
+/// synchronous `handle_post` can call it; the op is a quick metadata rename.
+fn unclaim_spool(inflight: &std::path::Path) {
+    let released = inflight.with_extension(""); // strip ".inflight" -> back to ".json"
+    if let Err(e) = std::fs::rename(inflight, &released) {
+        log::warn!(
+            "con_posts: could not un-claim {} ({e}); it is recovered on next start",
+            inflight.display()
+        );
+    }
+}
+
+/// On startup, release any `.inflight` files a PRIOR process left claimed when it
+/// crashed mid-worker. This new process has no live workers yet, so every
+/// `.inflight` file is an orphan — rename each back to `.json` so the periodic
+/// drain reprocesses it. Runs once, before any worker is spawned (CON-39).
+async fn reclaim_orphaned_inflight(options: &Options) {
+    let mut dir = match tokio::fs::read_dir(&options.spool_dir).await {
+        Ok(dir) => dir,
+        Err(e) => {
+            log::error!("con_posts: could not scan spool dir for orphan reclaim: {e}");
+            return;
+        }
+    };
+    loop {
+        match dir.next_entry().await {
+            Ok(Some(entry)) => {
+                let path = entry.path();
+                if path.extension().and_then(|e| e.to_str()) == Some("inflight") {
+                    log::warn!(
+                        "con_posts: reclaiming orphaned in-flight spool file {}",
+                        path.display()
+                    );
+                    unclaim_spool(&path);
+                }
+            }
+            Ok(None) => break,
+            Err(e) => {
+                log::error!("con_posts: error scanning spool dir for orphan reclaim: {e}");
+                break;
+            }
+        }
     }
 }
 
@@ -407,30 +488,22 @@ fn spool_series(path: &std::path::Path) -> String {
 async fn periodic_drain(
     options: std::sync::Arc<Options>,
     every: std::time::Duration,
-    min_age: std::time::Duration,
     max_age: std::time::Duration,
 ) {
     let mut interval = tokio::time::interval(every);
     loop {
         interval.tick().await;
-        drain_spool(&options, min_age, max_age).await;
+        drain_spool(&options, max_age).await;
     }
 }
 
 /// Reprocess spool files left behind by prior non-zero worker exits (CON-35):
-/// the realtime path only removes a file on a successful exit, so anything still
-/// on disk is a retry. Run the worker on each once, sequentially.
-///
-/// Age bounds: a file is only drained when its mtime age is `> min_age AND
-/// <= max_age`. The lower bound keeps the periodic drain from double-spawning a
-/// worker on a file a realtime `handle_post` worker is still processing (which
-/// would race `remove_file` and log a false outage); the upper bound stops a
-/// permanently-failing entry from being reprocessed on every pass forever.
-async fn drain_spool(
-    options: &Options,
-    min_age: std::time::Duration,
-    max_age: std::time::Duration,
-) {
+/// the realtime path un-claims a file on a non-zero exit, so anything left as
+/// `.json` on disk is a retry. Each is atomically CLAIMED (renamed to
+/// `.inflight`) before its worker is spawned, so the drain can never collide with
+/// a realtime worker or another drain pass (CON-39). `max_age` stays as a
+/// backstop against reprocessing a permanently-failing entry forever.
+async fn drain_spool(options: &Options, max_age: std::time::Duration) {
     let Some(cmd) = &options.worker_cmd else {
         return;
     };
@@ -462,33 +535,14 @@ async fn drain_spool(
     paths.sort(); // deterministic, oldest time_us first
 
     for path in paths {
-        let series = spool_series(&path);
-        let age = tokio::fs::metadata(&path)
+        // backstop: leave a permanently-failing entry alone once it's very old
+        let too_old = tokio::fs::metadata(&path)
             .await
             .and_then(|m| m.modified())
             .ok()
-            .and_then(|modified| modified.elapsed().ok());
-        // Fail SAFE on an unknown age (metadata/mtime/elapsed error — the file
-        // was removed mid-scan by a just-finished realtime worker, or a
-        // backward clock jump): treat it as INELIGIBLE and skip, rather than
-        // draining it and either spawning a worker on a missing path or
-        // draining a genuinely-fresh in-flight file (CON-35).
-        let Some(age) = age else {
-            log::info!(
-                "con_posts: spool file {} age unknown, skipping drain (fail-safe)",
-                path.display()
-            );
-            continue;
-        };
-        if age <= min_age {
-            log::info!(
-                "con_posts: spool file {} younger than {}s, skipping drain (may be in-flight)",
-                path.display(),
-                min_age.as_secs()
-            );
-            continue;
-        }
-        if age > max_age {
+            .and_then(|modified| modified.elapsed().ok())
+            .is_some_and(|age| age > max_age);
+        if too_old {
             log::warn!(
                 "con_posts: spool file {} older than {}s, skipping drain",
                 path.display(),
@@ -496,13 +550,23 @@ async fn drain_spool(
             );
             continue;
         }
-        let Some(mut command) = build_worker_command(cmd, &path) else {
+        let series = spool_series(&path);
+        // claim atomically; if we lose the claim (a realtime worker grabbed it,
+        // or it's already gone), skip — its owner processes it
+        let Some(inflight) = claim_spool(&path) else {
+            continue;
+        };
+        let Some(mut command) = build_worker_command(cmd, &inflight) else {
+            unclaim_spool(&inflight);
             return;
         };
-        log::info!("con_posts: draining leftover spool file {}", path.display());
+        log::info!("con_posts: draining spool file {}", path.display());
         match command.spawn() {
-            Ok(mut child) => reap_worker(&series, &path, child.wait().await).await,
-            Err(e) => log::error!("con_posts: failed to spawn drain worker for {series}: {e}"),
+            Ok(mut child) => reap_worker(&series, &inflight, child.wait().await).await,
+            Err(e) => {
+                log::error!("con_posts: failed to spawn drain worker for {series}: {e}");
+                unclaim_spool(&inflight);
+            }
         }
     }
 }
@@ -549,18 +613,19 @@ mod tests {
         let dir = scratch_dir();
         let spool = dir.join("123-testcon.json");
         std::fs::write(&spool, b"{}").unwrap();
-        // `true` exits 0 -> the leftover file is reprocessed and reclaimed.
-        // min_age ZERO: a fresh file is older than min_age and younger than
-        // max_age, so it lands in the eligible band and IS drained.
+        // `true` exits 0 -> the file is claimed (.inflight), processed, removed.
         drain_spool(
             &drain_opts(&dir, "true"),
-            std::time::Duration::ZERO,
             std::time::Duration::from_secs(3600),
         )
         .await;
         assert!(
             !spool.exists(),
             "a successfully-drained spool file must be reclaimed"
+        );
+        assert!(
+            !dir.join("123-testcon.json.inflight").exists(),
+            "the claim must be removed on success"
         );
         std::fs::remove_dir_all(&dir).ok();
     }
@@ -570,16 +635,19 @@ mod tests {
         let dir = scratch_dir();
         let spool = dir.join("123-testcon.json");
         std::fs::write(&spool, b"{}").unwrap();
-        // `false` exits 1 -> retained for the next start's drain (no data loss)
+        // `false` exits 1 -> claimed then un-claimed (renamed back to .json) for retry
         drain_spool(
             &drain_opts(&dir, "false"),
-            std::time::Duration::ZERO,
             std::time::Duration::from_secs(3600),
         )
         .await;
         assert!(
             spool.exists(),
-            "a non-zero worker exit must retain the spool file for retry"
+            "a non-zero worker exit must retain the spool file as .json for retry"
+        );
+        assert!(
+            !dir.join("123-testcon.json.inflight").exists(),
+            "the .inflight claim must be released back to .json"
         );
         std::fs::remove_dir_all(&dir).ok();
     }
@@ -589,14 +657,8 @@ mod tests {
         let dir = scratch_dir();
         let spool = dir.join("123-testcon.json");
         std::fs::write(&spool, b"{}").unwrap();
-        // max_age 0: the just-written file is already "too old" -> the worker
-        // (which would delete it on success) must never run, so it survives
-        drain_spool(
-            &drain_opts(&dir, "true"),
-            std::time::Duration::ZERO,
-            std::time::Duration::ZERO,
-        )
-        .await;
+        // max_age 0: the just-written file is already "too old" -> never claimed/run
+        drain_spool(&drain_opts(&dir, "true"), std::time::Duration::ZERO).await;
         assert!(
             spool.exists(),
             "a file past the age bound must be skipped, not reprocessed forever"
@@ -605,44 +667,63 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn drain_skips_files_below_min_age() {
+    async fn drain_ignores_inflight_files() {
+        // A claimed (.inflight) file is owned by a live worker in this process and
+        // must never be picked up by the drain (which scans only .json). This
+        // replaces the old min-age heuristic and closes the double-spawn race (CON-39).
         let dir = scratch_dir();
-        let spool = dir.join("123-testcon.json");
-        std::fs::write(&spool, b"{}").unwrap();
-        // min_age high: a just-written file may still be in-flight in a realtime
-        // handle_post worker, so the periodic drain must NOT reprocess (and
-        // delete) it yet -- doing so would double-spawn and log a false outage.
+        let inflight = dir.join("123-testcon.json.inflight");
+        std::fs::write(&inflight, b"{}").unwrap();
         drain_spool(
             &drain_opts(&dir, "true"),
-            std::time::Duration::from_secs(600),
             std::time::Duration::from_secs(3600),
         )
         .await;
         assert!(
-            spool.exists(),
-            "a file younger than min_age must be skipped (may be in-flight)"
+            inflight.exists(),
+            "an in-flight (claimed) file must not be drained"
         );
         std::fs::remove_dir_all(&dir).ok();
     }
 
-    #[cfg(unix)]
     #[tokio::test]
-    async fn drain_skips_file_with_unknown_age() {
-        // A broken symlink (target missing) makes metadata() error, so the age
-        // is None. Fail-safe: the worker (which would delete on success) must
-        // never run on it, so the dangling link survives untouched.
+    async fn reclaim_orphaned_inflight_renames_back_to_json() {
+        // A prior crash leaves a .inflight file; on startup it's an orphan (no live
+        // worker) and must be released back to .json so the drain reprocesses it.
         let dir = scratch_dir();
-        let link = dir.join("123-testcon.json");
-        std::os::unix::fs::symlink(dir.join("does-not-exist"), &link).unwrap();
-        drain_spool(
-            &drain_opts(&dir, "true"),
-            std::time::Duration::ZERO,
-            std::time::Duration::from_secs(3600),
-        )
-        .await;
+        let inflight = dir.join("123-testcon.json.inflight");
+        std::fs::write(&inflight, b"{}").unwrap();
+        reclaim_orphaned_inflight(&drain_opts(&dir, "true")).await;
         assert!(
-            std::fs::symlink_metadata(&link).is_ok(),
-            "a spool file whose age can't be read must be skipped, not drained"
+            !inflight.exists(),
+            "the orphaned .inflight must be renamed away"
+        );
+        assert!(
+            dir.join("123-testcon.json").exists(),
+            "it must be released back to .json for the drain to retry"
+        );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[tokio::test]
+    async fn claim_then_unclaim_roundtrips() {
+        let dir = scratch_dir();
+        let spool = dir.join("123-testcon.json");
+        std::fs::write(&spool, b"{}").unwrap();
+        let inflight = claim_spool(&spool).expect("claim a fresh file");
+        assert!(
+            !spool.exists() && inflight.exists(),
+            "claim renames .json -> .inflight"
+        );
+        // a gone (already-claimed) file can't be claimed again
+        assert!(
+            claim_spool(&spool).is_none(),
+            "a missing file can't be claimed"
+        );
+        unclaim_spool(&inflight);
+        assert!(
+            spool.exists() && !inflight.exists(),
+            "unclaim renames .inflight -> .json"
         );
         std::fs::remove_dir_all(&dir).ok();
     }
@@ -656,7 +737,6 @@ mod tests {
         let task = tokio::spawn(periodic_drain(
             opts,
             std::time::Duration::from_millis(20),
-            std::time::Duration::ZERO,
             std::time::Duration::from_secs(3600),
         ));
         // A file spooled *after* the drainer started (i.e. after "recovery")
@@ -684,7 +764,6 @@ mod tests {
         // non-.json entries are left untouched...
         drain_spool(
             &drain_opts(&dir, "false"),
-            std::time::Duration::ZERO,
             std::time::Duration::from_secs(3600),
         )
         .await;
@@ -693,7 +772,6 @@ mod tests {
         // ...and a missing spool dir is a clean no-op, not a panic
         drain_spool(
             &drain_opts(&dir, "true"),
-            std::time::Duration::ZERO,
             std::time::Duration::from_secs(3600),
         )
         .await;
