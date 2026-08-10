@@ -716,7 +716,7 @@ class MainSmokeTest(unittest.TestCase):
             unittest.mock.patch.object(kw, "MAX_EXTRACTS", 1),
             unittest.mock.patch.object(kw, "PUSH", True),
             unittest.mock.patch.object(kw, "DRY_RUN", False),
-            unittest.mock.patch.object(kw, "catalog_check", lambda: None),
+            unittest.mock.patch.object(kw, "catalog_check", lambda *a, **k: None),
             # sweep mode now fails fast unless the ops channel is configured (E)
             unittest.mock.patch.object(kw, "OPS_TELEGRAM_BOT_TOKEN", "tok"),
             unittest.mock.patch.object(kw, "OPS_TELEGRAM_CHAT_ID", "-1"),
@@ -1606,6 +1606,18 @@ class BackendUnavailableTest(unittest.TestCase):
         self.assertEqual(kw._run_health["succeeded"], 1)
         self.assertEqual(kw._run_health["backend_failures"], 0)
 
+    def test_non_dict_result_returns_none_not_success(self):
+        # CodeRabbit #372: json.loads can yield a list/number/string; that's
+        # malformed output, not a healthy call — chat() must return None (never
+        # counted as success, never returned so extract/verify can't AttributeError).
+        with unittest.mock.patch.object(kw, "MODEL_API_KEY", "k"), \
+             unittest.mock.patch.object(kw, "token_pace", lambda *a, **k: 0.0), \
+             unittest.mock.patch.object(kw.urllib.request, "urlopen",
+                                        self._ok(json.dumps([1, 2]))):
+            self.assertIsNone(kw.chat("m", "s", "u", kw.EXTRACT_SCHEMA, "keydates"))
+        self.assertEqual(kw._run_health["succeeded"], 0)
+        self.assertEqual(kw._run_health["backend_failures"], 0)
+
 
 class AppgetFailureTest(unittest.TestCase):
     """M2: appget() records an appview_failures signal when every retry is
@@ -1674,7 +1686,7 @@ class WholesaleVerdictTest(unittest.TestCase):
                 unittest.mock.patch.object(kw, "REJECTIONS_FILE", os.path.join(self.state, "no_rej.json")),
                 unittest.mock.patch.object(kw, "PUSH", False),
                 unittest.mock.patch.object(kw, "DRY_RUN", False),
-                unittest.mock.patch.object(kw, "catalog_check", lambda: None),
+                unittest.mock.patch.object(kw, "catalog_check", lambda *a, **k: None),
                 unittest.mock.patch.object(kw, "OPS_TELEGRAM_BOT_TOKEN", "tok"),
                 unittest.mock.patch.object(kw, "OPS_TELEGRAM_CHAT_ID", "-1"),
                 # zero every field first (tests share the process-wide
@@ -1705,7 +1717,7 @@ class WholesaleVerdictTest(unittest.TestCase):
                                  {"attempted": 3, "succeeded": 2, "backend_failures": 1})
         self.assertEqual(code, 1)
         self.assertEqual(notify.call_count, 1)
-        self.assertIn("wholesale backend failure", notify.call_args[0][0])
+        self.assertIn("wholesale extraction failure", notify.call_args[0][0])
 
     def test_sweep_zero_successful_calls_exits_nonzero(self):
         # backend down: calls attempted but none succeeded
@@ -1802,7 +1814,7 @@ class WholesaleVerdictTest(unittest.TestCase):
             process_con_side_effect=kw.DailyCapHit("openai/gpt-oss-20b"))
         self.assertEqual(code, 1)
         notify.assert_called_once()
-        self.assertIn("wholesale backend failure", notify.call_args[0][0])
+        self.assertIn("wholesale extraction failure", notify.call_args[0][0])
 
     def test_realtime_backend_failure_page_rate_limited(self):
         # F3: two realtime backend-failure runs within the cooldown page ONCE,
@@ -1846,9 +1858,14 @@ class SweepShortCircuitTest(unittest.TestCase):
         notify = unittest.mock.Mock()
 
         def pc(*a, **k):
-            # each con's extraction hits the down backend
+            # each con's extraction hits the down backend: chat() bumps
+            # backend_failures then RAISES BackendUnavailable, which propagates out
+            # of process_con to main()'s per-con handler — the real outage path the
+            # short-circuit must fire on (a mock that merely returned would exercise
+            # a path that can't happen and would hide the bug CodeRabbit found).
             if backend_down:
                 kw._run_health["backend_failures"] += 1
+                raise kw.BackendUnavailable("m: backend down")
             return ([], [], [], [], True)
 
         with contextlib.ExitStack() as stack:
@@ -1861,7 +1878,7 @@ class SweepShortCircuitTest(unittest.TestCase):
                 unittest.mock.patch.object(kw, "PUSH", False),
                 unittest.mock.patch.object(kw, "DRY_RUN", False),
                 unittest.mock.patch.object(kw, "SWEEP_BACKEND_FAILURE_LIMIT", 3),
-                unittest.mock.patch.object(kw, "catalog_check", lambda: None),
+                unittest.mock.patch.object(kw, "catalog_check", lambda *a, **k: None),
                 unittest.mock.patch.object(kw, "OPS_TELEGRAM_BOT_TOKEN", "tok"),
                 unittest.mock.patch.object(kw, "OPS_TELEGRAM_CHAT_ID", "-1"),
                 unittest.mock.patch.object(kw, "reset_run_health",
@@ -1934,7 +1951,8 @@ class OpsNotifyLengthCapTest(unittest.TestCase):
 
 class CatalogCheckAlertTest(unittest.TestCase):
     """CON-35 D: catalog_check alerts on BOTH the unreachable/error branch (and
-    keeps going) and the missing-model branch (before SystemExit)."""
+    keeps going) and the missing-model branch (before SystemExit). A --sweep
+    alerts unconditionally; a realtime run is cooldown-gated (no per-post flood)."""
 
     def test_unreachable_catalog_notifies_and_proceeds(self):
         def boom(req, timeout=None):
@@ -1942,7 +1960,7 @@ class CatalogCheckAlertTest(unittest.TestCase):
         with unittest.mock.patch.object(kw, "MODEL_API_KEY", "k"), \
              unittest.mock.patch.object(kw.urllib.request, "urlopen", boom), \
              unittest.mock.patch.object(kw, "ops_notify") as notify:
-            kw.catalog_check()  # must not raise
+            kw.catalog_check(sweep=True)  # must not raise
         notify.assert_called_once()
 
     def test_missing_model_notifies_before_exit(self):
@@ -1954,8 +1972,21 @@ class CatalogCheckAlertTest(unittest.TestCase):
              unittest.mock.patch.object(kw.urllib.request, "urlopen", fake), \
              unittest.mock.patch.object(kw, "ops_notify") as notify:
             with self.assertRaises(SystemExit):
-                kw.catalog_check()
+                kw.catalog_check(sweep=True)
         notify.assert_called_once()
+
+    def test_realtime_catalog_failure_is_cooldown_gated(self):
+        # #447: a realtime (--post-file) run must NOT page from catalog_check while
+        # the shared page cooldown is active — else a sustained outage floods ops
+        # once per spooled post. The verdict page (also cooldown-gated) covers it.
+        def boom(req, timeout=None):
+            raise kw.urllib.error.URLError("dns")
+        with unittest.mock.patch.object(kw, "MODEL_API_KEY", "k"), \
+             unittest.mock.patch.object(kw.urllib.request, "urlopen", boom), \
+             unittest.mock.patch.object(kw, "realtime_page_on_cooldown", lambda now: True), \
+             unittest.mock.patch.object(kw, "ops_notify") as notify:
+            kw.catalog_check(sweep=False)
+        notify.assert_not_called()
 
 
 if __name__ == "__main__":

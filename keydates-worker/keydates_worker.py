@@ -367,6 +367,14 @@ def chat(model: str, system: str, user: str, schema: dict, schema_name: str):
                 resp = json.load(r)
             content = resp["choices"][0]["message"]["content"]
             result = json.loads(content)
+            if not isinstance(result, dict):
+                # only a dict (incl. a valid empty {"dates": []}) is a usable
+                # structured response — a list/number/string is malformed output,
+                # not a healthy call: retry once, then give up (no success count,
+                # and never returned so extract/verify can't AttributeError on it)
+                if attempt >= 1:
+                    return None
+                continue
             # a dict (INCLUDING a valid empty {"dates": []}) is a healthy call
             _run_health["succeeded"] += 1
             return result
@@ -426,9 +434,17 @@ def chat(model: str, system: str, user: str, schema: dict, schema_name: str):
     return None
 
 
-def catalog_check():
+def catalog_check(sweep=False):
     """Fail fast if a configured model has vanished from the provider's model
-    list. GETs <MODEL_BASE_URL>/models (OpenAI shape: {"data": [{"id": ...}]})."""
+    list. GETs <MODEL_BASE_URL>/models (OpenAI shape: {"data": [{"id": ...}]}).
+
+    catalog_check runs on EVERY worker start, including each realtime --post-file
+    worker. A --sweep alerts unconditionally (fail-fast visibility, ~2x/day); a
+    realtime run shares the verdict's per-hour cooldown so a sustained outage
+    doesn't page once per spooled post."""
+    def _page(msg):
+        if sweep or not realtime_page_on_cooldown(time.time()):
+            ops_notify(msg)
     try:
         with urllib.request.urlopen(
             urllib.request.Request(
@@ -442,14 +458,14 @@ def catalog_check():
         log(f"warning: model catalog check failed ({e}); proceeding")
         # the catalog GET failing can itself be the first sign of a backend
         # outage — alert, but keep going so the run-health verdict owns the exit
-        ops_notify(f"⚠️ keydates: model catalog check failed ({e}) at {MODEL_CATALOG_URL}; "
-                   "proceeding without it.")
+        _page(f"⚠️ keydates: model catalog check failed ({e}) at {MODEL_CATALOG_URL}; "
+              "proceeding without it.")
         return
     missing = [m for m in [EXTRACT_MODEL, *VERIFY_MODELS] if m not in ids]
     if missing:
-        ops_notify(f"🚨 keydates: configured model(s) {missing} missing from the provider "
-                   f"catalog at {MODEL_CATALOG_URL} — extraction/verification cannot run "
-                   "until EXTRACT_MODEL / VERIFY_MODELS are fixed.")
+        _page(f"🚨 keydates: configured model(s) {missing} missing from the provider "
+              f"catalog at {MODEL_CATALOG_URL} — extraction/verification cannot run "
+              "until EXTRACT_MODEL / VERIFY_MODELS are fixed.")
         raise SystemExit(
             f"model(s) {missing} not in the provider model list at {MODEL_CATALOG_URL}. "
             f"Override with EXTRACT_MODEL / VERIFY_MODELS env vars."
@@ -1478,7 +1494,7 @@ def main():
     acquire_run_lock()
     if PUSH and not DRY_RUN:
         sync_checkout_to_main()
-    catalog_check()
+    catalog_check(sweep=args.sweep)
     cache = load_cache()
     rejections = load_rejections()
 
@@ -1540,6 +1556,16 @@ def main():
         except Exception as e:
             # one corrupt con file or feed hiccup must not kill the sweep
             log(f"ERROR processing {os.path.basename(fn)}: {e}")
+            # S2: a BackendUnavailable from chat() propagates out of process_con
+            # and lands HERE, so the short-circuit must live in this handler — a
+            # check after the try/except is unreachable on the outage path because
+            # `continue` skips it. Once the backend is clearly down, stop the sweep
+            # so the end-of-run verdict pages in minutes, not after grinding every
+            # con through its retries. --sweep only; realtime is one post.
+            if args.sweep and _run_health["backend_failures"] >= SWEEP_BACKEND_FAILURE_LIMIT:
+                log(f"backend down ({_run_health['backend_failures']} failures) — "
+                    "aborting sweep early; end-of-run verdict will page")
+                break
             continue
         if did_extract:
             extracts += 1
@@ -1559,15 +1585,6 @@ def main():
         all_rejected += rejected
         if changes or refuted or held:
             log(f"{base}: +{len(changes)} applied, {len(refuted)} refuted, {len(held)} held")
-        # S2: on a total backend outage, grinding through every con (4 retries ×
-        # sleeps + up to 120s timeout each) delays the end-of-run page by tens of
-        # minutes to hours. Once the backend is clearly down, stop the sweep — the
-        # verdict below then pages + exits non-zero immediately. --sweep only;
-        # realtime is a single post and must never short-circuit.
-        if args.sweep and _run_health["backend_failures"] >= SWEEP_BACKEND_FAILURE_LIMIT:
-            log(f"backend down ({_run_health['backend_failures']} failures) — "
-                "aborting sweep early; end-of-run verdict will page")
-            break
 
     if PUSH and not DRY_RUN:
         all_changes += reapply_outstanding(all_changes, rejections)
@@ -1701,8 +1718,9 @@ def main():
         # exit non-zero below so con_posts.rs retains the spool file for retry.
         if args.sweep or not realtime_page_on_cooldown(time.time()):
             ops_notify(
-                "🚨 keydates: wholesale backend failure this run — "
-                f"{backend_failures} backend-down signal(s); "
+                "🚨 keydates: wholesale extraction failure this run — "
+                f"{backend_failures} backend-down signal(s), "
+                f"{appview_failures} appview-fetch failure(s); "
                 f"{_run_health['succeeded']}/{_run_health['attempted']} model calls succeeded. "
                 "Exiting non-zero so no spooled post is deleted on a false success.")
         raise SystemExit(1)

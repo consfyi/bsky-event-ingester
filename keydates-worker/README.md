@@ -56,18 +56,22 @@ ingester repo and deploys via `scripts/deploy.sh ingester`; on the box it lives 
 3. One wrapper `/home/fbl/keydates-run.sh` (chmod 700, owner-only) exports the
    worker's env from the chmod-600 secret files and forwards its arguments to the
    worker. The ingester calls it with `--post-file <spool>` (real-time); cron calls
-   it with `--sweep --shard N/2`. The ops-bot vars are only needed for `--sweep` —
-   the source-liveness guardrails and their alerts run only in sweep mode (unset =
-   log-only).
+   it with `--sweep --shard N/2`. The ops-bot vars are **required for `--sweep`** —
+   the sweep refuses to start without them (`SystemExit`), so a backend/liveness
+   outage can never page nobody. Real-time tolerates them being unset (degrades to
+   log-only), but set them everywhere via this shared wrapper.
    ```sh
    #!/bin/sh
    export MODEL_API_KEY=$(cat /home/fbl/.keydates-model-key)
    export DATA_DIR=/home/fbl/consfyi/data        # the bot-dedicated data checkout
    export PUSH=1
-   # ops paging (sweep only). Real channel id (a negative -100… value) lives on the
-   # box, never in this repo — the value below is a placeholder.
+   # ops paging — required for --sweep. Real channel id (a negative -100… value)
+   # lives on the box, never in this repo; the value below is a placeholder.
    export OPS_TELEGRAM_BOT_TOKEN=$(cat /home/fbl/.ops-telegram-token)
    export OPS_TELEGRAM_CHAT_ID=-1001234567890
+   # optional monitoring knobs (defaults shown):
+   #   SWEEP_BACKEND_FAILURE_LIMIT=3   # abort a sweep after N backend-down signals
+   #   REALTIME_PAGE_COOLDOWN=3600     # min seconds between realtime outage pages
    exec python3 /home/fbl/keydates-worker/keydates_worker.py "$@"
    ```
 4. Weekly sweep backstop, sharded across two days at **09:00 UTC** (crontab):

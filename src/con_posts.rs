@@ -442,10 +442,21 @@ async fn drain_spool(
         }
     };
     let mut paths = Vec::new();
-    while let Ok(Some(entry)) = dir.next_entry().await {
-        let path = entry.path();
-        if path.extension().and_then(|ext| ext.to_str()) == Some("json") {
-            paths.push(path);
+    loop {
+        match dir.next_entry().await {
+            Ok(Some(entry)) => {
+                let path = entry.path();
+                if path.extension().and_then(|ext| ext.to_str()) == Some("json") {
+                    paths.push(path);
+                }
+            }
+            Ok(None) => break,
+            // don't treat a read error as end-of-directory (that would silently
+            // drain a partial scan) — log it and stop this pass; the next tick retries
+            Err(e) => {
+                log::error!("con_posts: error scanning spool dir during drain: {e}");
+                break;
+            }
         }
     }
     paths.sort(); // deterministic, oldest time_us first
