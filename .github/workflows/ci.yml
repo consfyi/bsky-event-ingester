@@ -23,6 +23,8 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - run: cargo build --all-targets --locked
+      # Runs the con_posts.rs spool/drain tests so the CON-35 Rust tests gate.
+      - run: cargo test --locked
 
   lint:
     name: lint

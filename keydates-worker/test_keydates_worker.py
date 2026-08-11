@@ -601,6 +601,48 @@ class PruneOutstandingTest(unittest.TestCase):
         self.assertEqual(kw.load_outstanding(), {kw.outstanding_key(e): e})
 
 
+class LoadOutstandingCorruptTest(unittest.TestCase):
+    """CON-35 M2: a corrupt outstanding.json must reset to {} but page ops first,
+    so the silent drop of every applied-but-unmerged change reaches a human."""
+
+    def test_corrupt_ledger_resets_and_pages_ops(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        path = os.path.join(tmp.name, "outstanding.json")
+        with open(path, "w") as f:
+            f.write("{not valid json")
+        with unittest.mock.patch.object(kw, "OUTSTANDING_FILE", path), \
+             unittest.mock.patch.object(kw, "ops_notify") as notify:
+            result = kw.load_outstanding()
+        self.assertEqual(result, {})
+        notify.assert_called_once()
+        self.assertIn("outstanding ledger", notify.call_args[0][0])
+        self.assertIn("corrupt", notify.call_args[0][0])
+
+
+class PublishFailureTest(unittest.TestCase):
+    """CON-35 M3: when the PR push/update fails, the changes are committed to the
+    bot branch locally but never reached the PR — publish() must page ops once
+    and re-raise so the run's exit code reflects the failure."""
+
+    def test_pr_push_failure_pages_ops_and_reraises(self):
+        # git("status") reports one changed con file so publish proceeds to push;
+        # git("push", ...) then raises CalledProcessError
+        def fake_git(*args, check=True):
+            if args[0] == "status":
+                return unittest.mock.Mock(stdout=" M con-a.json\n")
+            if args[0] == "push":
+                raise kw.subprocess.CalledProcessError(1, ["git", "push"])
+            return unittest.mock.Mock(stdout="")
+        with unittest.mock.patch.object(kw, "git", side_effect=fake_git), \
+             unittest.mock.patch.object(kw, "ops_notify") as notify, \
+             unittest.mock.patch.object(kw, "DATA_DIR", "/tmp/data"):
+            with self.assertRaises(kw.subprocess.CalledProcessError):
+                kw.publish("summary body")
+        notify.assert_called_once()
+        self.assertIn("publishing the bot PR failed", notify.call_args[0][0])
+
+
 class ProcessConPinningTest(unittest.TestCase):
     def test_process_con_pins_posts_and_dedupes_spool_twin(self):
         # ingestion-time pinning: a handle-form feed post is normalized to DID
@@ -674,7 +716,19 @@ class MainSmokeTest(unittest.TestCase):
             unittest.mock.patch.object(kw, "MAX_EXTRACTS", 1),
             unittest.mock.patch.object(kw, "PUSH", True),
             unittest.mock.patch.object(kw, "DRY_RUN", False),
-            unittest.mock.patch.object(kw, "catalog_check", lambda: None),
+            unittest.mock.patch.object(kw, "catalog_check", lambda *a, **k: None),
+            # sweep mode now fails fast unless the ops channel is configured (E)
+            unittest.mock.patch.object(kw, "OPS_TELEGRAM_BOT_TOKEN", "tok"),
+            unittest.mock.patch.object(kw, "OPS_TELEGRAM_CHAT_ID", "-1"),
+            # ops_notify is exercised by dedicated tests; here keep it off the
+            # network so wiring tests can't accidentally hit Telegram
+            unittest.mock.patch.object(kw, "ops_notify"),
+            # process_con is mocked in these tests, so the chat-level health
+            # counter never runs — seed a healthy run so the CON-35 wholesale
+            # verdict doesn't fire (the verdict has its own tests below)
+            unittest.mock.patch.object(
+                kw, "reset_run_health",
+                lambda: kw._run_health.update(attempted=1, succeeded=1, backend_failures=0)),
             unittest.mock.patch.dict(os.environ, {"SUMMARY_FILE": self.summary_file}),
             unittest.mock.patch.object(sys, "argv", ["keydates_worker.py", "--sweep"]),
         ]:
@@ -747,11 +801,37 @@ class MainSmokeTest(unittest.TestCase):
              unittest.mock.patch.object(
                  kw, "check_source_liveness", return_value=([removal], [], [], [], [])), \
              unittest.mock.patch.object(kw, "publish") as publish, \
+             unittest.mock.patch.object(kw, "ops_notify") as notify, \
              unittest.mock.patch.object(kw.subprocess, "run", return_value=bad):
             kw.main()
         publish.assert_not_called()  # format.py exited 1 — nothing may be pushed
+        # N1: the format failure must page ops, not just log
+        self.assertTrue(any("format.py failed" in c.args[0] for c in notify.call_args_list))
         with open(self.summary_file) as f:
             self.assertIn("Source post deleted", f.read())
+
+    def test_format_timeout_withholds_publish_and_pages_ops(self):
+        # N1: format.py hanging (TimeoutExpired -> rc="timeout") is a failure too —
+        # publish must be withheld and ops paged, same as a non-zero exit
+        removal = {"event_id": "testcon-2999", "category": "panels", "kind": "opens",
+                   "date": "2999-01-01", "source": entry("3aaa")["source"],
+                   "asOf": "2998-12-01T00:00:00.000Z", "_file": "con-a.json"}
+        # only format.py hangs; git and everything else still return cleanly
+        def run(cmd, *a, **k):
+            if any("format.py" in str(arg) for arg in cmd):
+                raise kw.subprocess.TimeoutExpired(cmd, 300)
+            return unittest.mock.Mock(returncode=0, stdout="")
+        with unittest.mock.patch.object(
+                 kw, "process_con", return_value=([], [], [], [], True)), \
+             unittest.mock.patch.object(
+                 kw, "check_source_liveness", return_value=([removal], [], [], [], [])), \
+             unittest.mock.patch.object(kw, "publish") as publish, \
+             unittest.mock.patch.object(kw, "ops_notify") as notify, \
+             unittest.mock.patch.object(kw.subprocess, "run", side_effect=run):
+            kw.main()
+        publish.assert_not_called()  # format hung — nothing may be pushed
+        self.assertTrue(any("format.py failed (timeout)" in c.args[0]
+                            for c in notify.call_args_list))
 
     def test_unextracted_con_excluded_from_liveness(self):
         # finding 2: a con whose extraction pass didn't run this sweep (e.g. its
@@ -1424,6 +1504,489 @@ class ProviderConfigTest(unittest.TestCase):
             importlib.reload(kw)
             self.assertEqual(kw.MODEL_CHAT_URL, "https://api.example/v1/chat/completions")
             self.assertEqual(kw.MODEL_CATALOG_URL, "https://api.example/v1/models")
+
+
+class BackendUnavailableTest(unittest.TestCase):
+    """CON-35 A: chat() separates a backend-DOWN signal (raises
+    BackendUnavailable, bumps backend_failures) from a single bad response
+    (returns None, no backend_failure); a valid empty extraction is a success."""
+
+    def setUp(self):
+        kw.reset_run_health()
+        self.addCleanup(kw.reset_run_health)
+
+    def _raise_http(self, code):
+        def fake(req, timeout=None):
+            raise kw.urllib.error.HTTPError(req.full_url, code, "err", {}, io.BytesIO(b"body"))
+        return fake
+
+    def _ok(self, content):
+        body = {"choices": [{"message": {"content": content}}]}
+
+        def fake(req, timeout=None):
+            return io.BytesIO(json.dumps(body).encode())
+        return fake
+
+    def test_gone_and_auth_statuses_raise_backend_unavailable(self):
+        for code in (401, 403, 404, 410):
+            with self.subTest(code=code):
+                kw.reset_run_health()
+                with unittest.mock.patch.object(kw, "MODEL_API_KEY", "k"), \
+                     unittest.mock.patch.object(kw, "token_pace", lambda *a, **k: 0.0), \
+                     unittest.mock.patch.object(kw.urllib.request, "urlopen", self._raise_http(code)):
+                    with self.assertRaises(kw.BackendUnavailable):
+                        kw.chat("m", "s", "u", kw.EXTRACT_SCHEMA, "keydates")
+                self.assertEqual(kw._run_health["backend_failures"], 1)
+                self.assertEqual(kw._run_health["succeeded"], 0)
+
+    def test_connection_error_raises_backend_unavailable(self):
+        def fake(req, timeout=None):
+            raise kw.urllib.error.URLError("connection refused")
+        with unittest.mock.patch.object(kw, "MODEL_API_KEY", "k"), \
+             unittest.mock.patch.object(kw, "token_pace", lambda *a, **k: 0.0), \
+             unittest.mock.patch.object(kw.time, "sleep", lambda s: None), \
+             unittest.mock.patch.object(kw.urllib.request, "urlopen", fake):
+            with self.assertRaises(kw.BackendUnavailable):
+                kw.chat("m", "s", "u", kw.EXTRACT_SCHEMA, "keydates")
+        self.assertEqual(kw._run_health["backend_failures"], 1)
+
+    def test_persistent_5xx_raises_backend_unavailable(self):
+        with unittest.mock.patch.object(kw, "MODEL_API_KEY", "k"), \
+             unittest.mock.patch.object(kw, "token_pace", lambda *a, **k: 0.0), \
+             unittest.mock.patch.object(kw.time, "sleep", lambda s: None), \
+             unittest.mock.patch.object(kw.urllib.request, "urlopen", self._raise_http(503)):
+            with self.assertRaises(kw.BackendUnavailable):
+                kw.chat("m", "s", "u", kw.EXTRACT_SCHEMA, "keydates")
+        self.assertEqual(kw._run_health["backend_failures"], 1)
+
+    def test_400_returns_none_not_backend_failure(self):
+        with unittest.mock.patch.object(kw, "MODEL_API_KEY", "k"), \
+             unittest.mock.patch.object(kw, "token_pace", lambda *a, **k: 0.0), \
+             unittest.mock.patch.object(kw.urllib.request, "urlopen", self._raise_http(400)):
+            self.assertIsNone(kw.chat("m", "s", "u", kw.EXTRACT_SCHEMA, "keydates"))
+        self.assertEqual(kw._run_health["backend_failures"], 0)
+        self.assertEqual(kw._run_health["succeeded"], 0)
+        self.assertEqual(kw._run_health["attempted"], 1)
+
+    def test_persistent_400_after_transient_returns_none_not_backend_failure(self):
+        # N2: a 400 on a LATER attempt (after a transient 5xx blip) is still a
+        # rejected request, not a backend outage — it must return None on ANY
+        # attempt, not survive to attempt 3 and be raised as BackendUnavailable.
+        calls = {"n": 0}
+
+        def fake(req, timeout=None):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                raise kw.urllib.error.HTTPError(req.full_url, 503, "err", {}, io.BytesIO(b"body"))
+            raise kw.urllib.error.HTTPError(req.full_url, 400, "err", {}, io.BytesIO(b"body"))
+
+        with unittest.mock.patch.object(kw, "MODEL_API_KEY", "k"), \
+             unittest.mock.patch.object(kw, "token_pace", lambda *a, **k: 0.0), \
+             unittest.mock.patch.object(kw.time, "sleep", lambda s: None), \
+             unittest.mock.patch.object(kw.urllib.request, "urlopen", fake):
+            self.assertIsNone(kw.chat("m", "s", "u", kw.EXTRACT_SCHEMA, "keydates"))
+        self.assertEqual(kw._run_health["backend_failures"], 0)
+        self.assertEqual(calls["n"], 2)
+
+    def test_malformed_output_returns_none_not_backend_failure(self):
+        with unittest.mock.patch.object(kw, "MODEL_API_KEY", "k"), \
+             unittest.mock.patch.object(kw, "token_pace", lambda *a, **k: 0.0), \
+             unittest.mock.patch.object(kw.urllib.request, "urlopen", self._ok("not json")):
+            self.assertIsNone(kw.chat("m", "s", "u", kw.EXTRACT_SCHEMA, "keydates"))
+        self.assertEqual(kw._run_health["backend_failures"], 0)
+        self.assertEqual(kw._run_health["succeeded"], 0)
+
+    def test_empty_extraction_counts_as_success(self):
+        with unittest.mock.patch.object(kw, "MODEL_API_KEY", "k"), \
+             unittest.mock.patch.object(kw, "token_pace", lambda *a, **k: 0.0), \
+             unittest.mock.patch.object(kw.urllib.request, "urlopen",
+                                        self._ok(json.dumps({"dates": []}))):
+            out = kw.chat("m", "s", "u", kw.EXTRACT_SCHEMA, "keydates")
+        self.assertEqual(out, {"dates": []})
+        self.assertEqual(kw._run_health["succeeded"], 1)
+        self.assertEqual(kw._run_health["backend_failures"], 0)
+
+    def test_non_dict_result_returns_none_not_success(self):
+        # CodeRabbit #372: json.loads can yield a list/number/string; that's
+        # malformed output, not a healthy call — chat() must return None (never
+        # counted as success, never returned so extract/verify can't AttributeError).
+        with unittest.mock.patch.object(kw, "MODEL_API_KEY", "k"), \
+             unittest.mock.patch.object(kw, "token_pace", lambda *a, **k: 0.0), \
+             unittest.mock.patch.object(kw.urllib.request, "urlopen",
+                                        self._ok(json.dumps([1, 2]))):
+            self.assertIsNone(kw.chat("m", "s", "u", kw.EXTRACT_SCHEMA, "keydates"))
+        self.assertEqual(kw._run_health["succeeded"], 0)
+        self.assertEqual(kw._run_health["backend_failures"], 0)
+
+
+class AppgetFailureTest(unittest.TestCase):
+    """M2: appget() records an appview_failures signal when every retry is
+    exhausted, so the end-of-run verdict can page on an appview outage (S1)."""
+
+    def setUp(self):
+        kw.reset_run_health()
+        self.addCleanup(kw.reset_run_health)
+
+    def test_exhausted_retries_returns_empty_and_marks_failure(self):
+        def fake(req, timeout=None):
+            raise kw.urllib.error.URLError("connection refused")
+        with unittest.mock.patch.object(kw.time, "sleep", lambda s: None), \
+             unittest.mock.patch.object(kw.urllib.request, "urlopen", fake):
+            out = kw.appget("app.bsky.feed.getAuthorFeed", {"actor": "did:x"})
+        self.assertEqual(out, {})
+        self.assertEqual(kw._run_health["appview_failures"], 1)
+
+    def test_exhausted_retries_on_httperror_marks_failure(self):
+        # HTTPError is a URLError subclass but appget catches broadly; a 5xx on
+        # every attempt is still an exhausted-retry appview failure.
+        def fake(req, timeout=None):
+            raise kw.urllib.error.HTTPError(req.full_url, 502, "err", {}, io.BytesIO(b"body"))
+        with unittest.mock.patch.object(kw.time, "sleep", lambda s: None), \
+             unittest.mock.patch.object(kw.urllib.request, "urlopen", fake):
+            out = kw.appget("app.bsky.feed.getAuthorFeed", {"actor": "did:x"})
+        self.assertEqual(out, {})
+        self.assertEqual(kw._run_health["appview_failures"], 1)
+
+
+class WholesaleVerdictTest(unittest.TestCase):
+    """CON-35 B/C: the end-of-run verdict alerts once and exits non-zero on a
+    wholesale backend failure, but leaves an ordinary run (a quiet all-empty
+    week, or a lone realtime malformed post) to exit 0 so con_posts.rs reclaims
+    its spool file."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.data_dir = os.path.join(self.tmp.name, "data")
+        os.makedirs(self.data_dir)
+        # two cons so a --sweep has len(targets)==2: a single appview blip
+        # (appview_failures==1 < 2) is below the F4 full-outage line and must
+        # not page (the single-con full-outage case has its own test).
+        for slug in ("con-a", "con-b"):
+            with open(os.path.join(self.data_dir, slug + ".json"), "w") as f:
+                json.dump({"events": []}, f)
+        self.state = os.path.join(self.tmp.name, "state")
+        self.post_file = os.path.join(self.tmp.name, "post.json")
+        with open(self.post_file, "w") as f:
+            json.dump({"series": "con-a", "url": "u",
+                       "asOf": "2999-01-01T00:00:00Z", "text": "t"}, f)
+
+    def _run(self, argv, health, process_con_side_effect=None):
+        import contextlib
+        notify = unittest.mock.Mock()
+        process_con_kwargs = ({"side_effect": process_con_side_effect}
+                              if process_con_side_effect is not None
+                              else {"return_value": ([], [], [], [], True)})
+        with contextlib.ExitStack() as stack:
+            for p in [
+                unittest.mock.patch.object(kw, "DATA_DIR", self.data_dir),
+                unittest.mock.patch.object(kw, "CACHE_FILE", os.path.join(self.state, "verdict_cache.json")),
+                unittest.mock.patch.object(kw, "OUTSTANDING_FILE", os.path.join(self.state, "outstanding.json")),
+                unittest.mock.patch.object(kw, "DEAD_PENDING_FILE", os.path.join(self.state, "dead_pending.json")),
+                unittest.mock.patch.object(kw, "REJECTIONS_FILE", os.path.join(self.state, "no_rej.json")),
+                unittest.mock.patch.object(kw, "PUSH", False),
+                unittest.mock.patch.object(kw, "DRY_RUN", False),
+                unittest.mock.patch.object(kw, "catalog_check", lambda *a, **k: None),
+                unittest.mock.patch.object(kw, "OPS_TELEGRAM_BOT_TOKEN", "tok"),
+                unittest.mock.patch.object(kw, "OPS_TELEGRAM_CHAT_ID", "-1"),
+                # zero every field first (tests share the process-wide
+                # _run_health), then apply only the keys this case names
+                unittest.mock.patch.object(
+                    kw, "reset_run_health",
+                    lambda: (kw._run_health.update(
+                                 attempted=0, succeeded=0, backend_failures=0,
+                                 appview_failures=0),
+                             kw._run_health.update(**health))),
+                unittest.mock.patch.object(kw, "process_con",
+                                           **process_con_kwargs),
+                unittest.mock.patch.object(kw, "check_source_liveness",
+                                           return_value=([], [], [], [], [])),
+                unittest.mock.patch.object(kw, "ops_notify", notify),
+                unittest.mock.patch.object(sys, "argv", argv),
+            ]:
+                stack.enter_context(p)
+            code = None
+            try:
+                kw.main()
+            except SystemExit as e:
+                code = e.code
+        return code, notify
+
+    def test_backend_failure_alerts_once_and_exits_nonzero(self):
+        code, notify = self._run(["kw", "--sweep"],
+                                 {"attempted": 3, "succeeded": 2, "backend_failures": 1})
+        self.assertEqual(code, 1)
+        self.assertEqual(notify.call_count, 1)
+        self.assertIn("wholesale extraction failure", notify.call_args[0][0])
+
+    def test_sweep_zero_successful_calls_exits_nonzero(self):
+        # backend down: calls attempted but none succeeded
+        code, notify = self._run(["kw", "--sweep"],
+                                 {"attempted": 4, "succeeded": 0, "backend_failures": 0})
+        self.assertEqual(code, 1)
+        notify.assert_called_once()
+
+    def test_sweep_appview_down_exits_nonzero(self):
+        # appview unreachable: appget exhausted its retries on multiple cons, so
+        # no chat() call ran (attempted==0) but appview_failures>=2 marks the
+        # outage (N1: >=2, so a lone blip on a quiet shard doesn't false-page)
+        code, notify = self._run(
+            ["kw", "--sweep"],
+            {"attempted": 0, "succeeded": 0, "backend_failures": 0, "appview_failures": 2})
+        self.assertEqual(code, 1)
+        notify.assert_called_once()
+
+    def test_quiet_sweep_single_appview_blip_exits_zero(self):
+        # N1: one transient appview failure on an all-quiet shard (no chat() call,
+        # nothing else failed) is a blip, not an outage — it must NOT page and
+        # exit 0. appview_failures must reach >=2 for the appview arm to fire.
+        code, notify = self._run(
+            ["kw", "--sweep"],
+            {"attempted": 0, "succeeded": 0, "backend_failures": 0, "appview_failures": 1})
+        self.assertIsNone(code)
+        notify.assert_not_called()
+
+    def test_quiet_sweep_no_relevant_posts_exits_zero(self):
+        # S1: a shard where cons simply had no RELEVANT posts reaches no chat()
+        # call (attempted==0) with a HEALTHY appview (appview_failures==0). This
+        # is a genuinely quiet run, not an outage — it must NOT page and exit 0.
+        code, notify = self._run(
+            ["kw", "--sweep"],
+            {"attempted": 0, "succeeded": 0, "backend_failures": 0, "appview_failures": 0})
+        self.assertIsNone(code)
+        notify.assert_not_called()
+
+    def test_quiet_week_all_empty_exits_zero(self):
+        # every con extracted successfully and returned {"dates": []} — NOT an outage
+        code, notify = self._run(["kw", "--sweep"],
+                                 {"attempted": 5, "succeeded": 5, "backend_failures": 0})
+        self.assertIsNone(code)
+        notify.assert_not_called()
+
+    def test_realtime_malformed_post_exits_zero(self):
+        # a single --post-file post that returned None (no BackendUnavailable) must
+        # exit 0 so con_posts.rs reclaims the spool file rather than retaining it
+        code, notify = self._run(["kw", "--post-file", self.post_file],
+                                 {"attempted": 1, "succeeded": 0, "backend_failures": 0})
+        self.assertIsNone(code)
+        notify.assert_not_called()
+
+    def test_realtime_backend_unavailable_exits_nonzero(self):
+        code, notify = self._run(["kw", "--post-file", self.post_file],
+                                 {"attempted": 1, "succeeded": 0, "backend_failures": 1})
+        self.assertEqual(code, 1)
+        notify.assert_called_once()
+
+    def test_sweep_full_appview_outage_single_con_pages(self):
+        # F4: a --sweep whose shard holds exactly one con under a TOTAL appview
+        # outage (appview_failures==1 == len(targets)) is a full outage, not a
+        # blip — it must page and exit non-zero even below the >=2 threshold.
+        one_con = os.path.join(self.tmp.name, "one_con")
+        os.makedirs(one_con)
+        with open(os.path.join(one_con, "con-a.json"), "w") as f:
+            json.dump({"events": []}, f)
+        self.data_dir = one_con
+        code, notify = self._run(
+            ["kw", "--sweep"],
+            {"attempted": 0, "succeeded": 0, "backend_failures": 0, "appview_failures": 1})
+        self.assertEqual(code, 1)
+        notify.assert_called_once()
+
+    def test_sweep_daily_cap_hit_on_first_con_exits_zero(self):
+        # Benign daily-quota exhaustion: the FIRST extract raises DailyCapHit
+        # (chat() has already bumped attempted to 1 before raising, succeeded==0),
+        # the sweep sets daily_cap_hit and breaks. This is ordinary recurring
+        # quota exhaustion handled via skipped_note — it must NOT fire the
+        # wholesale-failure ops page and must exit 0.
+        code, notify = self._run(
+            ["kw", "--sweep"],
+            {"attempted": 1, "succeeded": 0, "backend_failures": 0},
+            process_con_side_effect=kw.DailyCapHit("openai/gpt-oss-20b"))
+        self.assertIsNone(code)
+        notify.assert_not_called()
+
+    def test_sweep_backend_outage_still_pages_when_cap_also_hit(self):
+        # A genuine backend outage (backend_failures>0) must still page even if a
+        # DailyCapHit also occurred — the cap must not mask a real outage.
+        code, notify = self._run(
+            ["kw", "--sweep"],
+            {"attempted": 1, "succeeded": 0, "backend_failures": 1},
+            process_con_side_effect=kw.DailyCapHit("openai/gpt-oss-20b"))
+        self.assertEqual(code, 1)
+        notify.assert_called_once()
+        self.assertIn("wholesale extraction failure", notify.call_args[0][0])
+
+    def test_realtime_backend_failure_page_rate_limited(self):
+        # F3: two realtime backend-failure runs within the cooldown page ONCE,
+        # but BOTH still exit non-zero so con_posts.rs retains each spool file.
+        with unittest.mock.patch.object(kw.time, "time", return_value=1000.0):
+            code1, n1 = self._run(["kw", "--post-file", self.post_file],
+                                  {"attempted": 1, "succeeded": 0, "backend_failures": 1})
+            code2, n2 = self._run(["kw", "--post-file", self.post_file],
+                                  {"attempted": 1, "succeeded": 0, "backend_failures": 1})
+        self.assertEqual(code1, 1)
+        self.assertEqual(code2, 1)
+        # a fresh Mock per _run; combined they page exactly once within the window
+        self.assertEqual(n1.call_count + n2.call_count, 1)
+        # once the cooldown elapses, a fresh outage pages again (still exit 1)
+        with unittest.mock.patch.object(
+                kw.time, "time", return_value=1000.0 + kw.REALTIME_PAGE_COOLDOWN + 1):
+            code3, n3 = self._run(["kw", "--post-file", self.post_file],
+                                  {"attempted": 1, "succeeded": 0, "backend_failures": 1})
+        self.assertEqual(code3, 1)
+        n3.assert_called_once()
+
+
+class SweepShortCircuitTest(unittest.TestCase):
+    """CON-35 S2: on a total backend outage a --sweep must bail after a few
+    BackendUnavailable signals instead of grinding every con through its retries,
+    so the end-of-run verdict pages in minutes, not hours."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.data_dir = os.path.join(self.tmp.name, "data")
+        os.makedirs(self.data_dir)
+        # more cons than the failure limit, so a full grind would call every one
+        for i in range(8):
+            with open(os.path.join(self.data_dir, f"con-{i}.json"), "w") as f:
+                json.dump({"events": []}, f)
+        self.state = os.path.join(self.tmp.name, "state")
+
+    def _run(self, backend_down):
+        import contextlib
+        notify = unittest.mock.Mock()
+
+        def pc(*a, **k):
+            # each con's extraction hits the down backend: chat() bumps
+            # backend_failures then RAISES BackendUnavailable, which propagates out
+            # of process_con to main()'s per-con handler — the real outage path the
+            # short-circuit must fire on (a mock that merely returned would exercise
+            # a path that can't happen and would hide the bug CodeRabbit found).
+            if backend_down:
+                kw._run_health["backend_failures"] += 1
+                raise kw.BackendUnavailable("m: backend down")
+            return ([], [], [], [], True)
+
+        with contextlib.ExitStack() as stack:
+            for p in [
+                unittest.mock.patch.object(kw, "DATA_DIR", self.data_dir),
+                unittest.mock.patch.object(kw, "CACHE_FILE", os.path.join(self.state, "verdict_cache.json")),
+                unittest.mock.patch.object(kw, "OUTSTANDING_FILE", os.path.join(self.state, "outstanding.json")),
+                unittest.mock.patch.object(kw, "DEAD_PENDING_FILE", os.path.join(self.state, "dead_pending.json")),
+                unittest.mock.patch.object(kw, "REJECTIONS_FILE", os.path.join(self.state, "no_rej.json")),
+                unittest.mock.patch.object(kw, "PUSH", False),
+                unittest.mock.patch.object(kw, "DRY_RUN", False),
+                unittest.mock.patch.object(kw, "SWEEP_BACKEND_FAILURE_LIMIT", 3),
+                unittest.mock.patch.object(kw, "catalog_check", lambda *a, **k: None),
+                unittest.mock.patch.object(kw, "OPS_TELEGRAM_BOT_TOKEN", "tok"),
+                unittest.mock.patch.object(kw, "OPS_TELEGRAM_CHAT_ID", "-1"),
+                unittest.mock.patch.object(kw, "reset_run_health",
+                                           lambda: kw._run_health.update(
+                                               attempted=0, succeeded=0,
+                                               backend_failures=0, appview_failures=0)),
+                unittest.mock.patch.object(kw, "process_con", side_effect=pc),
+                unittest.mock.patch.object(kw, "check_source_liveness",
+                                           return_value=([], [], [], [], [])),
+                unittest.mock.patch.object(kw, "ops_notify", notify),
+                unittest.mock.patch.object(sys, "argv", ["kw", "--sweep"]),
+            ]:
+                stack.enter_context(p)
+            code = None
+            try:
+                kw.main()
+            except SystemExit as e:
+                code = e.code
+            return code, notify, kw.process_con.call_count
+
+    def test_sweep_bails_after_threshold_when_backend_down(self):
+        code, notify, calls = self._run(backend_down=True)
+        # limit is 3: break fires once backend_failures reaches 3, so only ~3 of
+        # the 8 cons are processed rather than all of them
+        self.assertEqual(calls, 3)
+        self.assertEqual(code, 1)  # end-of-run verdict pages + exits non-zero
+        notify.assert_called_once()
+
+    def test_healthy_sweep_processes_every_con(self):
+        # sanity: with the backend up, the short-circuit never trips
+        code, notify, calls = self._run(backend_down=False)
+        self.assertEqual(calls, 8)
+
+
+class SweepFailFastTest(unittest.TestCase):
+    """CON-35 E: sweep refuses to start if the ops channel is unconfigured, so a
+    backend/appview outage can never page nobody."""
+
+    def test_sweep_refuses_when_ops_unset(self):
+        for token, chat in (("", ""), ("tok", ""), ("", "-1")):
+            with self.subTest(token=token, chat=chat):
+                with unittest.mock.patch.object(kw, "OPS_TELEGRAM_BOT_TOKEN", token), \
+                     unittest.mock.patch.object(kw, "OPS_TELEGRAM_CHAT_ID", chat), \
+                     unittest.mock.patch.object(sys, "argv", ["kw", "--sweep"]):
+                    with self.assertRaises(SystemExit) as cm:
+                        kw.main()
+                self.assertIn("OPS_TELEGRAM", str(cm.exception))
+
+
+class OpsNotifyLengthCapTest(unittest.TestCase):
+    """CON-35 E: every ops_notify payload is capped to Telegram's 4096-char limit
+    so an oversized alert isn't rejected outright."""
+
+    def test_payload_truncated_with_ellipsis(self):
+        captured = {}
+
+        def fake(req, timeout=None):
+            captured["body"] = req.data.decode()
+            return unittest.mock.MagicMock()
+
+        with unittest.mock.patch.object(kw, "OPS_TELEGRAM_BOT_TOKEN", "tok"), \
+             unittest.mock.patch.object(kw, "OPS_TELEGRAM_CHAT_ID", "-1"), \
+             unittest.mock.patch.object(kw, "DRY_RUN", False), \
+             unittest.mock.patch.object(kw.urllib.request, "urlopen", fake):
+            kw.ops_notify("x" * 9000)
+        sent = kw.urllib.parse.parse_qs(captured["body"])["text"][0]
+        self.assertLessEqual(len(sent), 4096)
+        self.assertTrue(sent.endswith("…"))
+
+
+class CatalogCheckAlertTest(unittest.TestCase):
+    """CON-35 D: catalog_check alerts on BOTH the unreachable/error branch (and
+    keeps going) and the missing-model branch (before SystemExit). A --sweep
+    alerts unconditionally; a realtime run is cooldown-gated (no per-post flood)."""
+
+    def test_unreachable_catalog_notifies_and_proceeds(self):
+        def boom(req, timeout=None):
+            raise kw.urllib.error.URLError("dns")
+        with unittest.mock.patch.object(kw, "MODEL_API_KEY", "k"), \
+             unittest.mock.patch.object(kw.urllib.request, "urlopen", boom), \
+             unittest.mock.patch.object(kw, "ops_notify") as notify:
+            kw.catalog_check(sweep=True)  # must not raise
+        notify.assert_called_once()
+
+    def test_missing_model_notifies_before_exit(self):
+        def fake(req, timeout=None):
+            return io.BytesIO(json.dumps({"data": [{"id": "openai/gpt-oss-20b"}]}).encode())
+        with unittest.mock.patch.object(kw, "MODEL_API_KEY", "k"), \
+             unittest.mock.patch.object(kw, "EXTRACT_MODEL", "openai/gpt-oss-20b"), \
+             unittest.mock.patch.object(kw, "VERIFY_MODELS", ["missing-model"]), \
+             unittest.mock.patch.object(kw.urllib.request, "urlopen", fake), \
+             unittest.mock.patch.object(kw, "ops_notify") as notify:
+            with self.assertRaises(SystemExit):
+                kw.catalog_check(sweep=True)
+        notify.assert_called_once()
+
+    def test_realtime_catalog_failure_is_cooldown_gated(self):
+        # #447: a realtime (--post-file) run must NOT page from catalog_check while
+        # the shared page cooldown is active — else a sustained outage floods ops
+        # once per spooled post. The verdict page (also cooldown-gated) covers it.
+        def boom(req, timeout=None):
+            raise kw.urllib.error.URLError("dns")
+        with unittest.mock.patch.object(kw, "MODEL_API_KEY", "k"), \
+             unittest.mock.patch.object(kw.urllib.request, "urlopen", boom), \
+             unittest.mock.patch.object(kw, "realtime_page_on_cooldown", lambda now: True), \
+             unittest.mock.patch.object(kw, "ops_notify") as notify:
+            kw.catalog_check(sweep=False)
+        notify.assert_not_called()
 
 
 if __name__ == "__main__":

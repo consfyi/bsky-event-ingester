@@ -85,7 +85,17 @@ DATA_DIR = os.path.abspath(os.environ.get("DATA_DIR", "."))
 DRY_RUN = os.environ.get("DRY_RUN") == "1"
 PUSH = os.environ.get("PUSH") == "1"
 MAX_EXTRACTS = int(os.environ.get("MAX_EXTRACTS", "120"))
+# S2: abort a --sweep after this many BackendUnavailable signals so a total
+# outage pages in minutes, not after grinding every con through its retries.
+SWEEP_BACKEND_FAILURE_LIMIT = int(os.environ.get("SWEEP_BACKEND_FAILURE_LIMIT", "3"))
 CACHE_FILE = os.environ.get("CACHE_FILE", os.path.expanduser("~/.cache/keydates-worker/verdict_cache.json"))
+# F3 (section-H): during a sustained backend outage con_posts.rs spawns one
+# realtime worker per spooled post, each reaching the wholesale verdict — a page
+# PER POST would flood the ops channel. Rate-limit the realtime page via a
+# cross-process timestamp file (near CACHE_FILE) so an outage pages ~once/hour
+# instead of once/post. Every run still exits non-zero so con_posts.rs retains
+# its spool file. The --sweep page stays unconditional (a sweep runs ~2x/day).
+REALTIME_PAGE_COOLDOWN = int(os.environ.get("REALTIME_PAGE_COOLDOWN", "3600"))
 # dedicated ops Telegram bot, shared with the labeler health monitor (CON-10);
 # both unset degrades to log-only, exactly like the monitor workflow (CON-18)
 OPS_TELEGRAM_BOT_TOKEN = os.environ.get("OPS_TELEGRAM_BOT_TOKEN", "")
@@ -266,6 +276,32 @@ class DailyCapHit(Exception):
     pass
 
 
+class BackendUnavailable(Exception):
+    """The model backend is DOWN, not just unhappy with one request: a
+    connection/DNS error, an auth/not-found/gone HTTP status (401/403/404/410),
+    or a 5xx that persisted past every retry. Distinct from chat() returning
+    None (malformed output / a one-off 400), which is a single bad response and
+    NOT an outage. The run-health verdict in main() alerts + exits non-zero on
+    any of these; a lone None does not."""
+    pass
+
+
+# provider-agnostic aggregate health for THIS run, tracked at the chat() call
+# level so extract AND verify both feed it (reset at run start by main()):
+#   attempted        — chat() calls made
+#   succeeded        — chat() calls that returned a dict, INCLUDING a valid empty
+#                      {"dates": []} (a genuinely quiet week is NOT an outage)
+#   backend_failures — chat() calls that raised BackendUnavailable
+#   appview_failures — appget() calls that exhausted every retry (appview down);
+#                      lets the verdict tell "appview unreachable" apart from a
+#                      genuinely quiet shard where cons simply had no relevant posts
+_run_health = {"attempted": 0, "succeeded": 0, "backend_failures": 0, "appview_failures": 0}
+
+
+def reset_run_health():
+    _run_health.update(attempted=0, succeeded=0, backend_failures=0, appview_failures=0)
+
+
 def estimate_tokens(*texts):
     """Rough token count for budgeting/pacing: ~4 chars per token. Deliberately
     a coarse over/under estimate — exact tokenization needs the provider's
@@ -308,6 +344,7 @@ def chat(model: str, system: str, user: str, schema: dict, schema_name: str):
     malformed output. Raises DailyCapHit when the model's per-day quota is gone."""
     if not MODEL_API_KEY:
         raise SystemExit("MODEL_API_KEY (or GROQ_API_KEY) not set")
+    _run_health["attempted"] += 1
     body = json.dumps({
         "model": model,
         "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
@@ -329,8 +366,25 @@ def chat(model: str, system: str, user: str, schema: dict, schema_name: str):
             with urllib.request.urlopen(req, timeout=120) as r:
                 resp = json.load(r)
             content = resp["choices"][0]["message"]["content"]
-            return json.loads(content)
+            result = json.loads(content)
+            if not isinstance(result, dict):
+                # only a dict (incl. a valid empty {"dates": []}) is a usable
+                # structured response — a list/number/string is malformed output,
+                # not a healthy call: retry once, then give up (no success count,
+                # and never returned so extract/verify can't AttributeError on it)
+                if attempt >= 1:
+                    return None
+                continue
+            # a dict (INCLUDING a valid empty {"dates": []}) is a healthy call
+            _run_health["succeeded"] += 1
+            return result
         except urllib.error.HTTPError as e:
+            if e.code in (401, 403, 404, 410):
+                # auth revoked / endpoint moved or removed / model gone: the
+                # backend is unusable for this run, not just cross about one
+                # request — the 4-day GitHub Models outage was exactly this.
+                _run_health["backend_failures"] += 1
+                raise BackendUnavailable(f"{model}: HTTP {e.code} on {MODEL_CHAT_URL}")
             if e.code == 429:
                 # Retry-After is RFC-legal as an int, a fractional value, or an
                 # HTTP-date; parse defensively (base URL is swappable) — fall back
@@ -354,11 +408,25 @@ def chat(model: str, system: str, user: str, schema: dict, schema_name: str):
                 # so this should be rare — log it loudly rather than swallow it silently.
                 log(f"  413 request too large on {model} (TPM cap): {e.read()[:200]!r}")
                 return None
-            if e.code == 400 and attempt == 0:
+            if e.code == 400:
+                # a 400 is a request the backend rejects, not a backend outage —
+                # treat it as "no result" on ANY attempt, so a persistent 400 after
+                # a transient first attempt isn't misclassified as BackendUnavailable.
                 log(f"  400 on {model}: {e.read()[:200]!r}")
                 return None
             if attempt == 3:
-                raise
+                # a 5xx (or any other status) that survived every retry is a
+                # persistent backend fault, not a single bad request
+                _run_health["backend_failures"] += 1
+                raise BackendUnavailable(f"{model}: HTTP {e.code} after retries")
+            time.sleep(5 * (attempt + 1))
+        except urllib.error.URLError as e:
+            # connection refused / DNS failure / TLS error — the backend is
+            # unreachable. Retry transient blips; a failure across every attempt
+            # is a genuine outage (HTTPError is a URLError subclass, handled above).
+            if attempt == 3:
+                _run_health["backend_failures"] += 1
+                raise BackendUnavailable(f"{model}: {e.reason}")
             time.sleep(5 * (attempt + 1))
         except (json.JSONDecodeError, KeyError):
             if attempt >= 1:
@@ -366,9 +434,17 @@ def chat(model: str, system: str, user: str, schema: dict, schema_name: str):
     return None
 
 
-def catalog_check():
+def catalog_check(sweep=False):
     """Fail fast if a configured model has vanished from the provider's model
-    list. GETs <MODEL_BASE_URL>/models (OpenAI shape: {"data": [{"id": ...}]})."""
+    list. GETs <MODEL_BASE_URL>/models (OpenAI shape: {"data": [{"id": ...}]}).
+
+    catalog_check runs on EVERY worker start, including each realtime --post-file
+    worker. A --sweep alerts unconditionally (fail-fast visibility, ~2x/day); a
+    realtime run shares the verdict's per-hour cooldown so a sustained outage
+    doesn't page once per spooled post."""
+    def _page(msg):
+        if sweep or not realtime_page_on_cooldown(time.time()):
+            ops_notify(msg)
     try:
         with urllib.request.urlopen(
             urllib.request.Request(
@@ -380,9 +456,16 @@ def catalog_check():
             ids = {m["id"] for m in json.load(r).get("data", [])}
     except Exception as e:
         log(f"warning: model catalog check failed ({e}); proceeding")
+        # the catalog GET failing can itself be the first sign of a backend
+        # outage — alert, but keep going so the run-health verdict owns the exit
+        _page(f"⚠️ keydates: model catalog check failed ({e}) at {MODEL_CATALOG_URL}; "
+              "proceeding without it.")
         return
     missing = [m for m in [EXTRACT_MODEL, *VERIFY_MODELS] if m not in ids]
     if missing:
+        _page(f"🚨 keydates: configured model(s) {missing} missing from the provider "
+              f"catalog at {MODEL_CATALOG_URL} — extraction/verification cannot run "
+              "until EXTRACT_MODEL / VERIFY_MODELS are fixed.")
         raise SystemExit(
             f"model(s) {missing} not in the provider model list at {MODEL_CATALOG_URL}. "
             f"Override with EXTRACT_MODEL / VERIFY_MODELS env vars."
@@ -399,6 +482,9 @@ def appget(method, params):
                 return json.load(r)
         except Exception:
             time.sleep(1.0)
+    # every retry exhausted: the appview is unreachable, not just quiet. Record it
+    # so the end-of-run verdict can page on an appview outage (S1).
+    _run_health["appview_failures"] += 1
     return {}
 
 
@@ -857,8 +943,13 @@ def load_outstanding():
         try:
             with open(OUTSTANDING_FILE) as f:
                 return json.load(f)
-        except json.JSONDecodeError:
-            pass
+        except json.JSONDecodeError as e:
+            # resetting the ledger to {} silently drops every applied-but-unmerged
+            # change from the rolling PR — alert before doing it (CON-35 secondary)
+            log(f"outstanding ledger corrupt ({e}); resetting to empty")
+            ops_notify("🚨 keydates: outstanding ledger (outstanding.json) is corrupt and could "
+                       "not be parsed — the unmerged-changes memory was reset to empty. "
+                       "Re-check the bot PR for dropped entries.")
     return {}
 
 
@@ -965,6 +1056,10 @@ def ops_notify(text):
     shows the text in the log instead of sending."""
     if not OPS_TELEGRAM_BOT_TOKEN or not OPS_TELEGRAM_CHAT_ID:
         return
+    # Telegram rejects a sendMessage payload over 4096 chars outright, which
+    # would drop the one alert that matters — truncate every payload defensively
+    if len(text) > 4096:
+        text = text[:4095] + "…"
     if DRY_RUN:
         log(f"ops_notify (DRY_RUN, not sent): {text}")
         return
@@ -982,6 +1077,31 @@ def ops_notify(text):
             pass
     except Exception as e:
         log(f"ops_notify: could not send ops alert: {e}")
+
+
+def realtime_page_on_cooldown(now):
+    """F3: True if a realtime backend-failure page was already sent within
+    REALTIME_PAGE_COOLDOWN, so the current one should be suppressed. When it
+    returns False (about to page), it records `now` as the last page time in a
+    stamp file beside CACHE_FILE, giving cross-process rate limiting across the
+    per-post workers con_posts.rs spawns during an outage. `now` is injected
+    (time.time()) so the cooldown is testable. Fails loud: any read error is
+    treated as not-on-cooldown so a genuine page is never silently dropped."""
+    path = os.path.join(os.path.dirname(CACHE_FILE), "realtime_page.stamp")
+    try:
+        with open(path) as f:
+            last = float(f.read().strip())
+        if now - last < REALTIME_PAGE_COOLDOWN:
+            return True
+    except (OSError, ValueError):
+        pass  # no stamp yet, or unreadable/corrupt -> page (fail loud)
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w") as f:
+            f.write(str(now))
+    except OSError as e:
+        log(f"realtime page cooldown: could not record stamp: {e}")
+    return False
 
 
 def extract_for_con(con, events, posts):
@@ -1330,20 +1450,27 @@ def publish(summary):
     git("checkout", "-B", BOT_BRANCH)
     git("add", "--", *changed)
     git("commit", "-m", "via keydates_worker")
-    git("push", "-f", "origin", BOT_BRANCH)
-    pr = subprocess.run(["gh", "pr", "list", "--repo", "consfyi/data", "--head", BOT_BRANCH,
-                         "--state", "open", "--json", "number", "-q", ".[0].number"],
-                        capture_output=True, text=True).stdout.strip()
-    summary_path = os.path.join(DATA_DIR, ".git", "KEYDATES_PR_BODY.md")
-    with open(summary_path, "w") as f:
-        f.write(summary)
-    if pr:
-        subprocess.run(["gh", "pr", "edit", pr, "--repo", "consfyi/data", "--body-file", summary_path], check=True)
-        log(f"updated PR #{pr}")
-    else:
-        subprocess.run(["gh", "pr", "create", "--repo", "consfyi/data", "--head", BOT_BRANCH,
-                        "--title", "Key dates from Bluesky", "--body-file", summary_path], check=True)
-        log("opened new PR")
+    try:
+        git("push", "-f", "origin", BOT_BRANCH)
+        pr = subprocess.run(["gh", "pr", "list", "--repo", "consfyi/data", "--head", BOT_BRANCH,
+                             "--state", "open", "--json", "number", "-q", ".[0].number"],
+                            capture_output=True, text=True).stdout.strip()
+        summary_path = os.path.join(DATA_DIR, ".git", "KEYDATES_PR_BODY.md")
+        with open(summary_path, "w") as f:
+            f.write(summary)
+        if pr:
+            subprocess.run(["gh", "pr", "edit", pr, "--repo", "consfyi/data", "--body-file", summary_path], check=True)
+            log(f"updated PR #{pr}")
+        else:
+            subprocess.run(["gh", "pr", "create", "--repo", "consfyi/data", "--head", BOT_BRANCH,
+                            "--title", "Key dates from Bluesky", "--body-file", summary_path], check=True)
+            log("opened new PR")
+    except subprocess.CalledProcessError as e:
+        # the changes are committed to BOT_BRANCH locally but never reached the
+        # PR — page ops rather than fail silently, then re-raise for the log
+        ops_notify(f"🚨 keydates: publishing the bot PR failed ({e}) — changes committed to "
+                   f"{BOT_BRANCH} but not pushed/updated. Check the worker logs.")
+        raise
 
 
 def main():
@@ -1355,10 +1482,19 @@ def main():
     ap.add_argument("--shard", default=None, help="N/M — process the Nth of M slices (sweep only)")
     args = ap.parse_args()
 
+    # a sweep is the guardrail run: refuse to start with the ops channel silently
+    # off, or a backend/appview outage would page nobody (the CON-35 failure).
+    # Realtime (--post-file) stays lenient — it runs per-post and mustn't wedge.
+    if args.sweep and (not OPS_TELEGRAM_BOT_TOKEN or not OPS_TELEGRAM_CHAT_ID):
+        raise SystemExit(
+            "sweep mode requires OPS_TELEGRAM_BOT_TOKEN and OPS_TELEGRAM_CHAT_ID so "
+            "backend/liveness outages can page ops; refusing to run with the guardrail off.")
+
+    reset_run_health()
     acquire_run_lock()
     if PUSH and not DRY_RUN:
         sync_checkout_to_main()
-    catalog_check()
+    catalog_check(sweep=args.sweep)
     cache = load_cache()
     rejections = load_rejections()
 
@@ -1402,6 +1538,7 @@ def main():
     processed = []  # files that got a full pass this run (liveness only checks these)
     extracts = 0
     skipped_note = ""
+    daily_cap_hit = False
     for fn, provided, extra_post in targets:
         if not os.path.exists(fn):
             log(f"missing: {fn}")
@@ -1414,10 +1551,21 @@ def main():
                 fn, cache, rejections, provided, extra_post)
         except DailyCapHit as e:
             skipped_note = f"Daily quota hit on {e}; remaining cons pick up next run."
+            daily_cap_hit = True
             break
         except Exception as e:
             # one corrupt con file or feed hiccup must not kill the sweep
             log(f"ERROR processing {os.path.basename(fn)}: {e}")
+            # S2: a BackendUnavailable from chat() propagates out of process_con
+            # and lands HERE, so the short-circuit must live in this handler — a
+            # check after the try/except is unreachable on the outage path because
+            # `continue` skips it. Once the backend is clearly down, stop the sweep
+            # so the end-of-run verdict pages in minutes, not after grinding every
+            # con through its retries. --sweep only; realtime is one post.
+            if args.sweep and _run_health["backend_failures"] >= SWEEP_BACKEND_FAILURE_LIMIT:
+                log(f"backend down ({_run_health['backend_failures']} failures) — "
+                    "aborting sweep early; end-of-run verdict will page")
+                break
             continue
         if did_extract:
             extracts += 1
@@ -1504,12 +1652,18 @@ def main():
         # cwd matters: uv's config discovery walks up from the working directory,
         # and an unsearchable foreign directory (e.g. launched via sudo from
         # another user's home) aborts uv before format.py even runs.
-        fmt = subprocess.run(["uv", "run", os.path.join(DATA_DIR, "tools", "format.py"),
-                              *sorted({os.path.join(DATA_DIR, c["_file"]) for c in [*all_changes, *removals, *pins]})],
-                             cwd=DATA_DIR, check=False)
-        format_ok = fmt.returncode == 0
+        try:
+            fmt = subprocess.run(["uv", "run", os.path.join(DATA_DIR, "tools", "format.py"),
+                                  *sorted({os.path.join(DATA_DIR, c["_file"]) for c in [*all_changes, *removals, *pins]})],
+                                 cwd=DATA_DIR, check=False, timeout=300)
+            rc = fmt.returncode
+        except subprocess.TimeoutExpired:
+            rc = "timeout"
+        format_ok = rc == 0
         if not format_ok:
-            log(f"ERROR: format.py exited {fmt.returncode} — withholding push, changes left staged")
+            log(f"ERROR: format.py exited {rc} — withholding push, changes left staged")
+            ops_notify(f"⚠️ keydates: format.py failed ({rc}) — push withheld, changes left "
+                       "staged in the checkout. Check the worker logs.")
 
     summary = render_summary(all_changes, all_refuted, all_held, all_rejected, skipped_note,
                              removals, account_flags, bulk_flags, pending, pins)
@@ -1523,6 +1677,53 @@ def main():
             publish(summary)
     elif all_changes or removals or pins:
         log(f"\n{len(all_changes) + len(removals) + len(pins)} change(s) staged in {DATA_DIR} (PUSH not set — nothing pushed)")
+
+    # CON-35 wholesale-failure verdict (cache/state/summary/publish are already
+    # persisted above, so exiting now loses nothing). Fire ONCE and exit non-zero
+    # when EITHER (a) any BackendUnavailable was seen this run, OR (b) a --sweep
+    # with targets made zero successful backend calls AND that zero is explained
+    # by a real outage — either the model backend was reached and failed
+    # (attempted>0) or the appview was unreachable on >=2 fetches
+    # (appview_failures>=2, so one transient blip on an all-quiet shard doesn't
+    # false-page). A --sweep shard where cons simply had no RELEVANT posts reaches
+    # no chat() call at all (attempted==0) with a HEALTHY appview
+    # (appview_failures==0), so it is a genuinely quiet run and must NOT page (S1). A valid empty extraction counts
+    # as a success, so a quiet week does NOT fire; and a lone realtime malformed
+    # post (None, no BackendUnavailable) does NOT fire — realtime must still exit 0
+    # so con_posts.rs reclaims its spool file. Non-zero exit is what makes
+    # con_posts.rs RETAIN the spool file (F), stopping the silent-deletion data
+    # loss, and lets the drainer retry it later.
+    backend_failures = _run_health["backend_failures"]
+    appview_failures = _run_health["appview_failures"]
+    succeeded = _run_health["succeeded"]
+    attempted = _run_health["attempted"]
+    # F4: also treat a shard where EVERY target failed the appview as a full
+    # outage (appview_failures == len(targets)), independent of the >=2 blip
+    # threshold — otherwise a single-con shard under a total appview outage
+    # (appview_failures==1) would exit 0 silently. The >=2 arm still covers the
+    # partial/quiet multi-con shard (one blip < len(targets) doesn't page).
+    # A benign daily-quota exhaustion (DailyCapHit) can leave attempted>0 with
+    # zero successes on a --sweep; that is already handled via skipped_note and
+    # must NOT trip the sweep zero-success arm (false ops page / alarm fatigue).
+    # backend_failures>0 still pages even if a cap was also hit — a real outage
+    # is never masked by a cap.
+    wholesale_failure = backend_failures > 0 or (
+        args.sweep and len(targets) > 0 and succeeded == 0 and not daily_cap_hit
+        and (attempted > 0 or appview_failures >= 2
+             or appview_failures == len(targets)))
+    if wholesale_failure:
+        # F3: the --sweep page is unconditional (runs ~2x/day, no flood risk); a
+        # realtime page is rate-limited so a sustained outage — one worker per
+        # spooled post — pages ~once/hour, not once/post. Either way we still
+        # exit non-zero below so con_posts.rs retains the spool file for retry.
+        if args.sweep or not realtime_page_on_cooldown(time.time()):
+            ops_notify(
+                "🚨 keydates: wholesale extraction failure this run — "
+                f"{backend_failures} backend-down signal(s), "
+                f"{appview_failures} appview-fetch failure(s); "
+                f"{_run_health['succeeded']}/{_run_health['attempted']} model calls succeeded. "
+                "Exiting non-zero so no spooled post is deleted on a false success.")
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":
