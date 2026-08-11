@@ -343,10 +343,10 @@ fn handle_post(
             return;
         };
         match command.spawn() {
-            Ok(mut child) => {
+            Ok(child) => {
                 let series = series.clone();
                 tokio::spawn(async move {
-                    reap_worker(&series, &inflight, child.wait().await).await;
+                    wait_and_reap(&series, &inflight, child, WORKER_TIMEOUT).await;
                 });
             }
             Err(e) => {
@@ -400,6 +400,35 @@ async fn reap_worker(
         }
         Err(e) => {
             log::error!("con_posts: worker for {series} failed: {e}");
+            unclaim_spool(inflight);
+        }
+    }
+}
+
+/// Ceiling on a single spooled-post worker's runtime. A `--post-file` worker makes
+/// a few model calls (each up to ~120s + 429 backoff), so legit runs finish well
+/// under this; the bound just stops a hung worker from wedging the sequential drain
+/// forever (or leaking a claim + process on the realtime path). CON-39.
+const WORKER_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(900);
+
+/// Wait for a spawned worker, bounded by `timeout`, then reap it. On timeout, kill
+/// the child (tokio's `kill().await` also reaps it) and un-claim the spool file so
+/// a later drain pass retries it — one hung worker must never block the drain.
+async fn wait_and_reap(
+    series: &str,
+    inflight: &std::path::Path,
+    mut child: tokio::process::Child,
+    timeout: std::time::Duration,
+) {
+    match tokio::time::timeout(timeout, child.wait()).await {
+        Ok(wait) => reap_worker(series, inflight, wait).await,
+        Err(_) => {
+            log::error!(
+                "con_posts: worker for {series} exceeded {}s; killing and retaining {} for retry",
+                timeout.as_secs(),
+                inflight.display()
+            );
+            let _ = child.kill().await;
             unclaim_spool(inflight);
         }
     }
@@ -562,7 +591,7 @@ async fn drain_spool(options: &Options, max_age: std::time::Duration) {
         };
         log::info!("con_posts: draining spool file {}", path.display());
         match command.spawn() {
-            Ok(mut child) => reap_worker(&series, &inflight, child.wait().await).await,
+            Ok(child) => wait_and_reap(&series, &inflight, child, WORKER_TIMEOUT).await,
             Err(e) => {
                 log::error!("con_posts: failed to spawn drain worker for {series}: {e}");
                 unclaim_spool(&inflight);
@@ -725,6 +754,33 @@ mod tests {
             spool.exists() && !inflight.exists(),
             "unclaim renames .inflight -> .json"
         );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[tokio::test]
+    async fn wait_and_reap_kills_and_unclaims_on_timeout() {
+        // a worker that runs far past the timeout must be killed and its file
+        // un-claimed for retry, so one hung worker can't wedge the drain (CON-39).
+        let dir = scratch_dir();
+        let spool = dir.join("123-testcon.json");
+        std::fs::write(&spool, b"{}").unwrap();
+        let inflight = claim_spool(&spool).expect("claim");
+        let child = tokio::process::Command::new("sleep")
+            .arg("30")
+            .spawn()
+            .unwrap();
+        wait_and_reap(
+            "testcon",
+            &inflight,
+            child,
+            std::time::Duration::from_millis(50),
+        )
+        .await;
+        assert!(
+            spool.exists(),
+            "a timed-out worker must un-claim the file for retry"
+        );
+        assert!(!inflight.exists(), "the .inflight claim must be released");
         std::fs::remove_dir_all(&dir).ok();
     }
 
