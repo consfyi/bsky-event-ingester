@@ -933,9 +933,15 @@ async fn service_jetstream_once(
 /// duplicate of the pin, so failover still has somewhere to go. Pin plus an
 /// empty list is the exclusive pin: `[pin]`, which never switches.
 fn jetstream_dial_order(pinned: Option<&url::Url>, list: &[url::Url]) -> Vec<url::Url> {
-    let mut out = Vec::with_capacity(list.len() + 1);
-    out.extend(pinned.cloned());
-    out.extend(list.iter().filter(|u| Some(*u) != pinned).cloned());
+    // Dedupe the whole order, not just against the pin: a repeated host
+    // would make the policy "fail over" (and rewind the cursor) onto the
+    // same dead endpoint.
+    let mut out: Vec<url::Url> = Vec::with_capacity(list.len() + 1);
+    for u in pinned.into_iter().chain(list) {
+        if !out.contains(u) {
+            out.push(u.clone());
+        }
+    }
     out
 }
 
@@ -1160,6 +1166,11 @@ mod tests {
         assert_eq!(
             jetstream_dial_order(Some(&u("wss://c/subscribe")), &[]),
             vec![u("wss://c/subscribe")]
+        );
+        // A repeated host in the list collapses to one entry.
+        assert_eq!(
+            jetstream_dial_order(None, &[u("wss://a/subscribe"), u("wss://a/subscribe")]),
+            vec![u("wss://a/subscribe")]
         );
     }
 }
