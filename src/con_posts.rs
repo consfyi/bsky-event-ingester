@@ -104,7 +104,7 @@ impl FireState {
 pub async fn service(
     db_pool: &sqlx::PgPool,
     watchlist: Watchlist,
-    jetstream_endpoint: &url::Url,
+    jetstream_endpoints: Vec<url::Url>,
     options: Options,
 ) -> Result<(), anyhow::Error> {
     std::fs::create_dir_all(&options.spool_dir)?;
@@ -133,6 +133,10 @@ pub async fn service(
     ));
 
     let mut cursor = read_cursor(db_pool).await?;
+    let mut reconnector = crate::jetstream::reconnect::Reconnector::new(
+        jetstream_endpoints,
+        crate::jetstream::reconnect::Policy::default(),
+    )?;
     let mut fire_state = FireState {
         last_fired: std::collections::HashMap::new(),
         day: chrono::Utc::now().date_naive(),
@@ -147,11 +151,13 @@ pub async fn service(
             continue;
         }
 
+        let endpoint = reconnector.endpoint().clone();
+        let started = std::time::Instant::now();
         match service_once(
             db_pool,
             &watchlist,
             &dids_snapshot,
-            jetstream_endpoint,
+            &endpoint,
             &options,
             &mut fire_state,
             cursor,
@@ -162,7 +168,7 @@ pub async fn service(
                 cursor = next_cursor;
             }
             Err(e) => {
-                log::error!("con_posts: Jetstream disconnected: {e}");
+                log::error!("con_posts: Jetstream disconnected ({endpoint}): {e}");
                 // The in-memory cursor is only updated on clean exits, so after
                 // an error it can be hours stale — and a replay here re-fires
                 // the whole LLM pipeline, unlike the labeler's idempotent
@@ -174,7 +180,18 @@ pub async fn service(
                 }
             }
         }
-        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+        let next = reconnector.on_disconnect(started.elapsed());
+        if next.switched {
+            // Rewind only on a host switch (not every reconnect): a replayed
+            // post re-enters the LLM pipeline, and the debounce absorbs a
+            // few seconds of overlap but not more.
+            cursor = cursor.map(|c| c - crate::jetstream::reconnect::REWIND_US);
+            log::error!(
+                "con_posts: repeated short connections to {endpoint}, failing over to {}",
+                reconnector.endpoint()
+            );
+        }
+        tokio::time::sleep(next.delay).await;
     }
 }
 

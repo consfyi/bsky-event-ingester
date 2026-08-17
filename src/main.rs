@@ -10,6 +10,11 @@ struct Config {
     bsky_password: String,
     bsky_endpoint: String,
     ui_endpoint: String,
+    // Dial order for the Jetstream firehose; see jetstream::DEFAULT_ENDPOINTS.
+    // The consumer fails over to the next entry after repeated short-lived
+    // connections. `jetstream_endpoint` (singular) is the pre-failover key:
+    // if set it is dialed first, so an existing config.toml keeps its pin.
+    jetstream_endpoints: Vec<url::Url>,
     jetstream_endpoint: Option<url::Url>,
     events_url: String,
     postgres_url: String,
@@ -38,6 +43,7 @@ impl std::fmt::Debug for Config {
             .field("bsky_password", &"<redacted>")
             .field("bsky_endpoint", &self.bsky_endpoint)
             .field("ui_endpoint", &self.ui_endpoint)
+            .field("jetstream_endpoints", &self.jetstream_endpoints)
             .field("jetstream_endpoint", &self.jetstream_endpoint)
             .field("events_url", &self.events_url)
             .field("postgres_url", &"<redacted>")
@@ -662,18 +668,24 @@ async fn service_jetstream(
     did: &atrium_api::types::string::Did,
     keypair: &atrium_crypto::keypair::Secp256k1Keypair,
     events_state: std::sync::Arc<tokio::sync::Mutex<EventsState>>,
-    jetstream_endpoint: &url::Url,
+    jetstream_endpoints: Vec<url::Url>,
     commit_firehose_cursor_every: std::time::Duration,
 ) -> Result<(), anyhow::Error> {
     let mut cursor = read_jetstream_cursor(db_pool).await?;
+    let mut reconnector = jetstream::reconnect::Reconnector::new(
+        jetstream_endpoints,
+        jetstream::reconnect::Policy::default(),
+    )?;
 
     loop {
+        let endpoint = reconnector.endpoint().clone();
+        let started = std::time::Instant::now();
         match service_jetstream_once(
             db_pool,
             did,
             keypair,
             events_state.clone(),
-            jetstream_endpoint,
+            &endpoint,
             commit_firehose_cursor_every,
             cursor,
         )
@@ -683,7 +695,7 @@ async fn service_jetstream(
                 cursor = next_cursor;
             }
             Err(e) => {
-                log::error!("Jetstream disconnected: {e}");
+                log::error!("Jetstream disconnected ({endpoint}): {e}");
                 // The in-memory cursor is only updated on clean exits, so after
                 // an error it can be hours stale — reconnecting from it replays
                 // already-committed events and drags jetstream_cursor backward.
@@ -695,7 +707,17 @@ async fn service_jetstream(
                 }
             }
         };
-        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+        let next = reconnector.on_disconnect(started.elapsed());
+        if next.switched {
+            // Instances ingest with slightly different lag; a small rewind
+            // keeps playback gapless (label writes are idempotent upserts).
+            cursor = cursor.map(|c| c - jetstream::reconnect::REWIND_US);
+            log::error!(
+                "Jetstream: repeated short connections to {endpoint}, failing over to {}",
+                reconnector.endpoint()
+            );
+        }
+        tokio::time::sleep(next.delay).await;
     }
 }
 
@@ -876,6 +898,15 @@ async fn service_jetstream_once(
     Ok(cursor)
 }
 
+/// A pinned `jetstream_endpoint` goes first; the list follows, minus any
+/// duplicate of the pin, so failover still has somewhere to go.
+fn jetstream_dial_order(pinned: Option<&url::Url>, list: &[url::Url]) -> Vec<url::Url> {
+    let mut out = Vec::with_capacity(list.len() + 1);
+    out.extend(pinned.cloned());
+    out.extend(list.iter().filter(|u| Some(*u) != pinned).cloned());
+    out
+}
+
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     env_logger::init();
@@ -886,10 +917,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .set_default("events_url", "https://data.cons.fyi/current.jsonl")?
         .set_default("keypair_path", "signing.key")?
         .set_default("ui_endpoint", "https://cons.fyi")?
-        .set_default(
-            "jetstream_endpoint",
-            "wss://jetstream1.us-east.bsky.network/subscribe",
-        )?
+        .set_default("jetstream_endpoints", jetstream::DEFAULT_ENDPOINTS.to_vec())?
         .set_default("label_sync_delay_secs", 60 * 60)?
         .set_default("ingester_bind", "127.0.0.1:3002")?
         .set_default("commit_firehose_cursor_every_secs", 5)?
@@ -991,7 +1019,11 @@ async fn main() -> Result<(), anyhow::Error> {
         }),
     );
 
-    let con_posts_endpoint = config.jetstream_endpoint.clone();
+    let jetstream_endpoints = jetstream_dial_order(
+        config.jetstream_endpoint.as_ref(),
+        &config.jetstream_endpoints,
+    );
+    let con_posts_endpoints = jetstream_endpoints.clone();
     let con_posts_options =
         config
             .con_posts_spool_dir
@@ -1008,18 +1040,13 @@ async fn main() -> Result<(), anyhow::Error> {
 
     tokio::try_join!(
         async {
-            let Some(jetstream_endpoint) = config.jetstream_endpoint else {
-                log::warn!("no jetstream endpoint configured, won't service jetstream events");
-                return Ok(());
-            };
-
             // Wait on events.
             service_jetstream(
                 &db_pool,
                 &did,
                 &keypair,
                 events_state.clone(),
-                &jetstream_endpoint,
+                jetstream_endpoints,
                 std::time::Duration::from_secs(config.commit_firehose_cursor_every_secs),
             )
             .await?;
@@ -1039,14 +1066,12 @@ async fn main() -> Result<(), anyhow::Error> {
         async {
             // Watch con accounts for key-date posts (second Jetstream
             // connection; the like connection must stay unfiltered by DID).
-            let (Some(options), Some(jetstream_endpoint)) =
-                (con_posts_options, con_posts_endpoint.as_ref())
-            else {
+            let Some(options) = con_posts_options else {
                 log::info!("con_posts_spool_dir not configured, key-date detection off");
                 return Ok(());
             };
 
-            con_posts::service(&db_pool, watchlist.clone(), jetstream_endpoint, options).await?;
+            con_posts::service(&db_pool, watchlist.clone(), con_posts_endpoints, options).await?;
             unreachable!();
 
             #[allow(unreachable_code)]
@@ -1055,4 +1080,38 @@ async fn main() -> Result<(), anyhow::Error> {
     )?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn u(s: &str) -> url::Url {
+        url::Url::parse(s).unwrap()
+    }
+
+    #[test]
+    fn default_endpoints_parse() {
+        for e in jetstream::DEFAULT_ENDPOINTS {
+            assert_eq!(u(e).path(), "/subscribe", "{e}");
+        }
+    }
+
+    #[test]
+    fn pinned_endpoint_dials_first_without_duplicate() {
+        let list = [u("wss://a/subscribe"), u("wss://b/subscribe")];
+        assert_eq!(
+            jetstream_dial_order(Some(&u("wss://b/subscribe")), &list),
+            vec![u("wss://b/subscribe"), u("wss://a/subscribe")]
+        );
+        assert_eq!(
+            jetstream_dial_order(Some(&u("wss://c/subscribe")), &list),
+            vec![
+                u("wss://c/subscribe"),
+                u("wss://a/subscribe"),
+                u("wss://b/subscribe")
+            ]
+        );
+        assert_eq!(jetstream_dial_order(None, &list), list.to_vec());
+    }
 }
