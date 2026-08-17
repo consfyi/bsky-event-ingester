@@ -269,10 +269,14 @@ pub async fn connect(
                     // `take` truncates the read instead, which surfaces as a
                     // serde_json error → reconnect.
                     let mut body = &body[..];
-                    let decoder = zstd::stream::Decoder::with_prepared_dictionary(
+                    let mut decoder = zstd::stream::Decoder::with_prepared_dictionary(
                         &mut body,
                         &ZSTD_DICTIONARY,
                     )?;
+                    // The frame header can otherwise demand up to libzstd's
+                    // 128 MiB default window before `take` bounds a byte;
+                    // 2^23 = 8 MiB matches MAX_DECODED_BYTES.
+                    decoder.window_log_max(23)?;
                     yield serde_json::from_reader(std::io::Read::take(decoder, MAX_DECODED_BYTES))?;
                 }
                 tokio_tungstenite::tungstenite::Message::Text(body) => {
@@ -391,12 +395,13 @@ mod tests {
         });
         // With nobody polling, the sender must stall short of `total`
         // (buffer + the one frame the reader holds + socket buffers) and
-        // then stop moving entirely — two samples a second apart must match,
-        // or the reader is merely slow, not parked. It must also have got
+        // then stop moving entirely — two samples 3s apart must match, or
+        // the reader is merely slow, not parked (the 6s park also drives the
+        // >5s backpressure warn + re-reserve path). It must also have got
         // at least RELAY_BUFFER frames in, or the buffer has shrunk.
-        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+        tokio::time::sleep(std::time::Duration::from_secs(3)).await;
         let sample = sent.load(std::sync::atomic::Ordering::SeqCst);
-        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+        tokio::time::sleep(std::time::Duration::from_secs(3)).await;
         let stalled_at = sent.load(std::sync::atomic::Ordering::SeqCst);
         assert_eq!(sample, stalled_at, "reader is still draining frames");
         assert!(

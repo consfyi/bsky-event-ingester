@@ -1152,6 +1152,9 @@ mod tests {
     #[test]
     fn event_deadline_is_under_healthy_after() {
         assert!(EVENT_DEADLINE < jetstream::reconnect::Policy::default().healthy_after);
+        // ...and long enough that it can't fire before a dial could: a tiny
+        // value would put the labeler into a bail/rotate storm.
+        assert!(EVENT_DEADLINE > jetstream::CONNECT_TIMEOUT);
     }
 
     #[test]
