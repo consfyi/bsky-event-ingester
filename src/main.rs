@@ -10,6 +10,15 @@ struct Config {
     bsky_password: String,
     bsky_endpoint: String,
     ui_endpoint: String,
+    // Dial order for the Jetstream firehose; see jetstream::DEFAULT_ENDPOINTS.
+    // The consumer fails over to the next entry after repeated short-lived
+    // connections. `jetstream_endpoint` (singular, the pre-failover key) is a
+    // dial-order preference, not exclusivity: it is dialed first, but after
+    // repeated short connections the consumer rotates onto
+    // `jetstream_endpoints`. To pin exclusively, set `jetstream_endpoints = []`
+    // alongside the pin. `jetstream_endpoints = []` with no pin disables the
+    // firehose: both consumers log a warning and return instead of running.
+    jetstream_endpoints: Vec<url::Url>,
     jetstream_endpoint: Option<url::Url>,
     events_url: String,
     postgres_url: String,
@@ -38,6 +47,7 @@ impl std::fmt::Debug for Config {
             .field("bsky_password", &"<redacted>")
             .field("bsky_endpoint", &self.bsky_endpoint)
             .field("ui_endpoint", &self.ui_endpoint)
+            .field("jetstream_endpoints", &self.jetstream_endpoints)
             .field("jetstream_endpoint", &self.jetstream_endpoint)
             .field("events_url", &self.events_url)
             .field("postgres_url", &"<redacted>")
@@ -662,28 +672,54 @@ async fn service_jetstream(
     did: &atrium_api::types::string::Did,
     keypair: &atrium_crypto::keypair::Secp256k1Keypair,
     events_state: std::sync::Arc<tokio::sync::Mutex<EventsState>>,
-    jetstream_endpoint: &url::Url,
+    jetstream_endpoints: Vec<url::Url>,
     commit_firehose_cursor_every: std::time::Duration,
 ) -> Result<(), anyhow::Error> {
     let mut cursor = read_jetstream_cursor(db_pool).await?;
+    if jetstream_endpoints.is_empty() {
+        log::warn!("no jetstream endpoints configured, won't service jetstream events");
+        return Ok(());
+    }
+    let mut reconnector = jetstream::reconnect::Reconnector::new(
+        jetstream_endpoints,
+        jetstream::reconnect::Policy::default(),
+    )?;
 
     loop {
-        match service_jetstream_once(
+        let endpoint = reconnector.endpoint().clone();
+        let started = std::time::Instant::now();
+        let mut lifetime = None;
+        let result = service_jetstream_once(
             db_pool,
             did,
             keypair,
             events_state.clone(),
-            jetstream_endpoint,
+            &endpoint,
             commit_firehose_cursor_every,
             cursor,
+            &mut lifetime,
         )
-        .await
-        {
+        .await;
+        // Sample before the post-mortem below: a pool acquire in
+        // `read_jetstream_cursor` can wait up to 30s and would let a bad 35s
+        // connection pass as healthy, resetting the failure streak forever.
+        // Prefer the socket's own lifetime: the relay buffer can stretch the
+        // consumer's view of a 45s connection past `healthy_after` too.
+        let lived = lifetime
+            .as_ref()
+            .and_then(|l| l.ended_after())
+            .unwrap_or_else(|| started.elapsed());
+        let next = match result {
             Ok(next_cursor) => {
+                // Only the server ends this stream, so a clean close is still
+                // a disconnect for backoff/failover purposes — a host that
+                // politely closes every 45s is as unusable as one that resets.
                 cursor = next_cursor;
+                reconnector.after(jetstream::reconnect::Outcome::HostError, lived)
             }
             Err(e) => {
-                log::error!("Jetstream disconnected: {e}");
+                log::error!("Jetstream disconnected ({endpoint}): {e}");
+                let outcome = jetstream::reconnect::classify(&e);
                 // The in-memory cursor is only updated on clean exits, so after
                 // an error it can be hours stale — reconnecting from it replays
                 // already-committed events and drags jetstream_cursor backward.
@@ -693,12 +729,39 @@ async fn service_jetstream(
                     Ok(persisted) => cursor = persisted,
                     Err(e) => log::error!("could not re-read cursor: {e}"),
                 }
+                let next = reconnector.after(outcome, lived);
+                if outcome == jetstream::reconnect::Outcome::LocalError {
+                    log::error!(
+                        "Jetstream: local error, retrying same host in {:?}",
+                        next.delay
+                    );
+                }
+                next
             }
         };
-        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+        // Rewind on a host switch only (see Next::rewind); a replay re-emits
+        // a few seconds of labels as duplicate rows, harmless to set-based
+        // label consumers.
+        cursor = next.rewind(cursor);
+        if next.switched {
+            log::error!(
+                "Jetstream: repeated short connections to {endpoint}, failing over to {}",
+                reconnector.endpoint()
+            );
+        }
+        tokio::time::sleep(next.delay).await;
     }
 }
 
+/// Longest the labeler tolerates between events before treating the host as
+/// dead. 30s: far above any real gap on the like firehose, and under
+/// `reconnect::Policy::healthy_after` (60s) so a host that connects, says
+/// nothing and gets cut here can never be scored healthy.
+const EVENT_DEADLINE: std::time::Duration = std::time::Duration::from_secs(30);
+
+// The `lifetime` out-param tips this over clippy's limit; bundling the
+// arguments into a struct for that alone isn't worth it.
+#[allow(clippy::too_many_arguments)]
 async fn service_jetstream_once(
     db_pool: &sqlx::PgPool,
     did: &atrium_api::types::string::Did,
@@ -707,8 +770,11 @@ async fn service_jetstream_once(
     jetstream_endpoint: &url::Url,
     commit_firehose_cursor_every: std::time::Duration,
     mut cursor: Option<i64>,
+    // Out-param so the caller can read the socket's lifetime on the error
+    // path too (the error type carries nothing).
+    lifetime: &mut Option<jetstream::SocketLifetime>,
 ) -> Result<Option<i64>, anyhow::Error> {
-    let js = jetstream::connect(
+    let (js, socket_lifetime) = jetstream::connect(
         jetstream_endpoint,
         jetstream::ConnectOptions {
             wanted_collections: vec![atrium_api::app::bsky::feed::Like::nsid()],
@@ -718,11 +784,22 @@ async fn service_jetstream_once(
         },
     )
     .await?;
+    *lifetime = Some(socket_lifetime);
     futures::pin_mut!(js);
 
     let mut last_firehose_commit_time = std::time::SystemTime::now();
 
-    while let Some(event) = js.next().await {
+    // Bounded: the unfiltered like firehose runs hundreds of events/s, so
+    // silence for EVENT_DEADLINE is a dead host, not a lull. The bail is a
+    // HostError to `reconnect::classify`, so it counts toward failover.
+    // (con_posts watches ~80 accounts and legitimately idles; no deadline
+    // there.)
+    while let Some(event) = tokio::time::timeout(EVENT_DEADLINE, js.next())
+        .await
+        .map_err(|_| {
+            anyhow::anyhow!("no events for {EVENT_DEADLINE:?} on an unfiltered like subscription")
+        })?
+    {
         let event = event?;
 
         let jetstream::event::EventKind::Commit { commit } = event.kind else {
@@ -876,6 +953,22 @@ async fn service_jetstream_once(
     Ok(cursor)
 }
 
+/// A pinned `jetstream_endpoint` goes first; the list follows, minus any
+/// duplicate of the pin, so failover still has somewhere to go. Pin plus an
+/// empty list is the exclusive pin: `[pin]`, which never switches.
+fn jetstream_dial_order(pinned: Option<&url::Url>, list: &[url::Url]) -> Vec<url::Url> {
+    // Dedupe the whole order, not just against the pin: a repeated host
+    // would make the policy "fail over" (and rewind the cursor) onto the
+    // same dead endpoint.
+    let mut out: Vec<url::Url> = Vec::with_capacity(list.len() + 1);
+    for u in pinned.into_iter().chain(list) {
+        if !out.contains(u) {
+            out.push(u.clone());
+        }
+    }
+    out
+}
+
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     env_logger::init();
@@ -886,10 +979,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .set_default("events_url", "https://data.cons.fyi/current.jsonl")?
         .set_default("keypair_path", "signing.key")?
         .set_default("ui_endpoint", "https://cons.fyi")?
-        .set_default(
-            "jetstream_endpoint",
-            "wss://jetstream1.us-east.bsky.network/subscribe",
-        )?
+        .set_default("jetstream_endpoints", jetstream::DEFAULT_ENDPOINTS.to_vec())?
         .set_default("label_sync_delay_secs", 60 * 60)?
         .set_default("ingester_bind", "127.0.0.1:3002")?
         .set_default("commit_firehose_cursor_every_secs", 5)?
@@ -991,7 +1081,11 @@ async fn main() -> Result<(), anyhow::Error> {
         }),
     );
 
-    let con_posts_endpoint = config.jetstream_endpoint.clone();
+    let jetstream_endpoints = jetstream_dial_order(
+        config.jetstream_endpoint.as_ref(),
+        &config.jetstream_endpoints,
+    );
+    let con_posts_endpoints = jetstream_endpoints.clone();
     let con_posts_options =
         config
             .con_posts_spool_dir
@@ -1008,24 +1102,17 @@ async fn main() -> Result<(), anyhow::Error> {
 
     tokio::try_join!(
         async {
-            let Some(jetstream_endpoint) = config.jetstream_endpoint else {
-                log::warn!("no jetstream endpoint configured, won't service jetstream events");
-                return Ok(());
-            };
-
-            // Wait on events.
+            // Wait on events. Returns only when no endpoints are configured
+            // (firehose off).
             service_jetstream(
                 &db_pool,
                 &did,
                 &keypair,
                 events_state.clone(),
-                &jetstream_endpoint,
+                jetstream_endpoints,
                 std::time::Duration::from_secs(config.commit_firehose_cursor_every_secs),
             )
             .await?;
-            unreachable!();
-
-            #[allow(unreachable_code)]
             Ok::<_, anyhow::Error>(())
         },
         async {
@@ -1039,20 +1126,84 @@ async fn main() -> Result<(), anyhow::Error> {
         async {
             // Watch con accounts for key-date posts (second Jetstream
             // connection; the like connection must stay unfiltered by DID).
-            let (Some(options), Some(jetstream_endpoint)) =
-                (con_posts_options, con_posts_endpoint.as_ref())
-            else {
+            let Some(options) = con_posts_options else {
                 log::info!("con_posts_spool_dir not configured, key-date detection off");
                 return Ok(());
             };
 
-            con_posts::service(&db_pool, watchlist.clone(), jetstream_endpoint, options).await?;
-            unreachable!();
-
-            #[allow(unreachable_code)]
+            // Returns only when no endpoints are configured (firehose off).
+            con_posts::service(&db_pool, watchlist.clone(), con_posts_endpoints, options).await?;
             Ok::<_, anyhow::Error>(())
         }
     )?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn u(s: &str) -> url::Url {
+        url::Url::parse(s).unwrap()
+    }
+
+    // A silent host cut by the deadline must never be scored healthy.
+    #[test]
+    fn event_deadline_is_under_healthy_after() {
+        assert!(EVENT_DEADLINE < jetstream::reconnect::Policy::default().healthy_after);
+        // ...and long enough that it can't fire before a dial could: a tiny
+        // value would put the labeler into a bail/rotate storm.
+        assert!(EVENT_DEADLINE > jetstream::CONNECT_TIMEOUT);
+    }
+
+    #[test]
+    fn default_endpoints_parse() {
+        for e in jetstream::DEFAULT_ENDPOINTS {
+            assert_eq!(u(e).path(), "/subscribe", "{e}");
+        }
+    }
+
+    // The defaults path hands `config` a Vec<&str>; make sure it comes back
+    // out as Vec<Url> in dial order.
+    #[test]
+    fn default_endpoints_survive_the_config_builder() {
+        let got: Vec<url::Url> = config::Config::builder()
+            .set_default("jetstream_endpoints", jetstream::DEFAULT_ENDPOINTS.to_vec())
+            .unwrap()
+            .build()
+            .unwrap()
+            .get("jetstream_endpoints")
+            .unwrap();
+        let want: Vec<url::Url> = jetstream::DEFAULT_ENDPOINTS.iter().map(|e| u(e)).collect();
+        assert_eq!(got, want);
+    }
+
+    #[test]
+    fn pinned_endpoint_dials_first_without_duplicate() {
+        let list = [u("wss://a/subscribe"), u("wss://b/subscribe")];
+        assert_eq!(
+            jetstream_dial_order(Some(&u("wss://b/subscribe")), &list),
+            vec![u("wss://b/subscribe"), u("wss://a/subscribe")]
+        );
+        assert_eq!(
+            jetstream_dial_order(Some(&u("wss://c/subscribe")), &list),
+            vec![
+                u("wss://c/subscribe"),
+                u("wss://a/subscribe"),
+                u("wss://b/subscribe")
+            ]
+        );
+        assert_eq!(jetstream_dial_order(None, &list), list.to_vec());
+        // Pin + empty list = exclusive pin (single endpoint, never switches).
+        assert_eq!(
+            jetstream_dial_order(Some(&u("wss://c/subscribe")), &[]),
+            vec![u("wss://c/subscribe")]
+        );
+        // A repeated host in the list collapses to one entry.
+        assert_eq!(
+            jetstream_dial_order(None, &[u("wss://a/subscribe"), u("wss://a/subscribe")]),
+            vec![u("wss://a/subscribe")]
+        );
+    }
 }

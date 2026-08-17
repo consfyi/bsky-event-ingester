@@ -104,7 +104,7 @@ impl FireState {
 pub async fn service(
     db_pool: &sqlx::PgPool,
     watchlist: Watchlist,
-    jetstream_endpoint: &url::Url,
+    jetstream_endpoints: Vec<url::Url>,
     options: Options,
 ) -> Result<(), anyhow::Error> {
     std::fs::create_dir_all(&options.spool_dir)?;
@@ -133,6 +133,15 @@ pub async fn service(
     ));
 
     let mut cursor = read_cursor(db_pool).await?;
+    if jetstream_endpoints.is_empty() {
+        log::warn!("no jetstream endpoints configured, won't service con posts");
+        return Ok(());
+    }
+    use crate::jetstream::reconnect::Outcome;
+    let mut reconnector = crate::jetstream::reconnect::Reconnector::new(
+        jetstream_endpoints,
+        crate::jetstream::reconnect::Policy::default(),
+    )?;
     let mut fire_state = FireState {
         last_fired: std::collections::HashMap::new(),
         day: chrono::Utc::now().date_naive(),
@@ -147,22 +156,45 @@ pub async fn service(
             continue;
         }
 
-        match service_once(
+        let endpoint = reconnector.endpoint().clone();
+        let started = std::time::Instant::now();
+        let mut lifetime = None;
+        let result = service_once(
             db_pool,
             &watchlist,
             &dids_snapshot,
-            jetstream_endpoint,
+            &endpoint,
             &options,
             &mut fire_state,
             cursor,
+            &mut lifetime,
         )
-        .await
-        {
-            Ok(next_cursor) => {
+        .await;
+        // Sample before the post-mortem below: a pool acquire in `read_cursor`
+        // can wait up to 30s and would let a bad 35s connection pass as
+        // healthy, resetting the failure streak forever. Prefer the socket's
+        // own lifetime: the relay buffer can stretch the consumer's view of a
+        // 45s connection past `healthy_after` too. On a watchlist exit the
+        // socket may not have closed yet, hence the wall-clock fallback.
+        let lived = lifetime
+            .as_ref()
+            .and_then(|l| l.ended_after())
+            .unwrap_or_else(|| started.elapsed());
+        let next = match result {
+            Ok((next_cursor, exit)) => {
                 cursor = next_cursor;
+                match exit {
+                    // We ended it (watchlist changed): not a failure, so it
+                    // must not count toward the streak or the backoff.
+                    Exit::WatchlistChanged => reconnector.after(Outcome::CleanExit, lived),
+                    // The server closed cleanly: still a disconnect for
+                    // backoff/failover purposes.
+                    Exit::StreamEnded => reconnector.after(Outcome::HostError, lived),
+                }
             }
             Err(e) => {
-                log::error!("con_posts: Jetstream disconnected: {e}");
+                log::error!("con_posts: Jetstream disconnected ({endpoint}): {e}");
+                let outcome = crate::jetstream::reconnect::classify(&e);
                 // The in-memory cursor is only updated on clean exits, so after
                 // an error it can be hours stale — and a replay here re-fires
                 // the whole LLM pipeline, unlike the labeler's idempotent
@@ -172,12 +204,45 @@ pub async fn service(
                     Ok(persisted) => cursor = persisted,
                     Err(e) => log::error!("con_posts: could not re-read cursor: {e}"),
                 }
+                let next = reconnector.after(outcome, lived);
+                if outcome == Outcome::LocalError {
+                    log::error!(
+                        "con_posts: local error, retrying same host in {:?}",
+                        next.delay
+                    );
+                }
+                next
             }
+        };
+        // Rewind on a host switch only (see Next::rewind): a replayed post
+        // re-enters the LLM pipeline and the debounce absorbs a few seconds
+        // of overlap, not more.
+        cursor = next.rewind(cursor);
+        if next.switched {
+            log::error!(
+                "con_posts: repeated short connections to {endpoint}, failing over to {}",
+                reconnector.endpoint()
+            );
         }
-        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+        tokio::time::sleep(next.delay).await;
     }
 }
 
+/// Why `service_once` returned `Ok`. Reported by the loop itself rather
+/// than re-derived by re-reading the watchlist afterwards: a watchlist
+/// change landing in the ≤60s between a server drop and the re-read would
+/// misfile that drop as a clean exit and skip the backoff/failover streak.
+#[derive(Debug, PartialEq, Eq)]
+enum Exit {
+    /// We closed it because the watchlist changed.
+    WatchlistChanged,
+    /// The server ended the stream.
+    StreamEnded,
+}
+
+// The `lifetime` out-param tips this over clippy's limit; bundling the
+// arguments into a struct for that alone isn't worth it.
+#[allow(clippy::too_many_arguments)]
 async fn service_once(
     db_pool: &sqlx::PgPool,
     watchlist: &Watchlist,
@@ -186,7 +251,10 @@ async fn service_once(
     options: &Options,
     fire_state: &mut FireState,
     mut cursor: Option<i64>,
-) -> Result<Option<i64>, anyhow::Error> {
+    // Out-param so the caller can read the socket's lifetime on the error
+    // path too (the error type carries nothing).
+    lifetime: &mut Option<crate::jetstream::SocketLifetime>,
+) -> Result<(Option<i64>, Exit), anyhow::Error> {
     let wanted_dids = dids_snapshot
         .keys()
         .filter_map(|did| atrium_api::types::string::Did::new(did.clone()).ok())
@@ -197,7 +265,7 @@ async fn service_once(
         wanted_dids.len()
     );
 
-    let js = crate::jetstream::connect(
+    let (js, socket_lifetime) = crate::jetstream::connect(
         jetstream_endpoint,
         crate::jetstream::ConnectOptions {
             wanted_collections: vec![atrium_api::app::bsky::feed::Post::nsid()],
@@ -208,6 +276,7 @@ async fn service_once(
         },
     )
     .await?;
+    *lifetime = Some(socket_lifetime);
     futures::pin_mut!(js);
 
     let mut watchlist_check = tokio::time::interval(std::time::Duration::from_secs(60));
@@ -218,13 +287,13 @@ async fn service_once(
         let event = tokio::select! {
             event = js.next() => match event {
                 Some(event) => event?,
-                None => return Ok(cursor),
+                None => return Ok((cursor, Exit::StreamEnded)),
             },
             _ = watchlist_check.tick() => {
                 let current = watchlist.read().await;
                 if *current != *dids_snapshot {
                     log::info!("con_posts: watchlist changed, reconnecting");
-                    return Ok(cursor);
+                    return Ok((cursor, Exit::WatchlistChanged));
                 }
                 continue;
             }
