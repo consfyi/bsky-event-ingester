@@ -9,7 +9,8 @@
 //!
 //! On 2026-08-16 the single configured host reset both of our connections
 //! every ~45s for 2h35m; `sleep(1)` retried the same host ~200 times. This
-//! module is what would have moved us to another host after a minute.
+//! module is what would have moved us to another host after three short
+//! connections — about two minutes at that cadence.
 
 /// How the caller should proceed after a connection ended.
 #[derive(Debug, PartialEq, Eq)]
