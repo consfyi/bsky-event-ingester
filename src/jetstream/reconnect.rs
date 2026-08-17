@@ -275,17 +275,32 @@ mod tests {
         assert!(r.after(Outcome::HostError, short).switched);
     }
 
-    // A connection that merely connects (a few seconds) must not reset the
-    // backoff — that is exactly what the stall looked like.
+    // A connection that lives less than the healthy bar (even just under
+    // it) must not reset the backoff — that is exactly what the stall
+    // looked like.
     #[test]
     fn brief_connect_does_not_count_as_healthy() {
         let mut r = Reconnector::new(urls(1), exact()).unwrap();
         r.after(Outcome::HostError, Duration::from_secs(45));
         r.after(Outcome::HostError, Duration::from_secs(45));
         assert_eq!(
-            r.after(Outcome::HostError, Duration::from_secs(59)).delay,
+            r.after(Outcome::HostError, Duration::from_secs(299)).delay,
             Duration::from_millis(1000)
         );
+    }
+
+    // The 2026-08-17 shape: a v2 host reset us every ~100s. With a 60s bar
+    // each of those scored healthy and we never left; the bar must sit well
+    // above that so three of them trip failover.
+    #[test]
+    fn hundred_second_resets_still_fail_over() {
+        assert!(Policy::default().healthy_after > Duration::from_secs(120));
+        let mut r = Reconnector::new(urls(2), exact()).unwrap();
+        let reset = Duration::from_secs(100);
+        assert!(!r.after(Outcome::HostError, reset).switched);
+        assert!(!r.after(Outcome::HostError, reset).switched);
+        assert!(r.after(Outcome::HostError, reset).switched);
+        assert_eq!(r.endpoint().host_str(), Some("js2.example"));
     }
 
     // A clean exit is paced, not punished: the streak keeps whatever it

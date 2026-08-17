@@ -1184,6 +1184,21 @@ mod tests {
             hosts[..4].iter().all(|h| legacy.contains(&h)),
             "v2 host dialed before a legacy host: {hosts:?}"
         );
+        // Regions alternate so one failover skips a regional problem.
+        let region = |h: &str| {
+            if h.contains(".us-east.") {
+                "east"
+            } else {
+                "west"
+            }
+        };
+        for pair in hosts.windows(2) {
+            assert_ne!(
+                region(pair[0]),
+                region(pair[1]),
+                "same region twice in a row: {hosts:?}"
+            );
+        }
     }
 
     // The defaults path hands `config` a Vec<&str>; make sure it comes back
