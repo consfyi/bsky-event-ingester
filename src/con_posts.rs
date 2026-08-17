@@ -168,16 +168,15 @@ pub async fn service(
         )
         .await
         {
-            Ok(next_cursor) => {
+            Ok((next_cursor, exit)) => {
                 cursor = next_cursor;
-                if *watchlist.read().await != dids_snapshot {
+                match exit {
                     // We ended it (watchlist changed): not a failure, so it
                     // must not count toward the streak or the backoff.
-                    reconnector.on_clean_exit()
-                } else {
+                    Exit::WatchlistChanged => reconnector.on_clean_exit(),
                     // The server closed cleanly: still a disconnect for
                     // backoff/failover purposes.
-                    reconnector.on_disconnect(started.elapsed())
+                    Exit::StreamEnded => reconnector.on_disconnect(started.elapsed()),
                 }
             }
             Err(e) => {
@@ -194,10 +193,9 @@ pub async fn service(
                 reconnector.on_disconnect(started.elapsed())
             }
         };
-        // Rewind only on a host switch (not every reconnect): instances
-        // ingest with slightly different lag and the rewind keeps playback
-        // gapless, but a replayed post re-enters the LLM pipeline and the
-        // debounce absorbs a few seconds of overlap, not more.
+        // Rewind on a host switch only (see Next::rewind): a replayed post
+        // re-enters the LLM pipeline and the debounce absorbs a few seconds
+        // of overlap, not more.
         cursor = next.rewind(cursor);
         if next.switched {
             log::error!(
@@ -209,6 +207,18 @@ pub async fn service(
     }
 }
 
+/// Why `service_once` returned `Ok`. Reported by the loop itself rather
+/// than re-derived by re-reading the watchlist afterwards: a watchlist
+/// change landing in the ≤60s between a server drop and the re-read would
+/// misfile that drop as a clean exit and skip the backoff/failover streak.
+#[derive(Debug, PartialEq, Eq)]
+enum Exit {
+    /// We closed it because the watchlist changed.
+    WatchlistChanged,
+    /// The server ended the stream.
+    StreamEnded,
+}
+
 async fn service_once(
     db_pool: &sqlx::PgPool,
     watchlist: &Watchlist,
@@ -217,7 +227,7 @@ async fn service_once(
     options: &Options,
     fire_state: &mut FireState,
     mut cursor: Option<i64>,
-) -> Result<Option<i64>, anyhow::Error> {
+) -> Result<(Option<i64>, Exit), anyhow::Error> {
     let wanted_dids = dids_snapshot
         .keys()
         .filter_map(|did| atrium_api::types::string::Did::new(did.clone()).ok())
@@ -249,13 +259,13 @@ async fn service_once(
         let event = tokio::select! {
             event = js.next() => match event {
                 Some(event) => event?,
-                None => return Ok(cursor),
+                None => return Ok((cursor, Exit::StreamEnded)),
             },
             _ = watchlist_check.tick() => {
                 let current = watchlist.read().await;
                 if *current != *dids_snapshot {
                     log::info!("con_posts: watchlist changed, reconnecting");
-                    return Ok(cursor);
+                    return Ok((cursor, Exit::WatchlistChanged));
                 }
                 continue;
             }

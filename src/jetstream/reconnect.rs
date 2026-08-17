@@ -16,7 +16,7 @@
 pub struct Next {
     /// Wait this long before dialing again.
     pub delay: std::time::Duration,
-    /// The endpoint changed; rewind the cursor slightly (see `REWIND`) so
+    /// The endpoint changed; rewind the cursor slightly (see `REWIND_US`) so
     /// the two instances' small ingestion skew can't open a gap.
     pub switched: bool,
 }

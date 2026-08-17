@@ -12,10 +12,12 @@ struct Config {
     ui_endpoint: String,
     // Dial order for the Jetstream firehose; see jetstream::DEFAULT_ENDPOINTS.
     // The consumer fails over to the next entry after repeated short-lived
-    // connections. `jetstream_endpoint` (singular) is the pre-failover key:
-    // if set it is dialed first, so an existing config.toml keeps its pin.
-    // `jetstream_endpoints = []` (with no pin) disables the firehose: both
-    // consumers log a warning and return instead of running.
+    // connections. `jetstream_endpoint` (singular, the pre-failover key) is a
+    // dial-order preference, not exclusivity: it is dialed first, but after
+    // repeated short connections the consumer rotates onto
+    // `jetstream_endpoints`. To pin exclusively, set `jetstream_endpoints = []`
+    // alongside the pin. `jetstream_endpoints = []` with no pin disables the
+    // firehose: both consumers log a warning and return instead of running.
     jetstream_endpoints: Vec<url::Url>,
     jetstream_endpoint: Option<url::Url>,
     events_url: String,
@@ -718,10 +720,8 @@ async fn service_jetstream(
                 reconnector.on_disconnect(started.elapsed())
             }
         };
-        // Rewind only on a host switch (not every reconnect): instances
-        // ingest with slightly different lag and the rewind keeps playback
-        // gapless; the replay is harmless here (label writes are idempotent
-        // upserts) but pointless on a same-host redial.
+        // Rewind on a host switch only (see Next::rewind); the replay is
+        // harmless here since label writes are idempotent upserts.
         cursor = next.rewind(cursor);
         if next.switched {
             log::error!(
@@ -911,7 +911,8 @@ async fn service_jetstream_once(
 }
 
 /// A pinned `jetstream_endpoint` goes first; the list follows, minus any
-/// duplicate of the pin, so failover still has somewhere to go.
+/// duplicate of the pin, so failover still has somewhere to go. Pin plus an
+/// empty list is the exclusive pin: `[pin]`, which never switches.
 fn jetstream_dial_order(pinned: Option<&url::Url>, list: &[url::Url]) -> Vec<url::Url> {
     let mut out = Vec::with_capacity(list.len() + 1);
     out.extend(pinned.cloned());
@@ -1136,5 +1137,10 @@ mod tests {
             ]
         );
         assert_eq!(jetstream_dial_order(None, &list), list.to_vec());
+        // Pin + empty list = exclusive pin (single endpoint, never switches).
+        assert_eq!(
+            jetstream_dial_order(Some(&u("wss://c/subscribe")), &[]),
+            vec![u("wss://c/subscribe")]
+        );
     }
 }

@@ -26,7 +26,23 @@ pub struct ConnectOptions {
     pub max_message_size_bytes: u32,
     pub cursor: Option<i64>,
     pub compress: bool,
+    /// Cap on the dial (TCP + TLS + WebSocket handshake); `None` = 15s.
+    /// A blackholed host otherwise hangs in the kernel SYN retry (~127s),
+    /// which is longer than the reconnect policy's `healthy_after` — every
+    /// hung dial would count as a healthy connection and failover would
+    /// never trip. Not a query parameter, hence `skip`.
+    #[serde(skip)]
+    pub connect_timeout: Option<std::time::Duration>,
 }
+
+/// Default for `ConnectOptions::connect_timeout`; must stay well under
+/// `reconnect::Policy::healthy_after` (60s).
+pub const CONNECT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(15);
+
+/// Frames buffered between the socket reader and the consumer. Bounds
+/// memory at `RELAY_BUFFER × frame size` (a few tens of MB on the like
+/// firehose, ~15-30s of it) — see the relay task in `connect`.
+pub const RELAY_BUFFER: usize = 32_768;
 
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
@@ -41,6 +57,12 @@ pub enum Error {
 
     #[error("io: {0}")]
     Io(#[from] std::io::Error),
+
+    #[error("connect timed out after {0:?}")]
+    ConnectTimeout(std::time::Duration),
+
+    #[error("pong write timed out after {0:?}")]
+    WriteTimeout(std::time::Duration),
 }
 
 static ZSTD_DICTIONARY: std::sync::LazyLock<zstd::dict::DecoderDictionary<'static>> =
@@ -55,51 +77,78 @@ pub async fn connect(
     let mut url = endpoint.clone();
     url.set_query(Some(&serde_html_form::to_string(&options)?));
 
-    let (ws, _) = tokio_tungstenite::connect_async(url).await?;
+    let connect_timeout = options.connect_timeout.unwrap_or(CONNECT_TIMEOUT);
+    let (ws, _) = tokio::time::timeout(connect_timeout, tokio_tungstenite::connect_async(url))
+        .await
+        .map_err(|_| Error::ConnectTimeout(connect_timeout))??;
 
     // Pings are answered by a dedicated task rather than inline: the v2
     // Jetstream hosts hard-close a connection whose Pong is more than 5s
     // late, and inline handling only ran while the consumer was polling —
     // a slow DB write or a spawned worker could sit longer than that.
     //
-    // The channel is unbounded so a stalled consumer can never park this
-    // task on `send` and starve the Pong. Memory is still bounded, by the
-    // server: it disconnects a client whose outbox fills, and the old
-    // inline code was dropped in exactly that way under a long stall.
+    // The relay channel is bounded (RELAY_BUFFER frames) and the task
+    // reserves a slot *before* reading the next frame, so when the consumer
+    // stalls the task stops reading the socket instead of growing memory
+    // without limit. With the socket unread, TCP backpressure fills the
+    // server's outbox and the server disconnects us — the same fate the old
+    // inline code met under a long stall, now with memory capped at
+    // RELAY_BUFFER × frame size. Pings are still answered for as long as
+    // the buffer has room (~15-30s of the like firehose), which covers the
+    // slow-DB-write case the task exists for.
     let (mut sink, mut source) = ws.split();
-    let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+    let (tx, rx) = tokio::sync::mpsc::channel(RELAY_BUFFER);
     tokio::spawn(async move {
         loop {
-            let message = tokio::select! {
-                // Consumer dropped the stream: tell the server (best effort)
-                // and stop reading, so the socket doesn't outlive its reader.
+            let permit = tokio::select! {
+                // Consumer dropped the stream: tell the server (best effort,
+                // bounded so a wedged socket can't pin this task) and stop
+                // reading, so the socket doesn't outlive its reader.
                 _ = tx.closed() => {
-                    let _ = sink.send(tokio_tungstenite::tungstenite::Message::Close(None)).await;
+                    let _ = tokio::time::timeout(
+                        std::time::Duration::from_secs(2),
+                        sink.send(tokio_tungstenite::tungstenite::Message::Close(None)),
+                    )
+                    .await;
                     break;
                 }
-                message = source.next() => match message {
-                    Some(m) => m,
-                    None => break,
+                permit = tx.reserve() => match permit {
+                    Ok(p) => p,
+                    Err(_) => break,
                 },
+            };
+            let message = match source.next().await {
+                Some(m) => m,
+                None => break,
             };
             match message {
                 Ok(tokio_tungstenite::tungstenite::Message::Ping(body)) => {
-                    if let Err(e) = sink
-                        .send(tokio_tungstenite::tungstenite::Message::Pong(body))
-                        .await
+                    // A Pong the server never reads is as fatal as a write
+                    // error — its 5s deadline passes either way — so bound the
+                    // write and surface it rather than hang here.
+                    const PONG_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
+                    match tokio::time::timeout(
+                        PONG_TIMEOUT,
+                        sink.send(tokio_tungstenite::tungstenite::Message::Pong(body)),
+                    )
+                    .await
                     {
+                        // Ping consumed no frame slot: drop the permit unused.
+                        Ok(Ok(())) => {}
                         // Surface the failure to the consumer instead of ending
                         // the stream as if the server closed cleanly.
-                        let _ = tx.send(Err(e));
-                        break;
+                        Ok(Err(e)) => {
+                            permit.send(Err(e.into()));
+                            break;
+                        }
+                        Err(_) => {
+                            permit.send(Err(Error::WriteTimeout(PONG_TIMEOUT)));
+                            break;
+                        }
                     }
                 }
                 Ok(tokio_tungstenite::tungstenite::Message::Close(_)) => break,
-                other => {
-                    if tx.send(other).is_err() {
-                        break;
-                    }
-                }
+                other => permit.send(other.map_err(Error::from)),
             }
         }
     });
@@ -177,8 +226,8 @@ mod tests {
         drop(client);
     }
 
-    // A stalled consumer must never back-pressure the reader into
-    // missing a Ping — the channel is unbounded for exactly this reason.
+    // A stalled consumer must not back-pressure the reader into missing a
+    // Ping while the relay buffer still has room (backlog < RELAY_BUFFER).
     #[tokio::test]
     async fn pong_is_sent_after_a_backlog_the_consumer_never_drains() {
         let (client, mut server) = local_pair().await;
@@ -191,6 +240,101 @@ mod tests {
         server.send(Message::Ping(vec![])).await.unwrap();
         expect_pong(&mut server).await;
         drop(client);
+    }
+
+    // Once the buffer is full the reader must stop reading (that is the
+    // memory bound), and nothing may be lost or reordered: after the
+    // consumer drains, every frame arrives in order and a Ping is answered
+    // again. Frames are real events so the consumer side can count them.
+    #[tokio::test]
+    async fn full_buffer_parks_the_reader_without_losing_frames() {
+        let (client, mut server) = local_pair().await;
+        futures::pin_mut!(client);
+        // The overshoot past RELAY_BUFFER must dwarf what the kernel socket
+        // buffers (up to ~8MB on macOS loopback) and tungstenite's read
+        // buffer can absorb, or a reader that never parks would pass.
+        let total = 3 * RELAY_BUFFER;
+        let pad = "x".repeat(512);
+        let event = move |i: usize| {
+            format!(
+                "{{\"did\":\"did:plc:x\",\"time_us\":{i},\"kind\":\"identity\",\
+                 \"identity\":{{\"did\":\"did:plc:x\",\"seq\":1,\"time\":\"2026-01-01T00:00:00Z\"}},\
+                 \"pad\":\"{pad}\"}}"
+            )
+        };
+        // The server side sends from its own task so a parked reader stalls
+        // it (observable via `sent`) without stalling the test.
+        let sent = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let sender = tokio::spawn({
+            let sent = sent.clone();
+            async move {
+                for i in 0..total {
+                    server.send(Message::Text(event(i))).await.unwrap();
+                    sent.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                }
+                server
+            }
+        });
+        // With nobody polling, the sender must stall short of `total`
+        // (buffer + the one frame the reader holds + socket buffers).
+        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+        let stalled_at = sent.load(std::sync::atomic::Ordering::SeqCst);
+        assert!(
+            stalled_at < total,
+            "reader drained {total} frames with a stalled consumer"
+        );
+        // Now drain: everything arrives, in order, with nothing lost.
+        for i in 0..total {
+            let e = client.next().await.unwrap().unwrap();
+            assert_eq!(e.time_us as usize, i);
+        }
+        let mut server = sender.await.unwrap();
+        server.send(Message::Ping(vec![])).await.unwrap();
+        expect_pong(&mut server).await;
+    }
+
+    // A server-side Close ends the stream cleanly (None), not with an error.
+    #[tokio::test]
+    async fn server_close_ends_the_stream_cleanly() {
+        let (client, mut server) = local_pair().await;
+        futures::pin_mut!(client);
+        server.send(Message::Close(None)).await.unwrap();
+        let end = tokio::time::timeout(std::time::Duration::from_secs(5), client.next())
+            .await
+            .expect("stream did not end within 5s");
+        assert!(end.is_none(), "expected clean end, got {end:?}");
+    }
+
+    // A host that accepts TCP but never completes the handshake must fail
+    // the dial promptly, well inside `healthy_after`, or failover never trips.
+    #[tokio::test]
+    async fn hung_handshake_times_out() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = url::Url::parse(&format!(
+            "ws://{}/subscribe",
+            listener.local_addr().unwrap()
+        ))
+        .unwrap();
+        let hold = tokio::spawn(async move {
+            let (tcp, _) = listener.accept().await.unwrap();
+            std::future::pending::<()>().await;
+            drop(tcp);
+        });
+        let started = std::time::Instant::now();
+        let result = connect(
+            &url,
+            ConnectOptions {
+                connect_timeout: Some(std::time::Duration::from_millis(200)),
+                ..Default::default()
+            },
+        )
+        .await;
+        hold.abort();
+        assert!(
+            matches!(result, Err(Error::ConnectTimeout(_))),
+            "expected ConnectTimeout"
+        );
+        assert!(started.elapsed() < std::time::Duration::from_secs(5));
     }
 
     // Dropping the stream must end the upstream socket, not leak it.
@@ -232,7 +376,11 @@ mod tests {
                 .await
                 .unwrap_or_else(|_| panic!("{endpoint}: no event within 15s"));
             match first {
-                Some(Ok(event)) => assert!(event.time_us > 0, "{endpoint}"),
+                Some(Ok(event)) => {
+                    // Leave a trail for the manual run (`--nocapture`).
+                    println!("{endpoint}: first event time_us={}", event.time_us);
+                    assert!(event.time_us > 0, "{endpoint}");
+                }
                 Some(Err(e)) => panic!("{endpoint}: {e}"),
                 None => panic!("{endpoint}: stream ended"),
             }
