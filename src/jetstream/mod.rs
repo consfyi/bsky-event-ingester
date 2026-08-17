@@ -26,13 +26,13 @@ pub struct ConnectOptions {
     pub max_message_size_bytes: u32,
     pub cursor: Option<i64>,
     pub compress: bool,
-    /// Cap on the dial (TCP + TLS + WebSocket handshake); `None` = 15s.
-    /// A blackholed host otherwise hangs in the kernel SYN retry (~127s),
-    /// which is longer than the reconnect policy's `healthy_after` — every
-    /// hung dial would count as a healthy connection and failover would
-    /// never trip. Not a query parameter, hence `skip`.
+    /// Cap on the dial (TCP + TLS + WebSocket handshake); defaults to
+    /// `CONNECT_TIMEOUT`. A blackholed host otherwise hangs in the kernel
+    /// SYN retry (~127s), which is longer than the reconnect policy's
+    /// `healthy_after` — every hung dial would count as a healthy connection
+    /// and failover would never trip. Not a query parameter, hence `skip`.
     #[serde(skip)]
-    pub connect_timeout: Option<std::time::Duration>,
+    pub connect_timeout: std::time::Duration,
 }
 
 impl Default for ConnectOptions {
@@ -40,12 +40,15 @@ impl Default for ConnectOptions {
         Self {
             wanted_collections: Vec::new(),
             wanted_dids: Vec::new(),
-            // Ask the server to drop oversized events before the wire; the
-            // client enforces the same cap on what it will buffer.
+            // Ask the server to drop oversized events before the wire. The
+            // server checks its cap on the uncompressed body and silently
+            // drops anything over it (no wire signal); the client cap below
+            // applies to the (compressed) frame, so the two are not the same
+            // cap — the client's is the hard memory ceiling.
             max_message_size_bytes: MAX_MESSAGE_BYTES as u32,
             cursor: None,
             compress: false,
-            connect_timeout: None,
+            connect_timeout: CONNECT_TIMEOUT,
         }
     }
 }
@@ -89,6 +92,22 @@ pub enum Error {
     WriteTimeout(std::time::Duration),
 }
 
+/// When the socket behind a `connect()` stream ended, measured by the relay
+/// task itself. Up to `RELAY_BUFFER` messages can sit between the socket and
+/// the consumer, so the consumer sees the end of the stream tens of seconds
+/// after the socket actually closed; a reconnect policy timing the consumer's
+/// view would count a host that resets every 45s as healthy.
+#[derive(Clone, Debug, Default)]
+pub struct SocketLifetime(std::sync::Arc<std::sync::OnceLock<std::time::Duration>>);
+
+impl SocketLifetime {
+    /// How long the socket was open after the handshake; `None` while it
+    /// still is.
+    pub fn ended_after(&self) -> Option<std::time::Duration> {
+        self.0.get().copied()
+    }
+}
+
 static ZSTD_DICTIONARY: std::sync::LazyLock<zstd::dict::DecoderDictionary<'static>> =
     std::sync::LazyLock::new(|| {
         zstd::dict::DecoderDictionary::copy(include_bytes!("./zstd_dictionary"))
@@ -97,11 +116,17 @@ static ZSTD_DICTIONARY: std::sync::LazyLock<zstd::dict::DecoderDictionary<'stati
 pub async fn connect(
     endpoint: &url::Url,
     options: ConnectOptions,
-) -> Result<impl futures::Stream<Item = Result<event::Event, Error>>, Error> {
+) -> Result<
+    (
+        impl futures::Stream<Item = Result<event::Event, Error>>,
+        SocketLifetime,
+    ),
+    Error,
+> {
     let mut url = endpoint.clone();
     url.set_query(Some(&serde_html_form::to_string(&options)?));
 
-    let connect_timeout = options.connect_timeout.unwrap_or(CONNECT_TIMEOUT);
+    let connect_timeout = options.connect_timeout;
     let ws_config = tokio_tungstenite::tungstenite::protocol::WebSocketConfig {
         max_message_size: Some(MAX_MESSAGE_BYTES),
         max_frame_size: Some(MAX_MESSAGE_BYTES),
@@ -113,6 +138,8 @@ pub async fn connect(
     )
     .await
     .map_err(|_| Error::ConnectTimeout(connect_timeout))??;
+    let connected_at = std::time::Instant::now();
+    let lifetime = SocketLifetime::default();
 
     // Pings are answered by a dedicated task rather than inline: the v2
     // Jetstream hosts hard-close a connection whose Pong is more than 5s
@@ -120,83 +147,94 @@ pub async fn connect(
     // a slow DB write or a spawned worker could sit longer than that.
     //
     // The task reserves a relay slot *before* reading the next message so
-    // that a stalled consumer parks the reader (see RELAY_BUFFER). Both the
-    // reserve and the read race `tx.closed()`: a consumer that drops the
-    // stream while the socket is idle must still end the socket, or the
-    // task and socket leak until the next inbound frame — never, on a
-    // silent host.
+    // that a stalled consumer parks the reader (see RELAY_BUFFER). The read
+    // races `tx.closed()` (the reserve fails on its own once the receiver
+    // is gone): a consumer that drops the stream while the socket is idle
+    // must still end the socket, or the task and socket leak until the next
+    // inbound frame — never, on a silent host.
     let (mut sink, mut source) = ws.split();
     let (tx, rx) = tokio::sync::mpsc::channel(RELAY_BUFFER);
-    tokio::spawn(async move {
-        // Consumer dropped the stream: tell the server (best effort, bounded
-        // so a wedged socket can't pin this task) and stop reading.
-        async fn close_best_effort<S>(sink: &mut S)
-        where
-            S: futures::Sink<tokio_tungstenite::tungstenite::Message> + Unpin,
-        {
-            let _ = tokio::time::timeout(
-                std::time::Duration::from_secs(2),
-                sink.send(tokio_tungstenite::tungstenite::Message::Close(None)),
-            )
-            .await;
-        }
-        loop {
-            let permit = tokio::select! {
-                _ = tx.closed() => {
-                    close_best_effort(&mut sink).await;
-                    break;
-                }
-                permit = tx.reserve() => match permit {
+    tokio::spawn({
+        let lifetime = lifetime.clone();
+        async move {
+            // Consumer dropped the stream: tell the server (best effort, bounded
+            // so a wedged socket can't pin this task) and stop reading.
+            async fn close_best_effort<S>(sink: &mut S)
+            where
+                S: futures::Sink<tokio_tungstenite::tungstenite::Message> + Unpin,
+            {
+                let _ = tokio::time::timeout(
+                    std::time::Duration::from_secs(2),
+                    sink.send(tokio_tungstenite::tungstenite::Message::Close(None)),
+                )
+                .await;
+            }
+            loop {
+                let permit = match tx.reserve().await {
                     Ok(p) => p,
                     Err(_) => {
                         close_best_effort(&mut sink).await;
                         break;
                     }
-                },
-            };
-            let message = tokio::select! {
-                _ = tx.closed() => {
-                    close_best_effort(&mut sink).await;
-                    break;
-                }
-                next = source.next() => match next {
-                    Some(m) => m,
-                    None => break,
-                },
-            };
-            match message {
-                Ok(tokio_tungstenite::tungstenite::Message::Ping(body)) => {
-                    // A Pong the server never reads is as fatal as a write
-                    // error — its 5s deadline passes either way — so bound the
-                    // write and surface it rather than hang here.
-                    const PONG_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
-                    match tokio::time::timeout(
-                        PONG_TIMEOUT,
-                        sink.send(tokio_tungstenite::tungstenite::Message::Pong(body)),
-                    )
-                    .await
-                    {
-                        // Ping consumed no frame slot: drop the permit unused.
-                        Ok(Ok(())) => {}
-                        // Surface the failure to the consumer instead of ending
-                        // the stream as if the server closed cleanly.
-                        Ok(Err(e)) => {
-                            permit.send(Err(e.into()));
-                            break;
-                        }
-                        Err(_) => {
-                            permit.send(Err(Error::WriteTimeout(PONG_TIMEOUT)));
-                            break;
+                };
+                let message = tokio::select! {
+                    _ = tx.closed() => {
+                        close_best_effort(&mut sink).await;
+                        break;
+                    }
+                    next = source.next() => match next {
+                        Some(m) => m,
+                        None => break,
+                    },
+                };
+                match message {
+                    Ok(tokio_tungstenite::tungstenite::Message::Ping(body)) => {
+                        // A Pong the server never reads is as fatal as a write
+                        // error — its 5s deadline passes either way — so bound the
+                        // write and surface it rather than hang here.
+                        const PONG_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
+                        match tokio::time::timeout(
+                            PONG_TIMEOUT,
+                            sink.send(tokio_tungstenite::tungstenite::Message::Pong(body)),
+                        )
+                        .await
+                        {
+                            // Ping consumed no frame slot: drop the permit unused.
+                            Ok(Ok(())) => {}
+                            // Surface the failure to the consumer instead of ending
+                            // the stream as if the server closed cleanly.
+                            Ok(Err(e)) => {
+                                let _ = lifetime.0.set(connected_at.elapsed());
+                                permit.send(Err(e.into()));
+                                break;
+                            }
+                            Err(_) => {
+                                let _ = lifetime.0.set(connected_at.elapsed());
+                                permit.send(Err(Error::WriteTimeout(PONG_TIMEOUT)));
+                                break;
+                            }
                         }
                     }
+                    Ok(tokio_tungstenite::tungstenite::Message::Close(_)) => break,
+                    other => {
+                        // A read error is terminal: record the lifetime before
+                        // the consumer can see the error, so it never falls back
+                        // to its own (drain-inflated) clock.
+                        if other.is_err() {
+                            let _ = lifetime.0.set(connected_at.elapsed());
+                        }
+                        permit.send(other.map_err(Error::from));
+                    }
                 }
-                Ok(tokio_tungstenite::tungstenite::Message::Close(_)) => break,
-                other => permit.send(other.map_err(Error::from)),
             }
+            // Every exit path lands here: the socket is done, whatever the
+            // consumer has yet to drain from the relay. (Idempotent for the
+            // paths that already recorded it.)
+            let _ = lifetime.0.set(connected_at.elapsed());
         }
     });
 
-    Ok(async_stream::try_stream! {
+    let stream = async_stream::try_stream! {
         let mut rx = rx;
         while let Some(message) = rx.recv().await {
             match message? {
@@ -214,7 +252,8 @@ pub async fn connect(
                 _ => {}
             }
         }
-    })
+    };
+    Ok((stream, lifetime))
 }
 
 #[cfg(test)]
@@ -231,6 +270,15 @@ mod tests {
         impl futures::Stream<Item = Result<event::Event, Error>>,
         ServerWs,
     ) {
+        let (client, _lifetime, server) = local_pair_with_lifetime().await;
+        (client, server)
+    }
+
+    async fn local_pair_with_lifetime() -> (
+        impl futures::Stream<Item = Result<event::Event, Error>>,
+        SocketLifetime,
+        ServerWs,
+    ) {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let url = url::Url::parse(&format!(
             "ws://{}/subscribe",
@@ -241,8 +289,8 @@ mod tests {
             let (tcp, _) = listener.accept().await.unwrap();
             tokio_tungstenite::accept_async(tcp).await.unwrap()
         });
-        let client = connect(&url, ConnectOptions::default()).await.unwrap();
-        (client, accept.await.unwrap())
+        let (client, lifetime) = connect(&url, ConnectOptions::default()).await.unwrap();
+        (client, lifetime, accept.await.unwrap())
     }
 
     /// Reads server-side until a Pong arrives (or the socket ends).
@@ -404,7 +452,7 @@ mod tests {
         let result = connect(
             &url,
             ConnectOptions {
-                connect_timeout: Some(std::time::Duration::from_millis(200)),
+                connect_timeout: std::time::Duration::from_millis(200),
                 ..Default::default()
             },
         )
@@ -439,6 +487,60 @@ mod tests {
         .expect("server did not observe a close within 5s");
     }
 
+    // The lifetime must be the socket's, not the consumer's: with a backlog
+    // in the relay, the consumer only learns of the close after draining it
+    // — in production long enough to make a host that resets every 45s look
+    // healthy. Here the socket ends behind a half-full, unpolled relay (half,
+    // so the reader is parked in the read, not in the reserve — a reader
+    // parked in the reserve can only see the close one consumer step later);
+    // the recorded lifetime must be short and must not grow as the consumer
+    // drains.
+    #[tokio::test]
+    async fn lifetime_is_the_sockets_not_the_consumers() {
+        let (client, lifetime, mut server) = local_pair_with_lifetime().await;
+        futures::pin_mut!(client);
+        assert_eq!(lifetime.ended_after(), None, "socket is still open");
+        let total = RELAY_BUFFER / 2;
+        for i in 0..total {
+            server
+                .send(Message::Text(format!(
+                    "{{\"did\":\"did:plc:x\",\"time_us\":{i},\"kind\":\"identity\",\
+                     \"identity\":{{\"did\":\"did:plc:x\",\"seq\":1,\"time\":\"2026-01-01T00:00:00Z\"}}}}"
+                )))
+                .await
+                .unwrap();
+        }
+        assert_eq!(lifetime.ended_after(), None, "socket is still open");
+        server.close(None).await.unwrap();
+        drop(server);
+        // No polling of `client` here: the relay task alone must notice.
+        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+        let ended = lifetime
+            .ended_after()
+            .expect("socket end not recorded while the relay is full");
+        assert!(ended < std::time::Duration::from_millis(1500), "{ended:?}");
+        // Draining afterwards must not stretch the recorded lifetime.
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+        let mut n = 0;
+        while let Some(e) = client.next().await {
+            e.unwrap();
+            n += 1;
+        }
+        assert_eq!(n, total);
+        assert_eq!(lifetime.ended_after(), Some(ended));
+    }
+
+    // connect_timeout is client-side only and must not leak into the query.
+    #[test]
+    fn default_query_has_message_cap_and_no_connect_timeout() {
+        let q = serde_html_form::to_string(ConnectOptions::default()).unwrap();
+        assert!(q.contains("maxMessageSizeBytes=1048576"), "{q}");
+        assert!(
+            !q.contains("connectTimeout") && !q.contains("connect_timeout"),
+            "{q}"
+        );
+    }
+
     // Talks to the public network; run on demand with `cargo test -- --ignored`.
     // Proves each default host still speaks the v1 wire at /subscribe and
     // that the split reader/ponger delivers events.
@@ -446,7 +548,7 @@ mod tests {
     #[ignore]
     async fn live_default_endpoints_deliver_events() {
         for endpoint in DEFAULT_ENDPOINTS {
-            let stream = connect(
+            let (stream, _lifetime) = connect(
                 &url::Url::parse(endpoint).unwrap(),
                 ConnectOptions {
                     wanted_collections: vec![atrium_api::app::bsky::feed::Like::nsid()],

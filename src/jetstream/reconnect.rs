@@ -121,9 +121,14 @@ impl Reconnector {
     }
 
     /// The consumer ended the connection on purpose (e.g. the con_posts
-    /// watchlist changed): not a failure, so no streak, no backoff, no
-    /// switch. Just pace the redial.
-    pub fn on_clean_exit(&self) -> Next {
+    /// watchlist changed) after `lived`: not a failure, so no streak, no
+    /// backoff, no switch. A connection that lived long enough still counts
+    /// as healthy, exactly as in `on_disconnect`. Just pace the redial.
+    pub fn on_clean_exit(&mut self, lived: std::time::Duration) -> Next {
+        if lived >= self.policy.healthy_after {
+            self.short_streak = 0;
+            self.delay = None;
+        }
         Next {
             delay: self.policy.min_delay,
             switched: false,
@@ -224,7 +229,7 @@ mod tests {
         let short = Duration::from_secs(45);
         r.on_disconnect(short);
         r.on_disconnect(short);
-        let n = r.on_clean_exit();
+        let n = r.on_clean_exit(Duration::from_secs(5));
         assert_eq!(n.delay, Duration::from_millis(250));
         assert!(!n.switched);
         assert_eq!(r.endpoint().host_str(), Some("js1.example"));
@@ -232,6 +237,23 @@ mod tests {
         let n = r.on_disconnect(short);
         assert!(n.switched);
         assert_eq!(n.delay, Duration::from_millis(1000));
+    }
+
+    // A clean exit after a long-lived connection is as healthy as a
+    // disconnect after one: streak and backoff reset.
+    #[test]
+    fn long_clean_exit_resets_backoff_and_streak() {
+        let mut r = Reconnector::new(urls(2), Policy::default()).unwrap();
+        let short = Duration::from_secs(45);
+        r.on_disconnect(short);
+        r.on_disconnect(short);
+        let n = r.on_clean_exit(Duration::from_secs(3600));
+        assert_eq!(n.delay, Duration::from_millis(250));
+        assert!(!n.switched);
+        // Streak restarted: two more short failures don't switch, the third does.
+        assert!(!r.on_disconnect(short).switched);
+        assert_eq!(r.on_disconnect(short).delay, Duration::from_millis(500));
+        assert!(r.on_disconnect(short).switched);
     }
 
     #[test]

@@ -157,6 +157,7 @@ pub async fn service(
 
         let endpoint = reconnector.endpoint().clone();
         let started = std::time::Instant::now();
+        let mut lifetime = None;
         let result = service_once(
             db_pool,
             &watchlist,
@@ -165,19 +166,26 @@ pub async fn service(
             &options,
             &mut fire_state,
             cursor,
+            &mut lifetime,
         )
         .await;
         // Sample before the post-mortem below: a pool acquire in `read_cursor`
         // can wait up to 30s and would let a bad 35s connection pass as
-        // healthy, resetting the failure streak forever.
-        let lived = started.elapsed();
+        // healthy, resetting the failure streak forever. Prefer the socket's
+        // own lifetime: the relay buffer can stretch the consumer's view of a
+        // 45s connection past `healthy_after` too. On a watchlist exit the
+        // socket may not have closed yet, hence the wall-clock fallback.
+        let lived = lifetime
+            .as_ref()
+            .and_then(|l| l.ended_after())
+            .unwrap_or_else(|| started.elapsed());
         let next = match result {
             Ok((next_cursor, exit)) => {
                 cursor = next_cursor;
                 match exit {
                     // We ended it (watchlist changed): not a failure, so it
                     // must not count toward the streak or the backoff.
-                    Exit::WatchlistChanged => reconnector.on_clean_exit(),
+                    Exit::WatchlistChanged => reconnector.on_clean_exit(lived),
                     // The server closed cleanly: still a disconnect for
                     // backoff/failover purposes.
                     Exit::StreamEnded => reconnector.on_disconnect(lived),
@@ -223,6 +231,9 @@ enum Exit {
     StreamEnded,
 }
 
+// The `lifetime` out-param tips this over clippy's limit; bundling the
+// arguments into a struct for that alone isn't worth it.
+#[allow(clippy::too_many_arguments)]
 async fn service_once(
     db_pool: &sqlx::PgPool,
     watchlist: &Watchlist,
@@ -231,6 +242,9 @@ async fn service_once(
     options: &Options,
     fire_state: &mut FireState,
     mut cursor: Option<i64>,
+    // Out-param so the caller can read the socket's lifetime on the error
+    // path too (the error type carries nothing).
+    lifetime: &mut Option<crate::jetstream::SocketLifetime>,
 ) -> Result<(Option<i64>, Exit), anyhow::Error> {
     let wanted_dids = dids_snapshot
         .keys()
@@ -242,7 +256,7 @@ async fn service_once(
         wanted_dids.len()
     );
 
-    let js = crate::jetstream::connect(
+    let (js, socket_lifetime) = crate::jetstream::connect(
         jetstream_endpoint,
         crate::jetstream::ConnectOptions {
             wanted_collections: vec![atrium_api::app::bsky::feed::Post::nsid()],
@@ -253,6 +267,7 @@ async fn service_once(
         },
     )
     .await?;
+    *lifetime = Some(socket_lifetime);
     futures::pin_mut!(js);
 
     let mut watchlist_check = tokio::time::interval(std::time::Duration::from_secs(60));

@@ -688,6 +688,7 @@ async fn service_jetstream(
     loop {
         let endpoint = reconnector.endpoint().clone();
         let started = std::time::Instant::now();
+        let mut lifetime = None;
         let result = service_jetstream_once(
             db_pool,
             did,
@@ -696,12 +697,18 @@ async fn service_jetstream(
             &endpoint,
             commit_firehose_cursor_every,
             cursor,
+            &mut lifetime,
         )
         .await;
         // Sample before the post-mortem below: a pool acquire in
         // `read_jetstream_cursor` can wait up to 30s and would let a bad 35s
         // connection pass as healthy, resetting the failure streak forever.
-        let lived = started.elapsed();
+        // Prefer the socket's own lifetime: the relay buffer can stretch the
+        // consumer's view of a 45s connection past `healthy_after` too.
+        let lived = lifetime
+            .as_ref()
+            .and_then(|l| l.ended_after())
+            .unwrap_or_else(|| started.elapsed());
         let next = match result {
             Ok(next_cursor) => {
                 // Only the server ends this stream, so a clean close is still
@@ -724,8 +731,9 @@ async fn service_jetstream(
                 reconnector.on_disconnect(lived)
             }
         };
-        // Rewind on a host switch only (see Next::rewind); the replay is
-        // harmless here since label writes are idempotent upserts.
+        // Rewind on a host switch only (see Next::rewind); a replay re-emits
+        // a few seconds of labels as duplicate rows, harmless to set-based
+        // label consumers.
         cursor = next.rewind(cursor);
         if next.switched {
             log::error!(
@@ -737,6 +745,9 @@ async fn service_jetstream(
     }
 }
 
+// The `lifetime` out-param tips this over clippy's limit; bundling the
+// arguments into a struct for that alone isn't worth it.
+#[allow(clippy::too_many_arguments)]
 async fn service_jetstream_once(
     db_pool: &sqlx::PgPool,
     did: &atrium_api::types::string::Did,
@@ -745,8 +756,11 @@ async fn service_jetstream_once(
     jetstream_endpoint: &url::Url,
     commit_firehose_cursor_every: std::time::Duration,
     mut cursor: Option<i64>,
+    // Out-param so the caller can read the socket's lifetime on the error
+    // path too (the error type carries nothing).
+    lifetime: &mut Option<jetstream::SocketLifetime>,
 ) -> Result<Option<i64>, anyhow::Error> {
-    let js = jetstream::connect(
+    let (js, socket_lifetime) = jetstream::connect(
         jetstream_endpoint,
         jetstream::ConnectOptions {
             wanted_collections: vec![atrium_api::app::bsky::feed::Like::nsid()],
@@ -756,6 +770,7 @@ async fn service_jetstream_once(
         },
     )
     .await?;
+    *lifetime = Some(socket_lifetime);
     futures::pin_mut!(js);
 
     let mut last_firehose_commit_time = std::time::SystemTime::now();
