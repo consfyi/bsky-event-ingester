@@ -364,10 +364,12 @@ mod tests {
     async fn oversized_message_is_an_error() {
         let (client, mut server) = local_pair().await;
         futures::pin_mut!(client);
-        server
+        // The client may drop the connection mid-write once the frame header
+        // exceeds the cap, so the server-side send can fail (BrokenPipe);
+        // the assertion is on what the client yields.
+        let _ = server
             .send(Message::Text("x".repeat(MAX_MESSAGE_BYTES + 1)))
-            .await
-            .unwrap();
+            .await;
         let next = tokio::time::timeout(std::time::Duration::from_secs(5), client.next())
             .await
             .expect("stream did not yield within 5s");
