@@ -94,7 +94,15 @@ impl Default for Policy {
         Self {
             min_delay: std::time::Duration::from_millis(250),
             max_delay: std::time::Duration::from_secs(30),
-            healthy_after: std::time::Duration::from_secs(60),
+            // Five minutes, not one: on 2026-08-17 a v2 host reset us every
+            // ~100s, which a 60s bar scored as healthy every time, so the
+            // failure streak never grew and we never left. Real connections
+            // live for hours; anything under a few minutes is a bad host.
+            // Tradeoff: a slow-but-not-erroring Postgres parks the relay,
+            // the server sheds us, and that close is a HostError — a longer
+            // bar means ~20 min of that walks the list. Acceptable: every
+            // host serves the same cursor space and the DB is the fix.
+            healthy_after: std::time::Duration::from_secs(300),
             failover_after: 3,
             jitter: 0.1,
         }
@@ -271,17 +279,32 @@ mod tests {
         assert!(r.after(Outcome::HostError, short).switched);
     }
 
-    // A connection that merely connects (a few seconds) must not reset the
-    // backoff — that is exactly what the stall looked like.
+    // A connection that lives less than the healthy bar (even just under
+    // it) must not reset the backoff — that is exactly what the stall
+    // looked like.
     #[test]
     fn brief_connect_does_not_count_as_healthy() {
         let mut r = Reconnector::new(urls(1), exact()).unwrap();
         r.after(Outcome::HostError, Duration::from_secs(45));
         r.after(Outcome::HostError, Duration::from_secs(45));
         assert_eq!(
-            r.after(Outcome::HostError, Duration::from_secs(59)).delay,
+            r.after(Outcome::HostError, Duration::from_secs(299)).delay,
             Duration::from_millis(1000)
         );
+    }
+
+    // The 2026-08-17 shape: a v2 host reset us every ~100s. With a 60s bar
+    // each of those scored healthy and we never left; the bar must sit well
+    // above that so three of them trip failover.
+    #[test]
+    fn hundred_second_resets_still_fail_over() {
+        assert!(Policy::default().healthy_after > Duration::from_secs(120));
+        let mut r = Reconnector::new(urls(2), exact()).unwrap();
+        let reset = Duration::from_secs(100);
+        assert!(!r.after(Outcome::HostError, reset).switched);
+        assert!(!r.after(Outcome::HostError, reset).switched);
+        assert!(r.after(Outcome::HostError, reset).switched);
+        assert_eq!(r.endpoint().host_str(), Some("js2.example"));
     }
 
     // A clean exit is paced, not punished: the streak keeps whatever it

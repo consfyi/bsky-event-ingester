@@ -740,7 +740,8 @@ async fn service_jetstream(
             }
         };
         // Rewind on a host switch only (see Next::rewind); a replay re-emits
-        // a few seconds of labels as duplicate rows, harmless to set-based
+        // labels as duplicate rows (a few seconds on a legacy host, up to an
+        // hour on a v2 host — see DEFAULT_ENDPOINTS), harmless to set-based
         // label consumers.
         cursor = next.rewind(cursor);
         if next.switched {
@@ -755,7 +756,7 @@ async fn service_jetstream(
 
 /// Longest the labeler tolerates between events before treating the host as
 /// dead. 30s: far above any real gap on the like firehose, and under
-/// `reconnect::Policy::healthy_after` (60s) so a host that connects, says
+/// `reconnect::Policy::healthy_after` (300s) so a host that connects, says
 /// nothing and gets cut here can never be scored healthy.
 const EVENT_DEADLINE: std::time::Duration = std::time::Duration::from_secs(30);
 
@@ -1161,6 +1162,42 @@ mod tests {
     fn default_endpoints_parse() {
         for e in jetstream::DEFAULT_ENDPOINTS {
             assert_eq!(u(e).path(), "/subscribe", "{e}");
+        }
+    }
+
+    // Legacy hosts honour a timestamp cursor exactly; the v2 hosts clamp a
+    // fresh cursor to the start of their active log segment (up to an hour
+    // of replay per connect), so they must never be dialed first.
+    #[test]
+    fn default_dial_order_is_legacy_first_v2_last() {
+        let hosts: Vec<&str> = jetstream::DEFAULT_ENDPOINTS
+            .iter()
+            .map(|e| u(e).host_str().unwrap().to_owned())
+            .map(|h| Box::leak(h.into_boxed_str()) as &str)
+            .collect();
+        let (legacy, v2): (Vec<_>, Vec<_>) = hosts
+            .iter()
+            .partition(|h| h.starts_with("jetstream1.") || h.starts_with("jetstream2."));
+        assert_eq!(legacy.len(), 4);
+        assert_eq!(v2.len(), 2);
+        assert!(
+            hosts[..4].iter().all(|h| legacy.contains(&h)),
+            "v2 host dialed before a legacy host: {hosts:?}"
+        );
+        // Regions alternate so one failover skips a regional problem.
+        let region = |h: &str| {
+            if h.contains(".us-east.") {
+                "east"
+            } else {
+                "west"
+            }
+        };
+        for pair in hosts.windows(2) {
+            assert_ne!(
+                region(pair[0]),
+                region(pair[1]),
+                "same region twice in a row: {hosts:?}"
+            );
         }
     }
 

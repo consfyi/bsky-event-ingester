@@ -5,17 +5,23 @@ pub mod reconnect;
 
 /// Public Jetstream hosts, in dial order. All speak the v1 wire at
 /// `/subscribe` with portable unix-microsecond cursors, so any of them can
-/// take over from any other. The v2 hosts (launched 2026-08-14) come first;
-/// the legacy `jetstream{1,2}` hosts are the fallbacks and Bluesky has said
-/// they will be retired eventually. Regions alternate so a regional problem
-/// is skipped after one failover.
+/// take over from any other. Regions alternate so a regional problem is
+/// skipped after one failover.
+///
+/// The legacy `jetstream{1,2}` hosts come first because they honour a
+/// timestamp cursor exactly. The v2 hosts (launched 2026-08-14) resolve a
+/// timestamp cursor only against sealed log segments and clamp anything
+/// newer to the start of the active segment (`translateTimeUSToSeq` in
+/// bluesky-social/jetstream), so a fresh cursor replays 0-60 minutes of
+/// firehose on every connect; on 2026-08-17 they also reset our connection
+/// every ~100s. They stay in the list as last-resort fallbacks only.
 pub const DEFAULT_ENDPOINTS: &[&str] = &[
-    "wss://jetstream.us-east.bsky.network/subscribe",
-    "wss://jetstream.us-west.bsky.network/subscribe",
     "wss://jetstream1.us-east.bsky.network/subscribe",
     "wss://jetstream1.us-west.bsky.network/subscribe",
     "wss://jetstream2.us-east.bsky.network/subscribe",
     "wss://jetstream2.us-west.bsky.network/subscribe",
+    "wss://jetstream.us-east.bsky.network/subscribe",
+    "wss://jetstream.us-west.bsky.network/subscribe",
 ];
 
 #[derive(serde::Serialize)]
@@ -54,7 +60,7 @@ impl Default for ConnectOptions {
 }
 
 /// Default for `ConnectOptions::connect_timeout`; must stay well under
-/// `reconnect::Policy::healthy_after` (60s).
+/// `reconnect::Policy::healthy_after` (300s).
 pub const CONNECT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(15);
 
 /// Largest WebSocket message (and frame) the client accepts; a Jetstream
@@ -395,15 +401,23 @@ mod tests {
         });
         // With nobody polling, the sender must stall short of `total`
         // (buffer + the one frame the reader holds + socket buffers) and
-        // then stop moving entirely — two samples 3s apart must match, or
-        // the reader is merely slow, not parked (the 6s park also drives the
-        // >5s backpressure warn + re-reserve path). It must also have got
-        // at least RELAY_BUFFER frames in, or the buffer has shrunk.
+        // then all but stop — two samples 3s apart may differ only by a
+        // small trickle (see below), or the reader is merely slow, not
+        // parked (the 6s park also drives the >5s backpressure warn +
+        // re-reserve path). It must also have got at least RELAY_BUFFER
+        // frames in, or the buffer has shrunk.
         tokio::time::sleep(std::time::Duration::from_secs(3)).await;
         let sample = sent.load(std::sync::atomic::Ordering::SeqCst);
         tokio::time::sleep(std::time::Duration::from_secs(3)).await;
         let stalled_at = sent.load(std::sync::atomic::Ordering::SeqCst);
-        assert_eq!(sample, stalled_at, "reader is still draining frames");
+        // Not exact equality: with the reader parked, TCP receive-buffer
+        // autotuning still lets a few hundred more frames trickle into the
+        // kernel over 3s (seen on macOS); a reader that is actually draining
+        // moves tens of thousands. Slack of RELAY_BUFFER/16 = 2048.
+        assert!(
+            stalled_at - sample < RELAY_BUFFER / 16,
+            "reader is still draining frames ({sample} -> {stalled_at})"
+        );
         assert!(
             backlog + stalled_at < total,
             "reader drained {total} frames with a stalled consumer"
