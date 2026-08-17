@@ -24,6 +24,19 @@ pub struct Next {
 /// Cursor rewind applied by callers on a host switch, in microseconds.
 pub const REWIND_US: i64 = 5_000_000;
 
+impl Next {
+    /// The cursor to resume from: rewound by `REWIND_US` only when the host
+    /// changed (instances ingest with slightly different lag), untouched on a
+    /// plain reconnect. `None` (no cursor yet) stays `None`.
+    pub fn rewind(&self, cursor: Option<i64>) -> Option<i64> {
+        if self.switched {
+            cursor.map(|c| c.saturating_sub(REWIND_US))
+        } else {
+            cursor
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Policy {
     /// First retry delay; doubles per consecutive short-lived connection.
@@ -105,6 +118,16 @@ impl Reconnector {
 
         Next { delay, switched }
     }
+
+    /// The consumer ended the connection on purpose (e.g. the con_posts
+    /// watchlist changed): not a failure, so no streak, no backoff, no
+    /// switch. Just pace the redial.
+    pub fn on_clean_exit(&self) -> Next {
+        Next {
+            delay: self.policy.min_delay,
+            switched: false,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -119,12 +142,7 @@ mod tests {
     }
 
     fn policy() -> Policy {
-        Policy {
-            min_delay: Duration::from_millis(250),
-            max_delay: Duration::from_secs(30),
-            healthy_after: Duration::from_secs(60),
-            failover_after: 3,
-        }
+        Policy::default()
     }
 
     #[test]
@@ -199,5 +217,45 @@ mod tests {
             r.on_disconnect(Duration::from_secs(59)).delay,
             Duration::from_millis(1000)
         );
+    }
+
+    // A clean exit is paced, not punished: the streak keeps whatever it
+    // was and the next real failure carries on from there.
+    #[test]
+    fn clean_exit_does_not_touch_backoff_or_streak() {
+        let mut r = Reconnector::new(urls(2), policy()).unwrap();
+        let short = Duration::from_secs(45);
+        r.on_disconnect(short);
+        r.on_disconnect(short);
+        let n = r.on_clean_exit();
+        assert_eq!(n.delay, Duration::from_millis(250));
+        assert!(!n.switched);
+        assert_eq!(r.endpoint().host_str(), Some("js1.example"));
+        // Third short failure still trips the failover, at the doubled delay.
+        let n = r.on_disconnect(short);
+        assert!(n.switched);
+        assert_eq!(n.delay, Duration::from_millis(1000));
+    }
+
+    #[test]
+    fn rewind_only_on_switch() {
+        let stay = Next {
+            delay: Duration::ZERO,
+            switched: false,
+        };
+        let switch = Next {
+            delay: Duration::ZERO,
+            switched: true,
+        };
+        assert_eq!(stay.rewind(Some(10_000_000)), Some(10_000_000));
+        assert_eq!(
+            switch.rewind(Some(10_000_000)),
+            Some(10_000_000 - REWIND_US)
+        );
+        assert_eq!(stay.rewind(None), None);
+        assert_eq!(switch.rewind(None), None);
+        // Never underflows on a tiny cursor.
+        assert_eq!(switch.rewind(Some(1)), Some(1 - REWIND_US));
+        assert_eq!(switch.rewind(Some(i64::MIN)), Some(i64::MIN));
     }
 }

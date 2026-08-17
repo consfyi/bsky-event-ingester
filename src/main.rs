@@ -14,6 +14,8 @@ struct Config {
     // The consumer fails over to the next entry after repeated short-lived
     // connections. `jetstream_endpoint` (singular) is the pre-failover key:
     // if set it is dialed first, so an existing config.toml keeps its pin.
+    // `jetstream_endpoints = []` (with no pin) disables the firehose: both
+    // consumers log a warning and return instead of running.
     jetstream_endpoints: Vec<url::Url>,
     jetstream_endpoint: Option<url::Url>,
     events_url: String,
@@ -672,6 +674,10 @@ async fn service_jetstream(
     commit_firehose_cursor_every: std::time::Duration,
 ) -> Result<(), anyhow::Error> {
     let mut cursor = read_jetstream_cursor(db_pool).await?;
+    if jetstream_endpoints.is_empty() {
+        log::warn!("no jetstream endpoints configured, won't service jetstream events");
+        return Ok(());
+    }
     let mut reconnector = jetstream::reconnect::Reconnector::new(
         jetstream_endpoints,
         jetstream::reconnect::Policy::default(),
@@ -680,7 +686,7 @@ async fn service_jetstream(
     loop {
         let endpoint = reconnector.endpoint().clone();
         let started = std::time::Instant::now();
-        match service_jetstream_once(
+        let next = match service_jetstream_once(
             db_pool,
             did,
             keypair,
@@ -692,7 +698,11 @@ async fn service_jetstream(
         .await
         {
             Ok(next_cursor) => {
+                // Only the server ends this stream, so a clean close is still
+                // a disconnect for backoff/failover purposes — a host that
+                // politely closes every 45s is as unusable as one that resets.
                 cursor = next_cursor;
+                reconnector.on_disconnect(started.elapsed())
             }
             Err(e) => {
                 log::error!("Jetstream disconnected ({endpoint}): {e}");
@@ -705,13 +715,15 @@ async fn service_jetstream(
                     Ok(persisted) => cursor = persisted,
                     Err(e) => log::error!("could not re-read cursor: {e}"),
                 }
+                reconnector.on_disconnect(started.elapsed())
             }
         };
-        let next = reconnector.on_disconnect(started.elapsed());
+        // Rewind only on a host switch (not every reconnect): instances
+        // ingest with slightly different lag and the rewind keeps playback
+        // gapless; the replay is harmless here (label writes are idempotent
+        // upserts) but pointless on a same-host redial.
+        cursor = next.rewind(cursor);
         if next.switched {
-            // Instances ingest with slightly different lag; a small rewind
-            // keeps playback gapless (label writes are idempotent upserts).
-            cursor = cursor.map(|c| c - jetstream::reconnect::REWIND_US);
             log::error!(
                 "Jetstream: repeated short connections to {endpoint}, failing over to {}",
                 reconnector.endpoint()
@@ -1040,7 +1052,8 @@ async fn main() -> Result<(), anyhow::Error> {
 
     tokio::try_join!(
         async {
-            // Wait on events.
+            // Wait on events. Returns only when no endpoints are configured
+            // (firehose off).
             service_jetstream(
                 &db_pool,
                 &did,
@@ -1050,9 +1063,6 @@ async fn main() -> Result<(), anyhow::Error> {
                 std::time::Duration::from_secs(config.commit_firehose_cursor_every_secs),
             )
             .await?;
-            unreachable!();
-
-            #[allow(unreachable_code)]
             Ok::<_, anyhow::Error>(())
         },
         async {
@@ -1071,10 +1081,8 @@ async fn main() -> Result<(), anyhow::Error> {
                 return Ok(());
             };
 
+            // Returns only when no endpoints are configured (firehose off).
             con_posts::service(&db_pool, watchlist.clone(), con_posts_endpoints, options).await?;
-            unreachable!();
-
-            #[allow(unreachable_code)]
             Ok::<_, anyhow::Error>(())
         }
     )?;
@@ -1095,6 +1103,21 @@ mod tests {
         for e in jetstream::DEFAULT_ENDPOINTS {
             assert_eq!(u(e).path(), "/subscribe", "{e}");
         }
+    }
+
+    // The defaults path hands `config` a Vec<&str>; make sure it comes back
+    // out as Vec<Url> in dial order.
+    #[test]
+    fn default_endpoints_survive_the_config_builder() {
+        let got: Vec<url::Url> = config::Config::builder()
+            .set_default("jetstream_endpoints", jetstream::DEFAULT_ENDPOINTS.to_vec())
+            .unwrap()
+            .build()
+            .unwrap()
+            .get("jetstream_endpoints")
+            .unwrap();
+        let want: Vec<url::Url> = jetstream::DEFAULT_ENDPOINTS.iter().map(|e| u(e)).collect();
+        assert_eq!(got, want);
     }
 
     #[test]

@@ -133,6 +133,10 @@ pub async fn service(
     ));
 
     let mut cursor = read_cursor(db_pool).await?;
+    if jetstream_endpoints.is_empty() {
+        log::warn!("no jetstream endpoints configured, won't service con posts");
+        return Ok(());
+    }
     let mut reconnector = crate::jetstream::reconnect::Reconnector::new(
         jetstream_endpoints,
         crate::jetstream::reconnect::Policy::default(),
@@ -153,7 +157,7 @@ pub async fn service(
 
         let endpoint = reconnector.endpoint().clone();
         let started = std::time::Instant::now();
-        match service_once(
+        let next = match service_once(
             db_pool,
             &watchlist,
             &dids_snapshot,
@@ -166,6 +170,15 @@ pub async fn service(
         {
             Ok(next_cursor) => {
                 cursor = next_cursor;
+                if *watchlist.read().await != dids_snapshot {
+                    // We ended it (watchlist changed): not a failure, so it
+                    // must not count toward the streak or the backoff.
+                    reconnector.on_clean_exit()
+                } else {
+                    // The server closed cleanly: still a disconnect for
+                    // backoff/failover purposes.
+                    reconnector.on_disconnect(started.elapsed())
+                }
             }
             Err(e) => {
                 log::error!("con_posts: Jetstream disconnected ({endpoint}): {e}");
@@ -178,14 +191,15 @@ pub async fn service(
                     Ok(persisted) => cursor = persisted,
                     Err(e) => log::error!("con_posts: could not re-read cursor: {e}"),
                 }
+                reconnector.on_disconnect(started.elapsed())
             }
-        }
-        let next = reconnector.on_disconnect(started.elapsed());
+        };
+        // Rewind only on a host switch (not every reconnect): instances
+        // ingest with slightly different lag and the rewind keeps playback
+        // gapless, but a replayed post re-enters the LLM pipeline and the
+        // debounce absorbs a few seconds of overlap, not more.
+        cursor = next.rewind(cursor);
         if next.switched {
-            // Rewind only on a host switch (not every reconnect): a replayed
-            // post re-enters the LLM pipeline, and the debounce absorbs a
-            // few seconds of overlap but not more.
-            cursor = cursor.map(|c| c - crate::jetstream::reconnect::REWIND_US);
             log::error!(
                 "con_posts: repeated short connections to {endpoint}, failing over to {}",
                 reconnector.endpoint()

@@ -61,24 +61,42 @@ pub async fn connect(
     // Jetstream hosts hard-close a connection whose Pong is more than 5s
     // late, and inline handling only ran while the consumer was polling —
     // a slow DB write or a spawned worker could sit longer than that.
+    //
+    // The channel is unbounded so a stalled consumer can never park this
+    // task on `send` and starve the Pong. Memory is still bounded, by the
+    // server: it disconnects a client whose outbox fills, and the old
+    // inline code was dropped in exactly that way under a long stall.
     let (mut sink, mut source) = ws.split();
-    let (tx, rx) = tokio::sync::mpsc::channel(PONG_TASK_BUFFER);
+    let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
     tokio::spawn(async move {
-        while let Some(message) = source.next().await {
+        loop {
+            let message = tokio::select! {
+                // Consumer dropped the stream: tell the server (best effort)
+                // and stop reading, so the socket doesn't outlive its reader.
+                _ = tx.closed() => {
+                    let _ = sink.send(tokio_tungstenite::tungstenite::Message::Close(None)).await;
+                    break;
+                }
+                message = source.next() => match message {
+                    Some(m) => m,
+                    None => break,
+                },
+            };
             match message {
                 Ok(tokio_tungstenite::tungstenite::Message::Ping(body)) => {
-                    if sink
+                    if let Err(e) = sink
                         .send(tokio_tungstenite::tungstenite::Message::Pong(body))
                         .await
-                        .is_err()
                     {
+                        // Surface the failure to the consumer instead of ending
+                        // the stream as if the server closed cleanly.
+                        let _ = tx.send(Err(e));
                         break;
                     }
                 }
                 Ok(tokio_tungstenite::tungstenite::Message::Close(_)) => break,
                 other => {
-                    // Consumer dropped the stream: stop reading.
-                    if tx.send(other).await.is_err() {
+                    if tx.send(other).is_err() {
                         break;
                     }
                 }
@@ -107,14 +125,90 @@ pub async fn connect(
     })
 }
 
-/// Messages buffered between the socket task and the consumer. Pings keep
-/// being answered while the consumer is busy until this fills.
-const PONG_TASK_BUFFER: usize = 1024;
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use atrium_api::types::Collection as _;
+    use tokio_tungstenite::tungstenite::Message;
+
+    type ServerWs = tokio_tungstenite::WebSocketStream<tokio::net::TcpStream>;
+
+    /// A local Jetstream stand-in: `connect()` dials it, the test drives the
+    /// server side by hand. Returns the client stream and the accepted socket.
+    async fn local_pair() -> (
+        impl futures::Stream<Item = Result<event::Event, Error>>,
+        ServerWs,
+    ) {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = url::Url::parse(&format!(
+            "ws://{}/subscribe",
+            listener.local_addr().unwrap()
+        ))
+        .unwrap();
+        let accept = tokio::spawn(async move {
+            let (tcp, _) = listener.accept().await.unwrap();
+            tokio_tungstenite::accept_async(tcp).await.unwrap()
+        });
+        let client = connect(&url, ConnectOptions::default()).await.unwrap();
+        (client, accept.await.unwrap())
+    }
+
+    /// Reads server-side until a Pong arrives (or the socket ends).
+    async fn expect_pong(server: &mut ServerWs) {
+        let deadline = std::time::Duration::from_secs(5);
+        tokio::time::timeout(deadline, async {
+            while let Some(m) = server.next().await {
+                if let Ok(Message::Pong(_)) = m {
+                    return;
+                }
+            }
+            panic!("socket ended without a Pong");
+        })
+        .await
+        .expect("no Pong within 5s");
+    }
+
+    // Pongs must go out even when nobody is polling the stream.
+    #[tokio::test]
+    async fn pong_is_sent_while_consumer_is_not_polling() {
+        let (client, mut server) = local_pair().await;
+        server.send(Message::Ping(vec![1, 2, 3])).await.unwrap();
+        expect_pong(&mut server).await;
+        drop(client);
+    }
+
+    // A stalled consumer must never back-pressure the reader into
+    // missing a Ping — the channel is unbounded for exactly this reason.
+    #[tokio::test]
+    async fn pong_is_sent_after_a_backlog_the_consumer_never_drains() {
+        let (client, mut server) = local_pair().await;
+        for i in 0..2500 {
+            server
+                .send(Message::Text(format!("{{\"n\":{i}}}")))
+                .await
+                .unwrap();
+        }
+        server.send(Message::Ping(vec![])).await.unwrap();
+        expect_pong(&mut server).await;
+        drop(client);
+    }
+
+    // Dropping the stream must end the upstream socket, not leak it.
+    #[tokio::test]
+    async fn dropping_the_stream_closes_the_socket() {
+        let (client, mut server) = local_pair().await;
+        drop(client);
+        tokio::time::timeout(std::time::Duration::from_secs(5), async {
+            loop {
+                match server.next().await {
+                    None | Some(Ok(Message::Close(_))) | Some(Err(_)) => break,
+                    Some(Ok(_)) => {}
+                }
+            }
+        })
+        .await
+        .expect("server did not observe a close within 5s");
+    }
 
     // Talks to the public network; run on demand with `cargo test -- --ignored`.
     // Proves each default host still speaks the v1 wire at /subscribe and
