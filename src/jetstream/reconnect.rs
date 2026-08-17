@@ -94,7 +94,11 @@ impl Default for Policy {
         Self {
             min_delay: std::time::Duration::from_millis(250),
             max_delay: std::time::Duration::from_secs(30),
-            healthy_after: std::time::Duration::from_secs(60),
+            // Five minutes, not one: on 2026-08-17 a v2 host reset us every
+            // ~100s, which a 60s bar scored as healthy every time, so the
+            // failure streak never grew and we never left. Real connections
+            // live for hours; anything under a few minutes is a bad host.
+            healthy_after: std::time::Duration::from_secs(300),
             failover_after: 3,
             jitter: 0.1,
         }
