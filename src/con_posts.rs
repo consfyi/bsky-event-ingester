@@ -157,7 +157,7 @@ pub async fn service(
 
         let endpoint = reconnector.endpoint().clone();
         let started = std::time::Instant::now();
-        let next = match service_once(
+        let result = service_once(
             db_pool,
             &watchlist,
             &dids_snapshot,
@@ -166,8 +166,12 @@ pub async fn service(
             &mut fire_state,
             cursor,
         )
-        .await
-        {
+        .await;
+        // Sample before the post-mortem below: a pool acquire in `read_cursor`
+        // can wait up to 30s and would let a bad 35s connection pass as
+        // healthy, resetting the failure streak forever.
+        let lived = started.elapsed();
+        let next = match result {
             Ok((next_cursor, exit)) => {
                 cursor = next_cursor;
                 match exit {
@@ -176,7 +180,7 @@ pub async fn service(
                     Exit::WatchlistChanged => reconnector.on_clean_exit(),
                     // The server closed cleanly: still a disconnect for
                     // backoff/failover purposes.
-                    Exit::StreamEnded => reconnector.on_disconnect(started.elapsed()),
+                    Exit::StreamEnded => reconnector.on_disconnect(lived),
                 }
             }
             Err(e) => {
@@ -190,7 +194,7 @@ pub async fn service(
                     Ok(persisted) => cursor = persisted,
                     Err(e) => log::error!("con_posts: could not re-read cursor: {e}"),
                 }
-                reconnector.on_disconnect(started.elapsed())
+                reconnector.on_disconnect(lived)
             }
         };
         // Rewind on a host switch only (see Next::rewind): a replayed post

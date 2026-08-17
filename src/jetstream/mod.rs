@@ -18,7 +18,7 @@ pub const DEFAULT_ENDPOINTS: &[&str] = &[
     "wss://jetstream2.us-west.bsky.network/subscribe",
 ];
 
-#[derive(serde::Serialize, Default)]
+#[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ConnectOptions {
     pub wanted_collections: Vec<atrium_api::types::string::Nsid>,
@@ -35,13 +35,37 @@ pub struct ConnectOptions {
     pub connect_timeout: Option<std::time::Duration>,
 }
 
+impl Default for ConnectOptions {
+    fn default() -> Self {
+        Self {
+            wanted_collections: Vec::new(),
+            wanted_dids: Vec::new(),
+            // Ask the server to drop oversized events before the wire; the
+            // client enforces the same cap on what it will buffer.
+            max_message_size_bytes: MAX_MESSAGE_BYTES as u32,
+            cursor: None,
+            compress: false,
+            connect_timeout: None,
+        }
+    }
+}
+
 /// Default for `ConnectOptions::connect_timeout`; must stay well under
 /// `reconnect::Policy::healthy_after` (60s).
 pub const CONNECT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(15);
 
-/// Frames buffered between the socket reader and the consumer. Bounds
-/// memory at `RELAY_BUFFER × frame size` (a few tens of MB on the like
-/// firehose, ~15-30s of it) — see the relay task in `connect`.
+/// Largest WebSocket message (and frame) the client accepts; a Jetstream
+/// event is ~1 KB. Without this, tungstenite's default is 64 MiB per
+/// message, so the relay bound below would be 32768 × 64 MiB.
+pub const MAX_MESSAGE_BYTES: usize = 1 << 20;
+
+/// Messages buffered between the socket reader and the consumer, reserved
+/// before each read so a stalled consumer parks the reader instead of
+/// growing memory without limit (TCP backpressure then fills the server's
+/// outbox and it disconnects us). Memory ≤ RELAY_BUFFER × MAX_MESSAGE_BYTES
+/// = 32 GiB worst case; ~tens of MB in practice at ~1 KB/event, which is
+/// ~15-30s of the like firehose — long enough for Pings to keep being
+/// answered through the slow-DB-write case the relay task exists for.
 pub const RELAY_BUFFER: usize = 32_768;
 
 #[derive(thiserror::Error, Debug)]
@@ -78,48 +102,67 @@ pub async fn connect(
     url.set_query(Some(&serde_html_form::to_string(&options)?));
 
     let connect_timeout = options.connect_timeout.unwrap_or(CONNECT_TIMEOUT);
-    let (ws, _) = tokio::time::timeout(connect_timeout, tokio_tungstenite::connect_async(url))
-        .await
-        .map_err(|_| Error::ConnectTimeout(connect_timeout))??;
+    let ws_config = tokio_tungstenite::tungstenite::protocol::WebSocketConfig {
+        max_message_size: Some(MAX_MESSAGE_BYTES),
+        max_frame_size: Some(MAX_MESSAGE_BYTES),
+        ..Default::default()
+    };
+    let (ws, _) = tokio::time::timeout(
+        connect_timeout,
+        tokio_tungstenite::connect_async_with_config(url, Some(ws_config), false),
+    )
+    .await
+    .map_err(|_| Error::ConnectTimeout(connect_timeout))??;
 
     // Pings are answered by a dedicated task rather than inline: the v2
     // Jetstream hosts hard-close a connection whose Pong is more than 5s
     // late, and inline handling only ran while the consumer was polling —
     // a slow DB write or a spawned worker could sit longer than that.
     //
-    // The relay channel is bounded (RELAY_BUFFER frames) and the task
-    // reserves a slot *before* reading the next frame, so when the consumer
-    // stalls the task stops reading the socket instead of growing memory
-    // without limit. With the socket unread, TCP backpressure fills the
-    // server's outbox and the server disconnects us — the same fate the old
-    // inline code met under a long stall, now with memory capped at
-    // RELAY_BUFFER × frame size. Pings are still answered for as long as
-    // the buffer has room (~15-30s of the like firehose), which covers the
-    // slow-DB-write case the task exists for.
+    // The task reserves a relay slot *before* reading the next message so
+    // that a stalled consumer parks the reader (see RELAY_BUFFER). Both the
+    // reserve and the read race `tx.closed()`: a consumer that drops the
+    // stream while the socket is idle must still end the socket, or the
+    // task and socket leak until the next inbound frame — never, on a
+    // silent host.
     let (mut sink, mut source) = ws.split();
     let (tx, rx) = tokio::sync::mpsc::channel(RELAY_BUFFER);
     tokio::spawn(async move {
+        // Consumer dropped the stream: tell the server (best effort, bounded
+        // so a wedged socket can't pin this task) and stop reading.
+        async fn close_best_effort<S>(sink: &mut S)
+        where
+            S: futures::Sink<tokio_tungstenite::tungstenite::Message> + Unpin,
+        {
+            let _ = tokio::time::timeout(
+                std::time::Duration::from_secs(2),
+                sink.send(tokio_tungstenite::tungstenite::Message::Close(None)),
+            )
+            .await;
+        }
         loop {
             let permit = tokio::select! {
-                // Consumer dropped the stream: tell the server (best effort,
-                // bounded so a wedged socket can't pin this task) and stop
-                // reading, so the socket doesn't outlive its reader.
                 _ = tx.closed() => {
-                    let _ = tokio::time::timeout(
-                        std::time::Duration::from_secs(2),
-                        sink.send(tokio_tungstenite::tungstenite::Message::Close(None)),
-                    )
-                    .await;
+                    close_best_effort(&mut sink).await;
                     break;
                 }
                 permit = tx.reserve() => match permit {
                     Ok(p) => p,
-                    Err(_) => break,
+                    Err(_) => {
+                        close_best_effort(&mut sink).await;
+                        break;
+                    }
                 },
             };
-            let message = match source.next().await {
-                Some(m) => m,
-                None => break,
+            let message = tokio::select! {
+                _ = tx.closed() => {
+                    close_best_effort(&mut sink).await;
+                    break;
+                }
+                next = source.next() => match next {
+                    Some(m) => m,
+                    None => break,
+                },
             };
             match message {
                 Ok(tokio_tungstenite::tungstenite::Message::Ping(body)) => {
@@ -276,12 +319,22 @@ mod tests {
             }
         });
         // With nobody polling, the sender must stall short of `total`
-        // (buffer + the one frame the reader holds + socket buffers).
-        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+        // (buffer + the one frame the reader holds + socket buffers) and
+        // then stop moving entirely — two samples a second apart must match,
+        // or the reader is merely slow, not parked. It must also have got
+        // at least RELAY_BUFFER frames in, or the buffer has shrunk.
+        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+        let sample = sent.load(std::sync::atomic::Ordering::SeqCst);
+        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
         let stalled_at = sent.load(std::sync::atomic::Ordering::SeqCst);
+        assert_eq!(sample, stalled_at, "reader is still draining frames");
         assert!(
             stalled_at < total,
             "reader drained {total} frames with a stalled consumer"
+        );
+        assert!(
+            stalled_at >= RELAY_BUFFER,
+            "reader parked after only {stalled_at} frames (buffer is {RELAY_BUFFER})"
         );
         // Now drain: everything arrives, in order, with nothing lost.
         for i in 0..total {
@@ -303,6 +356,31 @@ mod tests {
             .await
             .expect("stream did not end within 5s");
         assert!(end.is_none(), "expected clean end, got {end:?}");
+    }
+
+    // A message over MAX_MESSAGE_BYTES must surface as an error, not be
+    // buffered: the relay bound is in messages, so this is the byte ceiling.
+    #[tokio::test]
+    async fn oversized_message_is_an_error() {
+        let (client, mut server) = local_pair().await;
+        futures::pin_mut!(client);
+        server
+            .send(Message::Text("x".repeat(MAX_MESSAGE_BYTES + 1)))
+            .await
+            .unwrap();
+        let next = tokio::time::timeout(std::time::Duration::from_secs(5), client.next())
+            .await
+            .expect("stream did not yield within 5s");
+        assert!(
+            matches!(next, Some(Err(Error::Tungstenite(_)))),
+            "expected a tungstenite capacity error, got {next:?}"
+        );
+    }
+
+    // The dial cap must trip before a hung dial could count as healthy.
+    #[test]
+    fn connect_timeout_is_under_healthy_after() {
+        assert!(CONNECT_TIMEOUT < reconnect::Policy::default().healthy_after);
     }
 
     // A host that accepts TCP but never completes the handshake must fail
@@ -337,10 +415,15 @@ mod tests {
         assert!(started.elapsed() < std::time::Duration::from_secs(5));
     }
 
-    // Dropping the stream must end the upstream socket, not leak it.
+    // Dropping the stream must end the upstream socket, not leak it — even
+    // when the relay task is parked in a socket read on a silent host. The
+    // Ping/Pong round-trip first proves the task is running and parked in
+    // the read (not still racing for its first permit) before the drop.
     #[tokio::test]
     async fn dropping_the_stream_closes_the_socket() {
         let (client, mut server) = local_pair().await;
+        server.send(Message::Ping(vec![])).await.unwrap();
+        expect_pong(&mut server).await;
         drop(client);
         tokio::time::timeout(std::time::Duration::from_secs(5), async {
             loop {

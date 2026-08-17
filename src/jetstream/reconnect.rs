@@ -27,10 +27,11 @@ pub const REWIND_US: i64 = 5_000_000;
 impl Next {
     /// The cursor to resume from: rewound by `REWIND_US` only when the host
     /// changed (instances ingest with slightly different lag), untouched on a
-    /// plain reconnect. `None` (no cursor yet) stays `None`.
+    /// plain reconnect. `None` (no cursor yet) stays `None`. Floors at 0; a
+    /// negative cursor is meaningless to Jetstream.
     pub fn rewind(&self, cursor: Option<i64>) -> Option<i64> {
         if self.switched {
-            cursor.map(|c| c.saturating_sub(REWIND_US))
+            cursor.map(|c| c.saturating_sub(REWIND_US).max(0))
         } else {
             cursor
         }
@@ -141,18 +142,14 @@ mod tests {
             .collect()
     }
 
-    fn policy() -> Policy {
-        Policy::default()
-    }
-
     #[test]
     fn empty_endpoint_list_is_an_error() {
-        assert!(Reconnector::new(vec![], policy()).is_err());
+        assert!(Reconnector::new(vec![], Policy::default()).is_err());
     }
 
     #[test]
     fn backoff_doubles_and_caps() {
-        let mut r = Reconnector::new(urls(1), policy()).unwrap();
+        let mut r = Reconnector::new(urls(1), Policy::default()).unwrap();
         let short = Duration::from_secs(45);
         let delays: Vec<_> = (0..9).map(|_| r.on_disconnect(short).delay).collect();
         assert_eq!(
@@ -165,7 +162,7 @@ mod tests {
 
     #[test]
     fn single_endpoint_never_switches() {
-        let mut r = Reconnector::new(urls(1), policy()).unwrap();
+        let mut r = Reconnector::new(urls(1), Policy::default()).unwrap();
         for _ in 0..10 {
             assert!(!r.on_disconnect(Duration::from_secs(1)).switched);
         }
@@ -175,7 +172,7 @@ mod tests {
     // The 2026-08-16 shape: server resets every ~45s, no event flow.
     #[test]
     fn rotates_after_three_short_connections_and_wraps() {
-        let mut r = Reconnector::new(urls(2), policy()).unwrap();
+        let mut r = Reconnector::new(urls(2), Policy::default()).unwrap();
         let short = Duration::from_secs(45);
         assert!(!r.on_disconnect(short).switched);
         assert!(!r.on_disconnect(short).switched);
@@ -193,7 +190,7 @@ mod tests {
 
     #[test]
     fn healthy_connection_resets_backoff_and_streak() {
-        let mut r = Reconnector::new(urls(2), policy()).unwrap();
+        let mut r = Reconnector::new(urls(2), Policy::default()).unwrap();
         let short = Duration::from_secs(45);
         r.on_disconnect(short);
         r.on_disconnect(short);
@@ -210,7 +207,7 @@ mod tests {
     // backoff — that is exactly what the stall looked like.
     #[test]
     fn brief_connect_does_not_count_as_healthy() {
-        let mut r = Reconnector::new(urls(1), policy()).unwrap();
+        let mut r = Reconnector::new(urls(1), Policy::default()).unwrap();
         r.on_disconnect(Duration::from_secs(45));
         r.on_disconnect(Duration::from_secs(45));
         assert_eq!(
@@ -223,7 +220,7 @@ mod tests {
     // was and the next real failure carries on from there.
     #[test]
     fn clean_exit_does_not_touch_backoff_or_streak() {
-        let mut r = Reconnector::new(urls(2), policy()).unwrap();
+        let mut r = Reconnector::new(urls(2), Policy::default()).unwrap();
         let short = Duration::from_secs(45);
         r.on_disconnect(short);
         r.on_disconnect(short);
@@ -254,8 +251,8 @@ mod tests {
         );
         assert_eq!(stay.rewind(None), None);
         assert_eq!(switch.rewind(None), None);
-        // Never underflows on a tiny cursor.
-        assert_eq!(switch.rewind(Some(1)), Some(1 - REWIND_US));
-        assert_eq!(switch.rewind(Some(i64::MIN)), Some(i64::MIN));
+        // Floors at 0 on a tiny cursor, never underflows.
+        assert_eq!(switch.rewind(Some(1)), Some(0));
+        assert_eq!(switch.rewind(Some(i64::MIN)), Some(0));
     }
 }

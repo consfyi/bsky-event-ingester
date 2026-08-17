@@ -688,7 +688,7 @@ async fn service_jetstream(
     loop {
         let endpoint = reconnector.endpoint().clone();
         let started = std::time::Instant::now();
-        let next = match service_jetstream_once(
+        let result = service_jetstream_once(
             db_pool,
             did,
             keypair,
@@ -697,14 +697,18 @@ async fn service_jetstream(
             commit_firehose_cursor_every,
             cursor,
         )
-        .await
-        {
+        .await;
+        // Sample before the post-mortem below: a pool acquire in
+        // `read_jetstream_cursor` can wait up to 30s and would let a bad 35s
+        // connection pass as healthy, resetting the failure streak forever.
+        let lived = started.elapsed();
+        let next = match result {
             Ok(next_cursor) => {
                 // Only the server ends this stream, so a clean close is still
                 // a disconnect for backoff/failover purposes — a host that
                 // politely closes every 45s is as unusable as one that resets.
                 cursor = next_cursor;
-                reconnector.on_disconnect(started.elapsed())
+                reconnector.on_disconnect(lived)
             }
             Err(e) => {
                 log::error!("Jetstream disconnected ({endpoint}): {e}");
@@ -717,7 +721,7 @@ async fn service_jetstream(
                     Ok(persisted) => cursor = persisted,
                     Err(e) => log::error!("could not re-read cursor: {e}"),
                 }
-                reconnector.on_disconnect(started.elapsed())
+                reconnector.on_disconnect(lived)
             }
         };
         // Rewind on a host switch only (see Next::rewind); the replay is
