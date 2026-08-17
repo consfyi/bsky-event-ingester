@@ -62,6 +62,11 @@ pub const CONNECT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(
 /// message, so the relay bound below would be 32768 × 64 MiB.
 pub const MAX_MESSAGE_BYTES: usize = 1 << 20;
 
+/// Largest decompressed body the client will read out of a compressed
+/// (Binary) frame; see the decode branch in `connect`. 8× the frame cap is
+/// far beyond any real event's zstd ratio (~3-4×).
+pub const MAX_DECODED_BYTES: u64 = 8 << 20;
+
 /// Messages buffered between the socket reader and the consumer, reserved
 /// before each read so a stalled consumer parks the reader instead of
 /// growing memory without limit (TCP backpressure then fills the server's
@@ -169,8 +174,27 @@ pub async fn connect(
                 )
                 .await;
             }
+            // The socket is done; every exit path records this (idempotent).
+            let record = || {
+                let _ = lifetime.0.set(connected_at.elapsed());
+            };
             loop {
-                let permit = match tx.reserve().await {
+                // A parked reserve is the consumer falling behind, and the
+                // server will soon disconnect us for not reading. Say so once
+                // per episode, so that disconnect is not misread as the host's
+                // fault in the logs.
+                const BEHIND_WARN_AFTER: std::time::Duration = std::time::Duration::from_secs(5);
+                let permit = match tokio::time::timeout(BEHIND_WARN_AFTER, tx.reserve()).await {
+                    Ok(reserved) => reserved,
+                    Err(_) => {
+                        log::warn!(
+                            "jetstream relay: consumer has been behind for >{BEHIND_WARN_AFTER:?}; \
+                             a disconnect now is ours, not the host's"
+                        );
+                        tx.reserve().await
+                    }
+                };
+                let permit = match permit {
                     Ok(p) => p,
                     Err(_) => {
                         close_best_effort(&mut sink).await;
@@ -204,12 +228,12 @@ pub async fn connect(
                             // Surface the failure to the consumer instead of ending
                             // the stream as if the server closed cleanly.
                             Ok(Err(e)) => {
-                                let _ = lifetime.0.set(connected_at.elapsed());
+                                record();
                                 permit.send(Err(e.into()));
                                 break;
                             }
                             Err(_) => {
-                                let _ = lifetime.0.set(connected_at.elapsed());
+                                record();
                                 permit.send(Err(Error::WriteTimeout(PONG_TIMEOUT)));
                                 break;
                             }
@@ -221,7 +245,7 @@ pub async fn connect(
                         // the consumer can see the error, so it never falls back
                         // to its own (drain-inflated) clock.
                         if other.is_err() {
-                            let _ = lifetime.0.set(connected_at.elapsed());
+                            record();
                         }
                         permit.send(other.map_err(Error::from));
                     }
@@ -230,7 +254,7 @@ pub async fn connect(
             // Every exit path lands here: the socket is done, whatever the
             // consumer has yet to drain from the relay. (Idempotent for the
             // paths that already recorded it.)
-            let _ = lifetime.0.set(connected_at.elapsed());
+            record();
         }
     });
 
@@ -239,11 +263,17 @@ pub async fn connect(
         while let Some(message) = rx.recv().await {
             match message? {
                 tokio_tungstenite::tungstenite::Message::Binary(body) => {
-                    // Compressed.
-                    yield serde_json::from_reader(zstd::stream::Decoder::with_prepared_dictionary(
-                        &mut &body[..],
+                    // Compressed. MAX_MESSAGE_BYTES bounds the frame, not its
+                    // expansion: a compression bomb inside a 1 MiB frame would
+                    // otherwise force an unbounded transient allocation. The
+                    // `take` truncates the read instead, which surfaces as a
+                    // serde_json error → reconnect.
+                    let mut body = &body[..];
+                    let decoder = zstd::stream::Decoder::with_prepared_dictionary(
+                        &mut body,
                         &ZSTD_DICTIONARY,
-                    )?)?;
+                    )?;
+                    yield serde_json::from_reader(std::io::Read::take(decoder, MAX_DECODED_BYTES))?;
                 }
                 tokio_tungstenite::tungstenite::Message::Text(body) => {
                     // Uncompressed.
@@ -317,26 +347,13 @@ mod tests {
         drop(client);
     }
 
-    // A stalled consumer must not back-pressure the reader into missing a
-    // Ping while the relay buffer still has room (backlog < RELAY_BUFFER).
-    #[tokio::test]
-    async fn pong_is_sent_after_a_backlog_the_consumer_never_drains() {
-        let (client, mut server) = local_pair().await;
-        for i in 0..2500 {
-            server
-                .send(Message::Text(format!("{{\"n\":{i}}}")))
-                .await
-                .unwrap();
-        }
-        server.send(Message::Ping(vec![])).await.unwrap();
-        expect_pong(&mut server).await;
-        drop(client);
-    }
-
     // Once the buffer is full the reader must stop reading (that is the
     // memory bound), and nothing may be lost or reordered: after the
     // consumer drains, every frame arrives in order and a Ping is answered
     // again. Frames are real events so the consumer side can count them.
+    // A Ping behind a backlog the consumer has not drained but that still
+    // fits the buffer must be answered without a drain: a merely slow
+    // consumer must not park the reader.
     #[tokio::test]
     async fn full_buffer_parks_the_reader_without_losing_frames() {
         let (client, mut server) = local_pair().await;
@@ -345,6 +362,7 @@ mod tests {
         // buffers (up to ~8MB on macOS loopback) and tungstenite's read
         // buffer can absorb, or a reader that never parks would pass.
         let total = 3 * RELAY_BUFFER;
+        let backlog = 2500;
         let pad = "x".repeat(512);
         let event = move |i: usize| {
             format!(
@@ -353,13 +371,18 @@ mod tests {
                  \"pad\":\"{pad}\"}}"
             )
         };
+        for i in 0..backlog {
+            server.send(Message::Text(event(i))).await.unwrap();
+        }
+        server.send(Message::Ping(vec![])).await.unwrap();
+        expect_pong(&mut server).await;
         // The server side sends from its own task so a parked reader stalls
         // it (observable via `sent`) without stalling the test.
         let sent = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
         let sender = tokio::spawn({
             let sent = sent.clone();
             async move {
-                for i in 0..total {
+                for i in backlog..total {
                     server.send(Message::Text(event(i))).await.unwrap();
                     sent.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
                 }
@@ -377,11 +400,11 @@ mod tests {
         let stalled_at = sent.load(std::sync::atomic::Ordering::SeqCst);
         assert_eq!(sample, stalled_at, "reader is still draining frames");
         assert!(
-            stalled_at < total,
+            backlog + stalled_at < total,
             "reader drained {total} frames with a stalled consumer"
         );
         assert!(
-            stalled_at >= RELAY_BUFFER,
+            backlog + stalled_at >= RELAY_BUFFER,
             "reader parked after only {stalled_at} frames (buffer is {RELAY_BUFFER})"
         );
         // Now drain: everything arrives, in order, with nothing lost.
@@ -424,6 +447,54 @@ mod tests {
         assert!(
             matches!(next, Some(Err(Error::Tungstenite(_)))),
             "expected a tungstenite capacity error, got {next:?}"
+        );
+    }
+
+    /// A Binary frame as the server would send it: zstd with the shared
+    /// dictionary.
+    fn compressed(json: &str) -> Message {
+        let body = zstd::bulk::Compressor::with_dictionary(3, include_bytes!("./zstd_dictionary"))
+            .unwrap()
+            .compress(json.as_bytes())
+            .unwrap();
+        Message::Binary(body)
+    }
+
+    fn identity_event(pad: &str) -> String {
+        format!(
+            "{{\"did\":\"did:plc:x\",\"time_us\":7,\"kind\":\"identity\",\
+             \"identity\":{{\"did\":\"did:plc:x\",\"seq\":1,\"time\":\"2026-01-01T00:00:00Z\"}},\
+             \"pad\":\"{pad}\"}}"
+        )
+    }
+
+    // The compressed path decodes a real event (otherwise only the ignored
+    // live test covers it).
+    #[tokio::test]
+    async fn compressed_event_decodes() {
+        let (client, mut server) = local_pair().await;
+        futures::pin_mut!(client);
+        server.send(compressed(&identity_event("x"))).await.unwrap();
+        let e = client.next().await.unwrap().unwrap();
+        assert_eq!(e.time_us, 7);
+    }
+
+    // A frame under MAX_MESSAGE_BYTES that inflates past MAX_DECODED_BYTES
+    // must be an error, not an allocation: the decode is truncated and the
+    // JSON parse fails.
+    #[tokio::test]
+    async fn compression_bomb_is_an_error() {
+        let (client, mut server) = local_pair().await;
+        futures::pin_mut!(client);
+        let bomb = compressed(&identity_event(&"x".repeat(MAX_DECODED_BYTES as usize + 1)));
+        assert!(bomb.len() < MAX_MESSAGE_BYTES, "frame is {}", bomb.len());
+        server.send(bomb).await.unwrap();
+        let next = tokio::time::timeout(std::time::Duration::from_secs(5), client.next())
+            .await
+            .expect("stream did not yield within 5s");
+        assert!(
+            matches!(next, Some(Err(Error::SerdeJson(_)))),
+            "expected a truncated-JSON error, got {next:?}"
         );
     }
 

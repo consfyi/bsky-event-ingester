@@ -137,6 +137,7 @@ pub async fn service(
         log::warn!("no jetstream endpoints configured, won't service con posts");
         return Ok(());
     }
+    use crate::jetstream::reconnect::Outcome;
     let mut reconnector = crate::jetstream::reconnect::Reconnector::new(
         jetstream_endpoints,
         crate::jetstream::reconnect::Policy::default(),
@@ -185,14 +186,15 @@ pub async fn service(
                 match exit {
                     // We ended it (watchlist changed): not a failure, so it
                     // must not count toward the streak or the backoff.
-                    Exit::WatchlistChanged => reconnector.on_clean_exit(lived),
+                    Exit::WatchlistChanged => reconnector.after(Outcome::CleanExit, lived),
                     // The server closed cleanly: still a disconnect for
                     // backoff/failover purposes.
-                    Exit::StreamEnded => reconnector.on_disconnect(lived),
+                    Exit::StreamEnded => reconnector.after(Outcome::HostError, lived),
                 }
             }
             Err(e) => {
                 log::error!("con_posts: Jetstream disconnected ({endpoint}): {e}");
+                let outcome = crate::jetstream::reconnect::classify(&e);
                 // The in-memory cursor is only updated on clean exits, so after
                 // an error it can be hours stale — and a replay here re-fires
                 // the whole LLM pipeline, unlike the labeler's idempotent
@@ -202,7 +204,14 @@ pub async fn service(
                     Ok(persisted) => cursor = persisted,
                     Err(e) => log::error!("con_posts: could not re-read cursor: {e}"),
                 }
-                reconnector.on_disconnect(lived)
+                let next = reconnector.after(outcome, lived);
+                if outcome == Outcome::LocalError {
+                    log::error!(
+                        "con_posts: local error, retrying same host in {:?}",
+                        next.delay
+                    );
+                }
+                next
             }
         };
         // Rewind on a host switch only (see Next::rewind): a replayed post

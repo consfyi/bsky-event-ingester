@@ -715,10 +715,11 @@ async fn service_jetstream(
                 // a disconnect for backoff/failover purposes — a host that
                 // politely closes every 45s is as unusable as one that resets.
                 cursor = next_cursor;
-                reconnector.on_disconnect(lived)
+                reconnector.after(jetstream::reconnect::Outcome::HostError, lived)
             }
             Err(e) => {
                 log::error!("Jetstream disconnected ({endpoint}): {e}");
+                let outcome = jetstream::reconnect::classify(&e);
                 // The in-memory cursor is only updated on clean exits, so after
                 // an error it can be hours stale — reconnecting from it replays
                 // already-committed events and drags jetstream_cursor backward.
@@ -728,7 +729,14 @@ async fn service_jetstream(
                     Ok(persisted) => cursor = persisted,
                     Err(e) => log::error!("could not re-read cursor: {e}"),
                 }
-                reconnector.on_disconnect(lived)
+                let next = reconnector.after(outcome, lived);
+                if outcome == jetstream::reconnect::Outcome::LocalError {
+                    log::error!(
+                        "Jetstream: local error, retrying same host in {:?}",
+                        next.delay
+                    );
+                }
+                next
             }
         };
         // Rewind on a host switch only (see Next::rewind); a replay re-emits
@@ -744,6 +752,12 @@ async fn service_jetstream(
         tokio::time::sleep(next.delay).await;
     }
 }
+
+/// Longest the labeler tolerates between events before treating the host as
+/// dead. 30s: far above any real gap on the like firehose, and under
+/// `reconnect::Policy::healthy_after` (60s) so a host that connects, says
+/// nothing and gets cut here can never be scored healthy.
+const EVENT_DEADLINE: std::time::Duration = std::time::Duration::from_secs(30);
 
 // The `lifetime` out-param tips this over clippy's limit; bundling the
 // arguments into a struct for that alone isn't worth it.
@@ -775,7 +789,17 @@ async fn service_jetstream_once(
 
     let mut last_firehose_commit_time = std::time::SystemTime::now();
 
-    while let Some(event) = js.next().await {
+    // Bounded: the unfiltered like firehose runs hundreds of events/s, so
+    // silence for EVENT_DEADLINE is a dead host, not a lull. The bail is a
+    // HostError to `reconnect::classify`, so it counts toward failover.
+    // (con_posts watches ~80 accounts and legitimately idles; no deadline
+    // there.)
+    while let Some(event) = tokio::time::timeout(EVENT_DEADLINE, js.next())
+        .await
+        .map_err(|_| {
+            anyhow::anyhow!("no events for {EVENT_DEADLINE:?} on an unfiltered like subscription")
+        })?
+    {
         let event = event?;
 
         let jetstream::event::EventKind::Commit { commit } = event.kind else {
@@ -1122,6 +1146,12 @@ mod tests {
 
     fn u(s: &str) -> url::Url {
         url::Url::parse(s).unwrap()
+    }
+
+    // A silent host cut by the deadline must never be scored healthy.
+    #[test]
+    fn event_deadline_is_under_healthy_after() {
+        assert!(EVENT_DEADLINE < jetstream::reconnect::Policy::default().healthy_after);
     }
 
     #[test]
