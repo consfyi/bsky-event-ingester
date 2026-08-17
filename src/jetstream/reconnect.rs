@@ -98,6 +98,10 @@ impl Default for Policy {
             // ~100s, which a 60s bar scored as healthy every time, so the
             // failure streak never grew and we never left. Real connections
             // live for hours; anything under a few minutes is a bad host.
+            // Tradeoff: a slow-but-not-erroring Postgres parks the relay,
+            // the server sheds us, and that close is a HostError — a longer
+            // bar means ~20 min of that walks the list. Acceptable: every
+            // host serves the same cursor space and the DB is the fix.
             healthy_after: std::time::Duration::from_secs(300),
             failover_after: 3,
             jitter: 0.1,

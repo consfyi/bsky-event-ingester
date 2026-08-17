@@ -401,10 +401,11 @@ mod tests {
         });
         // With nobody polling, the sender must stall short of `total`
         // (buffer + the one frame the reader holds + socket buffers) and
-        // then stop moving entirely — two samples 3s apart must match, or
-        // the reader is merely slow, not parked (the 6s park also drives the
-        // >5s backpressure warn + re-reserve path). It must also have got
-        // at least RELAY_BUFFER frames in, or the buffer has shrunk.
+        // then all but stop — two samples 3s apart may differ only by a
+        // small trickle (see below), or the reader is merely slow, not
+        // parked (the 6s park also drives the >5s backpressure warn +
+        // re-reserve path). It must also have got at least RELAY_BUFFER
+        // frames in, or the buffer has shrunk.
         tokio::time::sleep(std::time::Duration::from_secs(3)).await;
         let sample = sent.load(std::sync::atomic::Ordering::SeqCst);
         tokio::time::sleep(std::time::Duration::from_secs(3)).await;
