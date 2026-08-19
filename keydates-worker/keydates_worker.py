@@ -549,6 +549,10 @@ def venue_timezone(events, tzmap):
             log(f"  unknown timezone {tz!r} for {e['id']}; falling back to UTC")
             continue
         return tz
+    if tzmap and events:
+        # feed loaded but carries no zone for this con (an empty tzmap already
+        # logged the outage once — don't repeat it per con)
+        log(f"  no timezone in the events feed for {events[0]['id']}; reading posts in UTC")
     return "UTC"
 
 
@@ -563,13 +567,16 @@ def localize_timestamp(asof, tz):
     import zoneinfo
     m = _TS_RE.match(asof or "")
     if not m:
+        if asof:
+            log(f"  unparsable post timestamp {asof!r}; leaving it in UTC")
         return asof, (asof or "")[:10]
     base, frac, off = m.groups()
     off = "+00:00" if off in (None, "Z") else (off if ":" in off else off[:3] + ":" + off[3:])
     try:
         dt = datetime.datetime.fromisoformat(base + off)
         local = dt.astimezone(zoneinfo.ZoneInfo(tz))
-    except Exception:
+    except Exception as e:
+        log(f"  could not localize {asof!r} to {tz!r} ({e}); leaving it in UTC")
         return asof, asof[:10]
     return local.isoformat(timespec="seconds"), local.date().isoformat()
 

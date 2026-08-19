@@ -2012,10 +2012,13 @@ class VenueLocalDateTest(unittest.TestCase):
     def test_utc_and_unknown_zone_keep_the_utc_date(self):
         self.assertEqual(kw.localize_timestamp("2026-08-03T01:33:00.000Z", "UTC")[1], "2026-08-03")
         # unknown zone / unparsable stamp degrade to the pre-CON-50 behaviour, never raise
-        self.assertEqual(kw.localize_timestamp("2026-08-03T01:33:00.000Z", "Mars/Olympus"),
-                         ("2026-08-03T01:33:00.000Z", "2026-08-03"))
-        self.assertEqual(kw.localize_timestamp("garbage", "America/New_York"), ("garbage", "garbage"))
-        self.assertEqual(kw.localize_timestamp(None, "America/New_York"), (None, ""))
+        with unittest.mock.patch.object(kw, "log") as lg:
+            self.assertEqual(kw.localize_timestamp("2026-08-03T01:33:00.000Z", "Mars/Olympus"),
+                             ("2026-08-03T01:33:00.000Z", "2026-08-03"))
+            self.assertEqual(kw.localize_timestamp("garbage", "America/New_York"), ("garbage", "garbage"))
+            self.assertEqual(kw.localize_timestamp(None, "America/New_York"), (None, ""))
+        # both fallback paths log; the empty asOf stays silent
+        self.assertEqual(lg.call_count, 2)
 
     def test_createdat_variants_parse(self):
         # createdAt in the wild: 9-digit fractions, +00:00 offsets, no fraction
@@ -2030,6 +2033,10 @@ class VenueLocalDateTest(unittest.TestCase):
         self.assertEqual(kw.venue_timezone(events, {"x-2027": "Europe/Berlin"}), "Europe/Berlin")
         self.assertEqual(kw.venue_timezone(events, {}), "UTC")
         # an unresolvable feed zone is never handed to the model as "local"
+        # feed loaded but no zone for this con: logged once; empty map stays silent
+        with unittest.mock.patch.object(kw, "log") as lg:
+            self.assertEqual(kw.venue_timezone(events, {"other-2026": "Europe/Berlin"}), "UTC")
+        lg.assert_called_once()
         with unittest.mock.patch.object(kw, "log") as lg:
             self.assertEqual(kw.venue_timezone(events, {"x-2026": "Mars/Olympus"}), "UTC")
             self.assertEqual(kw.venue_timezone(events, {"x-2026": "Mars/Olympus",
