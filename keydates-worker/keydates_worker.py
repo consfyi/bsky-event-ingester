@@ -512,6 +512,7 @@ def load_event_timezones():
     req = urllib.request.Request(EVENTS_URL, headers={"User-Agent": APPVIEW_USER_AGENT})
     out = {}
     for _ in range(3):
+        attempt = {}  # only a fully parsed response counts; a torn one is retried
         try:
             with urllib.request.urlopen(req, timeout=20) as r:
                 body = r.read().decode("utf-8")
@@ -520,7 +521,8 @@ def load_event_timezones():
                     continue
                 ev = json.loads(line)
                 if ev.get("id") and ev.get("timezone"):
-                    out[ev["id"]] = ev["timezone"]
+                    attempt[ev["id"]] = ev["timezone"]
+            out = attempt
             break
         except Exception as e:
             err = e
@@ -535,10 +537,18 @@ def load_event_timezones():
 def venue_timezone(events, tzmap):
     """Timezone for a con's posts: the zone of its soonest upcoming edition that
     has one (editions of one con virtually never straddle zones). UTC when none."""
+    import zoneinfo
     for e in sorted(events, key=lambda e: e.get("startDate", "")):
         tz = tzmap.get(e["id"])
-        if tz:
-            return tz
+        if not tz:
+            continue
+        try:
+            zoneinfo.ZoneInfo(tz)
+        except Exception:
+            # never tell the model a UTC stamp is "local" in a zone we can't resolve
+            log(f"  unknown timezone {tz!r} for {e['id']}; falling back to UTC")
+            continue
+        return tz
     return "UTC"
 
 

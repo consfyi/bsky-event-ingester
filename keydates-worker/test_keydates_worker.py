@@ -2029,6 +2029,12 @@ class VenueLocalDateTest(unittest.TestCase):
                                                     "x-2027": "Europe/Berlin"}), "America/New_York")
         self.assertEqual(kw.venue_timezone(events, {"x-2027": "Europe/Berlin"}), "Europe/Berlin")
         self.assertEqual(kw.venue_timezone(events, {}), "UTC")
+        # an unresolvable feed zone is never handed to the model as "local"
+        with unittest.mock.patch.object(kw, "log") as lg:
+            self.assertEqual(kw.venue_timezone(events, {"x-2026": "Mars/Olympus"}), "UTC")
+            self.assertEqual(kw.venue_timezone(events, {"x-2026": "Mars/Olympus",
+                                                        "x-2027": "Europe/Berlin"}), "Europe/Berlin")
+        self.assertIn("Mars/Olympus", lg.call_args[0][0])
 
     def test_load_event_timezones_parses_feed_and_degrades_to_utc(self):
         body = (json.dumps({"id": "a-2026", "timezone": "America/New_York"}) + "\n"
@@ -2046,6 +2052,14 @@ class VenueLocalDateTest(unittest.TestCase):
             self.assertEqual(kw.load_event_timezones(), {"a-2026": "America/New_York"})
             # cached for the rest of the run
             self.assertIs(kw.load_event_timezones(), kw.load_event_timezones())
+        # a torn response (valid line, then junk) must not leave a partial map behind
+        torn = (json.dumps({"id": "a-2026", "timezone": "America/New_York"}) + "\n{not json\n").encode()
+        with unittest.mock.patch.object(kw, "_event_tz_cache", None), \
+             unittest.mock.patch.object(kw.urllib.request, "urlopen",
+                                        side_effect=[Resp(torn), Resp(torn), Resp(torn)]), \
+             unittest.mock.patch.object(kw.time, "sleep"), \
+             unittest.mock.patch.object(kw, "log"):
+            self.assertEqual(kw.load_event_timezones(), {})
         with unittest.mock.patch.object(kw, "_event_tz_cache", None), \
              unittest.mock.patch.object(kw.urllib.request, "urlopen", side_effect=OSError("down")), \
              unittest.mock.patch.object(kw.time, "sleep"), \
@@ -2086,3 +2100,16 @@ class VenueLocalDateTest(unittest.TestCase):
         # the stored asOf stays the raw UTC createdAt (schema unchanged)
         self.assertEqual(changes[0]["asOf"], "2026-08-03T01:33:00.000Z")
         self.assertEqual(changes[0]["date"], "2026-08-02")
+
+        # unknown feed zone: both payloads say UTC and the stamp is left as-is
+        sent.clear()
+        with unittest.mock.patch.object(kw, "chat", side_effect=fake_chat), \
+             unittest.mock.patch.object(kw, "DRY_RUN", True), \
+             unittest.mock.patch.object(kw, "log"), \
+             unittest.mock.patch.object(kw, "load_event_timezones",
+                                        return_value={"testcon-2999": "Mars/Olympus"}):
+            kw.process_con(fn, {}, [], provided_posts=[post])
+        self.assertEqual(sent["keydates"]["timezone"], "UTC")
+        self.assertEqual(sent["keydates"]["posts"][0]["asOf"], "2026-08-03T01:33:00+00:00")
+        self.assertEqual(sent["verdicts"]["items"][0]["post_timezone"], "UTC")
+        self.assertEqual(sent["verdicts"]["items"][0]["post_timestamp"], "2026-08-03T01:33:00+00:00")
