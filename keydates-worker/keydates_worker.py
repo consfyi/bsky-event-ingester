@@ -552,7 +552,7 @@ def venue_timezone(events, tzmap):
     if tzmap and events:
         # feed loaded but carries no zone for this con (an empty tzmap already
         # logged the outage once — don't repeat it per con)
-        log(f"  no timezone in the events feed for {events[0]['id']}; reading posts in UTC")
+        log(f"  no usable timezone in the events feed for {events[0]['id']}; reading posts in UTC")
     return "UTC"
 
 
