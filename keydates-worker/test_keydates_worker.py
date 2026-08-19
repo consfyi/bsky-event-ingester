@@ -659,13 +659,14 @@ class ProcessConPinningTest(unittest.TestCase):
         did_twin = {**post, "url": did_entry("3abc")["source"]}
         seen = {}
 
-        def fake_extract(con_, events, posts):
+        def fake_extract(con_, events, posts, tz="UTC"):
             seen["posts"] = posts
             return [{"event_id": "testcon-2999", "category": "registration",
                      "kind": "opens", "date": "2999-06-01",
                      "source": posts[0]["url"], "confidence": 0.95}]
 
         with unittest.mock.patch.object(kw, "extract_for_con", side_effect=fake_extract), \
+             unittest.mock.patch.object(kw, "load_event_timezones", return_value={}), \
              unittest.mock.patch.object(kw, "verify_proposals",
                                         side_effect=lambda proposals, cache: (proposals, [], [])):
             changes, refuted, held, rejected, did_extract = kw.process_con(
@@ -1991,3 +1992,131 @@ class CatalogCheckAlertTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class VenueLocalDateTest(unittest.TestCase):
+    """CON-50: the model must see post timestamps in the venue's local time, or
+    "today" posted at 9 PM ET resolves to tomorrow's UTC date (data#88)."""
+
+    def test_data88_post_localizes_to_previous_day(self):
+        # the exact post behind data#88: 01:33Z Aug 3 is 21:33 EDT Aug 2 in Hickory, NC
+        local, day = kw.localize_timestamp("2026-08-03T01:33:00.000Z", "America/New_York")
+        self.assertEqual(day, "2026-08-02")
+        self.assertEqual(local, "2026-08-02T21:33:00-04:00")
+
+    def test_east_of_utc_morning_post_rolls_forward(self):
+        local, day = kw.localize_timestamp("2026-08-02T22:30:00Z", "Asia/Tokyo")
+        self.assertEqual(day, "2026-08-03")
+        self.assertTrue(local.endswith("+09:00"))
+
+    def test_utc_and_unknown_zone_keep_the_utc_date(self):
+        self.assertEqual(kw.localize_timestamp("2026-08-03T01:33:00.000Z", "UTC")[1], "2026-08-03")
+        # unknown zone / unparsable stamp degrade to the pre-CON-50 behaviour, never raise
+        with unittest.mock.patch.object(kw, "log") as lg:
+            self.assertEqual(kw.localize_timestamp("2026-08-03T01:33:00.000Z", "Mars/Olympus"),
+                             ("2026-08-03T01:33:00.000Z", "2026-08-03"))
+            self.assertEqual(kw.localize_timestamp("garbage", "America/New_York"), ("garbage", "garbage"))
+            self.assertEqual(kw.localize_timestamp(None, "America/New_York"), (None, ""))
+        # both fallback paths log; the empty asOf stays silent
+        self.assertEqual(lg.call_count, 2)
+
+    def test_createdat_variants_parse(self):
+        # createdAt in the wild: 9-digit fractions, +00:00 offsets, no fraction
+        for raw in ("2026-07-10T04:00:15.389618096Z", "2026-07-10T04:00:15+00:00",
+                    "2026-07-10T04:00:15Z", "2026-07-10T04:00:15.5+0000"):
+            self.assertEqual(kw.localize_timestamp(raw, "America/Edmonton")[1], "2026-07-09", raw)
+
+    def test_venue_timezone_prefers_soonest_edition_then_utc(self):
+        events = [{"id": "x-2027", "startDate": "2027-01-01"}, {"id": "x-2026", "startDate": "2026-10-01"}]
+        self.assertEqual(kw.venue_timezone(events, {"x-2026": "America/New_York",
+                                                    "x-2027": "Europe/Berlin"}), "America/New_York")
+        self.assertEqual(kw.venue_timezone(events, {"x-2027": "Europe/Berlin"}), "Europe/Berlin")
+        self.assertEqual(kw.venue_timezone(events, {}), "UTC")
+        # an unresolvable feed zone is never handed to the model as "local"
+        # feed loaded but no zone for this con: logged once; empty map stays silent
+        with unittest.mock.patch.object(kw, "log") as lg:
+            self.assertEqual(kw.venue_timezone(events, {"other-2026": "Europe/Berlin"}), "UTC")
+        lg.assert_called_once()
+        with unittest.mock.patch.object(kw, "log") as lg:
+            self.assertEqual(kw.venue_timezone(events, {"x-2026": "Mars/Olympus"}), "UTC")
+            self.assertEqual(kw.venue_timezone(events, {"x-2026": "Mars/Olympus",
+                                                        "x-2027": "Europe/Berlin"}), "Europe/Berlin")
+        self.assertIn("Mars/Olympus", lg.call_args[0][0])
+
+    def test_load_event_timezones_parses_feed_and_degrades_to_utc(self):
+        body = (json.dumps({"id": "a-2026", "timezone": "America/New_York"}) + "\n"
+                + json.dumps({"id": "b-2026"}) + "\n\n").encode()
+
+        class Resp(io.BytesIO):
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                return False
+
+        with unittest.mock.patch.object(kw, "_event_tz_cache", None), \
+             unittest.mock.patch.object(kw.urllib.request, "urlopen", return_value=Resp(body)):
+            self.assertEqual(kw.load_event_timezones(), {"a-2026": "America/New_York"})
+            # cached for the rest of the run
+            self.assertIs(kw.load_event_timezones(), kw.load_event_timezones())
+        # a torn response (valid line, then junk) must not leave a partial map behind
+        torn = (json.dumps({"id": "a-2026", "timezone": "America/New_York"}) + "\n{not json\n").encode()
+        with unittest.mock.patch.object(kw, "_event_tz_cache", None), \
+             unittest.mock.patch.object(kw.urllib.request, "urlopen",
+                                        side_effect=[Resp(torn), Resp(torn), Resp(torn)]), \
+             unittest.mock.patch.object(kw.time, "sleep"), \
+             unittest.mock.patch.object(kw, "log"):
+            self.assertEqual(kw.load_event_timezones(), {})
+        with unittest.mock.patch.object(kw, "_event_tz_cache", None), \
+             unittest.mock.patch.object(kw.urllib.request, "urlopen", side_effect=OSError("down")), \
+             unittest.mock.patch.object(kw.time, "sleep"), \
+             unittest.mock.patch.object(kw, "log") as lg:
+            self.assertEqual(kw.load_event_timezones(), {})
+        self.assertIn("UTC", lg.call_args[0][0])
+
+    def test_extract_and_verify_payloads_carry_local_time(self):
+        con = make_con({})
+        events = kw.upcoming_events(con)
+        post = {"url": did_entry("3abc")["source"], "asOf": "2026-08-03T01:33:00.000Z",
+                "text": "Today is the final day to apply to host a panel"}
+        sent = {}
+
+        def fake_chat(model, system, user, schema, name):
+            sent[name] = json.loads(user)
+            if name == "keydates":
+                return {"dates": [{"event_id": "testcon-2999", "category": "panels",
+                                   "kind": "closes", "date": "2026-08-02",
+                                   "source": post["url"], "confidence": 0.95}]}
+            return {"verdicts": [{"index": 0, "verdict": "confirm", "reason": "ok"}]}
+
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        fn = os.path.join(tmp.name, "testcon.json")
+        with open(fn, "w") as f:
+            json.dump(con, f)
+        with unittest.mock.patch.object(kw, "chat", side_effect=fake_chat), \
+             unittest.mock.patch.object(kw, "DRY_RUN", True), \
+             unittest.mock.patch.object(kw, "load_event_timezones",
+                                        return_value={"testcon-2999": "America/New_York"}):
+            changes, *_ = kw.process_con(fn, {}, [], provided_posts=[post])
+        self.assertEqual(sent["keydates"]["timezone"], "America/New_York")
+        self.assertEqual(sent["keydates"]["posts"][0]["asOf"], "2026-08-02T21:33:00-04:00")
+        item = sent["verdicts"]["items"][0]
+        self.assertEqual(item["post_timestamp"], "2026-08-02T21:33:00-04:00")
+        self.assertEqual(item["post_timezone"], "America/New_York")
+        # the stored asOf stays the raw UTC createdAt (schema unchanged)
+        self.assertEqual(changes[0]["asOf"], "2026-08-03T01:33:00.000Z")
+        self.assertEqual(changes[0]["date"], "2026-08-02")
+
+        # unknown feed zone: both payloads say UTC and the stamp is left as-is
+        sent.clear()
+        with unittest.mock.patch.object(kw, "chat", side_effect=fake_chat), \
+             unittest.mock.patch.object(kw, "DRY_RUN", True), \
+             unittest.mock.patch.object(kw, "log"), \
+             unittest.mock.patch.object(kw, "load_event_timezones",
+                                        return_value={"testcon-2999": "Mars/Olympus"}):
+            kw.process_con(fn, {}, [], provided_posts=[post])
+        self.assertEqual(sent["keydates"]["timezone"], "UTC")
+        self.assertEqual(sent["keydates"]["posts"][0]["asOf"], "2026-08-03T01:33:00+00:00")
+        self.assertEqual(sent["verdicts"]["items"][0]["post_timezone"], "UTC")
+        self.assertEqual(sent["verdicts"]["items"][0]["post_timestamp"], "2026-08-03T01:33:00+00:00")

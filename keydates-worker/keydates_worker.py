@@ -36,6 +36,9 @@ Env:
   MODEL_BASE_URL    OpenAI-compatible API base (default https://api.groq.com/openai/v1);
                     chat = <base>/chat/completions, catalog = <base>/models
   DATA_DIR          path to consfyi/data checkout (default: cwd)
+  EVENTS_URL        materialized events feed carrying each edition's IANA timezone
+                    (default https://data.cons.fyi/current.jsonl, same as the ingester);
+                    unreachable = every post is read in UTC (logged)
   DRY_RUN=1         full pipeline, no file writes / git ops
   PUSH=1            allow git commit+push+PR (default OFF: writes files only)
   EXTRACT_MODEL     default openai/gpt-oss-20b
@@ -108,6 +111,10 @@ POSTS_PER_CON = 50
 APPVIEW = "https://public.api.bsky.app/xrpc"
 # contact path so Bluesky can reach us about our appview traffic
 APPVIEW_USER_AGENT = "consfyi/bsky-event-ingester (+https://cons.fyi)"
+# Raw data/*.json events carry latLng but no timezone; data/tools/materialize.py
+# derives one (tzfpy) into this feed, which the ingester already consumes. The
+# worker reuses it rather than bundling a polygon lookup on a stdlib-only box.
+EVENTS_URL = os.environ.get("EVENTS_URL", "https://data.cons.fyi/current.jsonl")
 TODAY = datetime.datetime.now(datetime.timezone.utc).date()
 CATEGORIES = ["registration", "hotel", "dealers", "panels", "performances", "djs", "volunteers"]
 VERIFY_BATCH = 8
@@ -217,8 +224,9 @@ Rules:
 - kind is "opens" or "closes" (a submission "deadline" is closes).
 - date MUST be the bare calendar date, yyyy-MM-dd. If the post states a time of day,
   drop the time and keep the date.
-- Resolve relative dates against that post's own timestamp. "today"/"tonight" means the
-  post's own date. A weekday reference ("this Sunday", "next Friday") means the next such
+- Resolve relative dates against that post's own timestamp. Post timestamps (asOf) are
+  already converted to the venue's local time, named by the payload's "timezone" field;
+  "today"/"tonight" means the post's own LOCAL calendar date as given, never the UTC date. A weekday reference ("this Sunday", "next Friday") means the next such
   weekday ON OR AFTER the post's date. Anything announced as upcoming ("in a few days",
   "next week") lies in the future. A same-day signal ("now open", "starts today",
   attendee-tickets "sold out") means the event happens on the post's own date, and
@@ -261,8 +269,10 @@ the deadline applies only to already-accepted applicants; the "close" or "open" 
 temporary pause or a resumption of something already open; the post is a reminder that
 something is still open (or a follow-up for people already accepted) rather than the
 announcement of the opening; the claimed date contradicts the post text once the open/close
-event's own relative references are resolved against post_timestamp (a weekday reference
-like "this Sunday" for that event means the next such weekday on or after post_timestamp)
+event's own relative references are resolved against post_timestamp, which is given in the
+venue's local time (post_timezone) — "today" is post_timestamp's local calendar date (a
+weekday reference like "this Sunday" for that event means the next such weekday on or
+after post_timestamp)
 — refute only when the weekday names the open/close itself, not when it names something
 else ("Registration is NOW OPEN — see you this Sunday!" opens on the post's date; the
 Sunday is the con, not the open). When uncertain, refute — a dropped true date returns
@@ -486,6 +496,89 @@ def appget(method, params):
     # so the end-of-run verdict can page on an appview outage (S1).
     _run_health["appview_failures"] += 1
     return {}
+
+
+_event_tz_cache = None
+
+
+def load_event_timezones():
+    """event id -> IANA timezone from EVENTS_URL, fetched once per run. Any
+    failure degrades to {} (every post read in UTC) with a log line, never a
+    held run: a missing zone costs at worst one day of skew on evening posts,
+    which is exactly what the worker did before CON-50."""
+    global _event_tz_cache
+    if _event_tz_cache is not None:
+        return _event_tz_cache
+    req = urllib.request.Request(EVENTS_URL, headers={"User-Agent": APPVIEW_USER_AGENT})
+    out = {}
+    for _ in range(3):
+        attempt = {}  # only a fully parsed response counts; a torn one is retried
+        try:
+            with urllib.request.urlopen(req, timeout=20) as r:
+                body = r.read().decode("utf-8")
+            for line in body.splitlines():
+                if not line.strip():
+                    continue
+                ev = json.loads(line)
+                if ev.get("id") and ev.get("timezone"):
+                    attempt[ev["id"]] = ev["timezone"]
+            out = attempt
+            break
+        except Exception as e:
+            err = e
+            time.sleep(1.0)
+    else:
+        log(f"WARNING: could not load event timezones from {EVENTS_URL} ({err}); "
+            "reading post timestamps in UTC this run")
+    _event_tz_cache = out
+    return out
+
+
+def venue_timezone(events, tzmap):
+    """Timezone for a con's posts: the zone of its soonest upcoming edition that
+    has one (editions of one con virtually never straddle zones). UTC when none."""
+    import zoneinfo
+    for e in sorted(events, key=lambda e: e.get("startDate", "")):
+        tz = tzmap.get(e["id"])
+        if not tz:
+            continue
+        try:
+            zoneinfo.ZoneInfo(tz)
+        except Exception:
+            # never tell the model a UTC stamp is "local" in a zone we can't resolve
+            log(f"  unknown timezone {tz!r} for {e['id']}; falling back to UTC")
+            continue
+        return tz
+    if tzmap and events:
+        # feed loaded but carries no zone for this con (an empty tzmap already
+        # logged the outage once — don't repeat it per con)
+        log(f"  no usable timezone in the events feed for {events[0]['id']}; reading posts in UTC")
+    return "UTC"
+
+
+_TS_RE = re.compile(r"^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(?:\.(\d+))?(Z|[+-]\d{2}:?\d{2})?$")
+
+
+def localize_timestamp(asof, tz):
+    """UTC-ish createdAt -> (ISO local time with offset, local yyyy-MM-dd) in tz.
+    Bluesky createdAt varies: 'Z', '+00:00', 3/6/9 fractional digits; anything
+    unparsable (or an unknown zone) falls back to the raw value and its first 10
+    chars, the pre-CON-50 behaviour."""
+    import zoneinfo
+    m = _TS_RE.match(asof or "")
+    if not m:
+        if asof:
+            log(f"  unparsable post timestamp {asof!r}; leaving it in UTC")
+        return asof, (asof or "")[:10]
+    base, frac, off = m.groups()
+    off = "+00:00" if off in (None, "Z") else (off if ":" in off else off[:3] + ":" + off[3:])
+    try:
+        dt = datetime.datetime.fromisoformat(base + off)
+        local = dt.astimezone(zoneinfo.ZoneInfo(tz))
+    except Exception as e:
+        log(f"  could not localize {asof!r} to {tz!r} ({e}); leaving it in UTC")
+        return asof, asof[:10]
+    return local.isoformat(timespec="seconds"), local.date().isoformat()
 
 
 def fetch_posts(actor):
@@ -1104,12 +1197,15 @@ def realtime_page_on_cooldown(now):
     return False
 
 
-def extract_for_con(con, events, posts):
+def extract_for_con(con, events, posts, tz="UTC"):
     # budget the WHOLE request against MODEL_MAX_REQUEST_TOKENS (which already
     # reserves the output allowance), not just the payload, so prompt+output fits
     # one request under Groq's per-minute token cap. Trim oldest posts first (feed
     # is newest-first; recency-wins makes old posts expendable); keep >=1 post.
-    payload = {"convention": con["name"], "editions": events, "posts": posts}
+    # Post timestamps go to the model in the venue's local time (CON-50): a US
+    # con posting "today" at 9 PM ET is already tomorrow in UTC.
+    local_posts = [{**p, "asOf": localize_timestamp(p.get("asOf"), tz)[0]} for p in posts]
+    payload = {"convention": con["name"], "timezone": tz, "editions": events, "posts": local_posts}
     while (len(payload["posts"]) > 1
            and estimate_tokens(EXTRACT_SYSTEM, json.dumps(payload, ensure_ascii=False))
                > MODEL_MAX_REQUEST_TOKENS):
@@ -1140,7 +1236,8 @@ def verify_proposals(proposals, cache):
             "sibling_upcoming_editions": p["_siblings"],
             "claim": {k2: p[k2] for k2 in ("category", "kind", "date", "confidence")},
             "post_text": p["_post_text"],
-            "post_timestamp": p["asOf"],
+            "post_timestamp": localize_timestamp(p["asOf"], p.get("_tz", "UTC"))[0],
+            "post_timezone": p.get("_tz", "UTC"),
         }
 
     # pack proposals into batches bounded by BOTH the item cap and the per-request
@@ -1263,7 +1360,8 @@ def process_con(fn, cache, rejections, provided_posts=None, extra_post=None):
     if not posts:
         return [], [], [], [], False
 
-    dates = extract_for_con(con, events, posts)
+    tz = venue_timezone(events, load_event_timezones())
+    dates = extract_for_con(con, events, posts, tz)
     url2post = {p["url"]: p for p in posts}
     by_id = {e["id"]: e for e in con.get("events", [])}
     ev_meta = {e["id"]: (e["startDate"], e["endDate"]) for e in events}
@@ -1297,6 +1395,7 @@ def process_con(fn, cache, rejections, provided_posts=None, extra_post=None):
             rejected_skips.append({**d, "_reason": rej.get("reason", "")})
             continue
         d["_con_name"] = con["name"]
+        d["_tz"] = tz
         d["_post_text"] = (post or {}).get("text", "")
         d["_ev_dates"] = ev_meta.get(d["event_id"], ("?", "?"))
         d["_siblings"] = [
