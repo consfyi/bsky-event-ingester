@@ -1141,9 +1141,12 @@ class AfterEndGuardTest(unittest.TestCase):
 
     def test_null_date_ledger_entry_does_not_crash(self):
         # a ledger entry can carry date: None (save_outstanding uses .get);
-        # the guard comparison must tolerate it, not raise TypeError
+        # merge() must skip it entirely — no crash, no change, and never a
+        # date: null written into the con file
         con = make_con({})
-        kw.merge(con, [proposal(None, "3bbb")])
+        changes = kw.merge(con, [proposal(None, "3bbb")])
+        self.assertEqual(changes, [])
+        self.assertNotIn("keyDates", con["events"][0])
 
     def test_process_con_refutes_after_end_before_verify(self):
         # the pre-verify layer: an after-endDate proposal is refuted
@@ -1179,6 +1182,49 @@ class AfterEndGuardTest(unittest.TestCase):
         self.assertIn("### Refuted by verification (not applied)", body)
         self.assertIn("2999-09-01", body)
 
+    def test_process_con_end_date_boundary_not_refuted(self):
+        # boundary sibling: a date exactly ON the edition's endDate is
+        # legitimate (a close on the con's last day) — it must reach verify,
+        # not be refuted mechanically
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        con = make_con({})
+        fn = os.path.join(tmp.name, "testcon.json")
+        with open(fn, "w") as f:
+            json.dump(con, f)
+        post = {"url": did_entry("3abc")["source"], "asOf": "2999-05-01T00:00:00.000Z",
+                "text": "DJ applications close June 1"}
+
+        def fake_extract(con_, events, posts, tz="UTC"):
+            return [{"event_id": "testcon-2999", "category": "djs",
+                     "kind": "closes", "date": FUTURE,
+                     "source": posts[0]["url"], "confidence": 0.95}]
+
+        with unittest.mock.patch.object(kw, "extract_for_con", side_effect=fake_extract), \
+             unittest.mock.patch.object(kw, "load_event_timezones", return_value={}), \
+             unittest.mock.patch.object(kw, "verify_proposals",
+                                        return_value=([], [], [])) as vp:
+            changes, refuted, held, rejected, did_extract = kw.process_con(
+                fn, {}, [], provided_posts=[post])
+        vp.assert_called_once()
+        self.assertEqual(refuted, [])
+
+
+class PromptRuleTest(unittest.TestCase):
+    """CON-55: the bare month-day rule lives in the prompts; a prompt refactor
+    that drops it must fail a test. Pin its distinguishing phrases."""
+
+    def test_extract_prompt_carries_bare_month_day_rule(self):
+        self.assertIn("next occurrence on or after the post's date", kw.EXTRACT_SYSTEM)
+        self.assertIn("most recent occurrence ON OR BEFORE", kw.EXTRACT_SYSTEM)
+        # the elapsed-date lower bound: dates before the previous edition's
+        # end describe the past edition, not the upcoming one
+        self.assertIn("before the previous edition ended", kw.EXTRACT_SYSTEM)
+
+    def test_verify_prompt_carries_elapsed_lower_bound(self):
+        self.assertIn("before the previous edition ended", kw.VERIFY_SYSTEM)
+        self.assertIn("belongs to an earlier edition", kw.VERIFY_SYSTEM)
+
 
 class FixtureSmokeTest(unittest.TestCase):
     """Every prompt fixture must stay loadable with the shape the future
@@ -1192,8 +1238,11 @@ class FixtureSmokeTest(unittest.TestCase):
         for name in names:
             with open(os.path.join(self.FIXTURES_DIR, name)) as f:
                 fx = json.load(f)
-            for key in ("con", "posts", "expect", "expect_absent"):
+            for key in ("con", "posts", "expect"):
                 self.assertIn(key, fx, f"{name}: missing {key}")
+            if "expect_absent" in fx:  # optional; validate shape when present
+                self.assertIsInstance(fx["expect_absent"], list,
+                                      f"{name}: expect_absent must be a list")
             self.assertTrue(fx["posts"], f"{name}: no posts")
             for p in fx["posts"]:
                 for key in ("url", "createdAt", "text"):

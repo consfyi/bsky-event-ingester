@@ -185,13 +185,20 @@ check("run13: dot _file dropped without crashing", not crashed and carried == []
 
 # Run 14: an outstanding entry dated after its edition's endDate (wrong-year
 # anchoring, CON-55) hits merge()'s after-end backstop on re-apply: not carried,
-# not written to the con file, and pruned from the ledger.
+# not written to the con file, and pruned from the ledger — but the drop is
+# surfaced via the collector so the PR's Refuted section shows it.
 write_main_state()
 save_ledger(change("con-a-2026", "con-a.json", "2026-09-15", "2026-07-01T00:00:00Z"))
-carried = kw.reapply_outstanding([], [])
+dropped = []
+carried = kw.reapply_outstanding([], [], dropped=dropped)
 check("run14: after-endDate entry not carried", carried == [])
 check("run14: after-endDate entry not written to file", "keyDates" not in read("con-a.json")["events"][0])
 check("run14: after-endDate entry pruned from ledger", kw.load_outstanding() == {})
+check("run14: drop surfaced with a mechanical refute verdict",
+      len(dropped) == 1 and dropped[0]["_verdicts"][0]["model"] == "mechanical"
+      and dropped[0]["_verdicts"][0]["verdict"] == "refute")
+check("run14: dropped entry renders in the Refuted section",
+      "2026-09-15" in kw.render_summary([], dropped, [], [], ""))
 
 print()
 sys.exit(1 if fails else 0)

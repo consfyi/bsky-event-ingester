@@ -236,9 +236,12 @@ Rules:
 - A bare month-day with no year ("September 1st") announced as upcoming resolves to its
   next occurrence on or after the post's date — even in a sentence about a later edition
   ("proposals for our 2027 con open September 1st" posted 2026-08-24 means 2026-09-01,
-  not 2027-09-01). One stated as already elapsed ("has been open since March 3rd",
-  "opened on March 3rd", "closed on March 3rd") resolves to its most recent occurrence
-  ON OR BEFORE the post's date. Never borrow the year from the edition under discussion;
+  not 2027-09-01). One stated as already elapsed ("applications opened on March 3rd
+  and closed on April 1st") resolves to its most recent occurrence ON OR BEFORE the
+  post's date — but an elapsed date only sets a slot for the edition it actually
+  belongs to: when that occurrence falls before the previous edition ended, the post
+  is recounting the past edition's timeline, so do not extract it for an upcoming
+  edition. Never borrow the year from the edition under discussion;
   only a year stated in the date itself ("September 1st, 2027") overrides this.
 - Attribute to the correct edition via event_id. If the convention has MORE THAN ONE
   upcoming edition, only extract when the post carries explicit edition evidence
@@ -270,7 +273,9 @@ Refute when ANY of: the date is a price change rather than a true open/close; th
 a different edition/year than the stated event (check the edition dates given — a post written
 many months before the edition, especially one predating the convention's previous edition,
 almost certainly refers to that earlier edition unless it carries explicit evidence like a year
-or hashtag); the "closing" is soft ("closing soon", "almost sold out") with no explicit date;
+or hashtag); the claimed date is stated as already elapsed and falls before the stated
+edition's own plausible application timeline (e.g. before the previous edition ended) — it
+belongs to an earlier edition; the "closing" is soft ("closing soon", "almost sold out") with no explicit date;
 the date is not explicitly stated in the post; the category is a stretch per the definitions;
 the deadline applies only to already-accepted applicants; the "close" or "open" is actually a
 temporary pause or a resumption of something already open; the post is a reminder that
@@ -669,18 +674,29 @@ def passes_guardrails(by_id, d):
     )
 
 
-def merge(con, dates):
-    """Apply confirmed dates. Returns list of change descriptions."""
+def merge(con, dates, dropped=None):
+    """Apply confirmed dates. Returns list of change descriptions. Entries the
+    after-end backstop drops are appended to `dropped` (when given) with a
+    mechanical refute verdict, so the ledger re-apply path can surface them in
+    the PR body instead of losing them to stderr."""
     by_id = {e["id"]: e for e in con.get("events", [])}
     changes = []
     for d in dates:
         ev = by_id[d["event_id"]]
+        if not d.get("date"):
+            continue  # corrupt ledger entry (null/empty date) — never merge it
         # backstop for the ledger re-apply path (CON-55): process_con already
         # refutes after-endDate proposals mechanically pre-verify, but a stale
         # ledger entry re-applied here never goes through that check.
-        if ev.get("endDate") and (d.get("date") or "") > ev["endDate"]:
+        if ev.get("endDate") and d["date"] > ev["endDate"]:
             log(f"  after-end drop: {d['event_id']} {d['category']}.{d['kind']} "
                 f"{d['date']} is after endDate {ev['endDate']}")
+            if dropped is not None:
+                dropped.append({**d, "_verdicts": [
+                    {"model": "mechanical", "verdict": "refute",
+                     "reason": f"{d['date']} is after the edition's end "
+                               f"({ev['endDate']}) — outstanding ledger entry "
+                               f"invalidated by an upstream endDate change"}]})
             continue
         cat = ev.setdefault("keyDates", {}).setdefault(d["category"], {})
         existing = cat.get(d["kind"])
@@ -1068,10 +1084,12 @@ def save_outstanding(entries):
     os.replace(tmp, OUTSTANDING_FILE)
 
 
-def reapply_outstanding(run_changes, rejections):
+def reapply_outstanding(run_changes, rejections, dropped=None):
     """Fold this run's changes into the ledger, re-apply every other
     outstanding entry to the fresh checkout, and prune what is no longer
-    outstanding. Returns the re-applied changes (for the summary/PR)."""
+    outstanding. Returns the re-applied changes (for the summary/PR).
+    Entries merge()'s after-end backstop drops are appended to `dropped`
+    (when given) so the run summary can show them."""
     ledger = load_outstanding()
     for c in run_changes:
         key = outstanding_key(c)
@@ -1116,7 +1134,7 @@ def reapply_outstanding(run_changes, rejections):
         # same grace so we don't drop one process_con would still re-propose
         if (event.get("endDate") or "") < (TODAY - datetime.timedelta(days=2)).isoformat():
             continue
-        changes = merge(con, [entry])
+        changes = merge(con, [entry], dropped=dropped)
         if not changes:
             continue  # main already has it, or a newer/curated value won
         tmp = fn + ".tmp"
@@ -1712,7 +1730,11 @@ def main():
             log(f"{base}: +{len(changes)} applied, {len(refuted)} refuted, {len(held)} held")
 
     if PUSH and not DRY_RUN:
-        all_changes += reapply_outstanding(all_changes, rejections)
+        ledger_drops = []
+        all_changes += reapply_outstanding(all_changes, rejections, dropped=ledger_drops)
+        # a backstop drop on the re-apply path prunes the ledger entry; without
+        # this it would vanish from the rolling PR with no body-visible trace
+        all_refuted += ledger_drops
 
     removals, account_flags, bulk_flags, pending, pins = [], [], [], [], []
     if args.sweep:
