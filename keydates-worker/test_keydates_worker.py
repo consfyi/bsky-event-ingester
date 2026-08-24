@@ -513,6 +513,20 @@ class SummaryTest(unittest.TestCase):
         for line in body.splitlines():  # payload can't start a fresh markdown line
             self.assertFalse(line.startswith("[approve all]"))
 
+    def test_backtick_and_newline_in_refuted_id_cannot_escape_code_span(self):
+        # ledger-sourced refuted entries never pass guardrails, so a tampered
+        # event_id could carry a backtick+newline to close the code span and
+        # start its own markdown list line — md_inline must neutralize both
+        evil = {"event_id": "testcon-2999\n- `injected`", "category": "panels",
+                "kind": "opens", "date": "2999-01-01",
+                "_verdicts": [{"model": "mechanical", "verdict": "refute",
+                               "reason": "test"}]}
+        body = kw.render_summary([], [evil], [], [], "")
+        refuted_lines = [l for l in body.splitlines() if l.startswith("- `")]
+        self.assertEqual(len(refuted_lines), 1)  # payload can't mint a second entry
+        for line in body.splitlines():
+            self.assertFalse(line.startswith("- `injected"))
+
     def test_summary_tolerates_missing_date(self):
         r = {"_file": "testcon.json", "event_id": "testcon-2999", "category": "panels",
              "kind": "opens", "source": entry("3aaa")["source"],
@@ -1280,6 +1294,16 @@ class PrevEditionEndPayloadTest(unittest.TestCase):
         self.assertEqual(sent["verdicts"]["items"][0]["edition"]["previousEditionEnd"],
                          "2026-01-05")
 
+    def test_previous_edition_end_none_when_prior_edition_lacks_end_date(self):
+        # r4-03: a prior edition without endDate must not serialize as
+        # previousEditionEnd "" — the prompts promise null when unknown
+        con = {"events": [
+            {"id": "e-2026", "name": "E 2026", "startDate": "2026-01-01"},
+            {"id": "e-2027", "name": "E 2027", "startDate": "2027-01-01",
+             "endDate": "2027-01-04"},
+        ]}
+        self.assertIsNone(kw.previous_edition_end(con, "e-2027"))
+
     def test_previous_edition_end_null_when_no_prior_edition(self):
         editions = [{"id": "e", "name": "E", "startDate": "2999-01-01", "endDate": "2999-02-01"}]
         captured = {}
@@ -1309,12 +1333,38 @@ class PromptRuleTest(unittest.TestCase):
         flat = " ".join(kw.EXTRACT_SYSTEM.split())
         self.assertIn("falls before that edition's previousEditionEnd", flat)
         self.assertIn("unless the sentence explicitly names the later edition", flat)
+        # r4-04: the hatch discriminates on WHICH edition the year names
+        self.assertIn("a year or hashtag naming that later edition", flat)
 
     def test_verify_prompt_carries_elapsed_lower_bound(self):
         flat = " ".join(kw.VERIFY_SYSTEM.split())
         self.assertIn("before the stated edition's previousEditionEnd", flat)
         self.assertIn("belongs to an earlier edition", flat)
         self.assertIn("unless the post explicitly names the stated edition", flat)
+        # r4-04: same discrimination on the verify side
+        self.assertIn("a year or hashtag naming that stated edition", flat)
+
+
+class CacheKeyTest(unittest.TestCase):
+    """r4-01: verdicts cached under an older VERIFY_SYSTEM (90-day TTL) must not
+    short-circuit rules a newer prompt adds — the key is salted with the prompt."""
+
+    PROPOSAL = {"event_id": "testcon-2999", "category": "dealers", "kind": "opens",
+                "date": "2999-01-01", "source": "https://bsky.app/profile/x/post/3a",
+                "asOf": "2998-12-01T00:00:00.000Z"}
+
+    def test_key_changes_when_verify_prompt_changes(self):
+        with unittest.mock.patch.object(kw, "VERIFY_SYSTEM", "prompt v1"):
+            k1 = kw.cache_key(self.PROPOSAL)
+        with unittest.mock.patch.object(kw, "VERIFY_SYSTEM", "prompt v2"):
+            k2 = kw.cache_key(self.PROPOSAL)
+        self.assertNotEqual(k1, k2)
+
+    def test_key_stable_for_same_prompt(self):
+        with unittest.mock.patch.object(kw, "VERIFY_SYSTEM", "prompt v1"):
+            k1 = kw.cache_key(self.PROPOSAL)
+            k2 = kw.cache_key(dict(self.PROPOSAL))
+        self.assertEqual(k1, k2)
 
 
 class FixtureSmokeTest(unittest.TestCase):

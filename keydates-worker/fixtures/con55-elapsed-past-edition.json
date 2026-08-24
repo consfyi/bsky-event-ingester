@@ -29,7 +29,7 @@
     }
   ],
   "expect": [],
-  "_comment": "expect_absent entries name a slot (event_id, category, kind). With a date, that slot must not carry that date; without a date, the slot must be absent entirely. Both elapsed occurrences (2026-01-05 and 2026-02-01) precede exampcon-2027's previousEditionEnd (2026-02-09), so they describe the 2026 edition and set nothing for 2027.",
+  "_comment": "Both elapsed occurrences (2026-01-05 and 2026-02-01) precede exampcon-2027's previousEditionEnd (2026-02-09), so they describe the 2026 edition and set nothing for 2027.",
   "expect_absent": [
     {
       "event_id": "exampcon-2027",

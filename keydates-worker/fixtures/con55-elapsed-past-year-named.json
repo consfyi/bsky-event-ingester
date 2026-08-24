@@ -1,0 +1,47 @@
+{
+  "issue": "CON-55",
+  "synthetic": true,
+  "description": "The elapsed-date escape hatch only fires when the named year belongs to the LATER edition. Here the post names the PAST edition's year (2026) alongside elapsed dates, so the hatch must NOT rescue the extraction: the post still recounts the 2026 edition's window and sets nothing for 2027.",
+  "con": {
+    "name": "Exampcon",
+    "bluesky": {"did": "did:plc:aaaaaaaaaaaaaaaaaaaaaaaa"},
+    "events": [
+      {
+        "id": "exampcon-2026",
+        "name": "Exampcon 2026",
+        "startDate": "2026-02-06",
+        "endDate": "2026-02-09"
+      },
+      {
+        "id": "exampcon-2027",
+        "name": "Exampcon 2027",
+        "startDate": "2027-02-05",
+        "endDate": "2027-02-08"
+      }
+    ]
+  },
+  "timezone": "America/Chicago",
+  "posts": [
+    {
+      "url": "https://bsky.app/profile/did:plc:aaaaaaaaaaaaaaaaaaaaaaaa/post/3synth3pastyear",
+      "createdAt": "2026-08-24T16:00:00.000Z",
+      "text": "In 2026 our dealer applications opened January 5th and closed February 1st — thank you to every vendor who applied. Details for next year are coming soon!"
+    }
+  ],
+  "expect": [],
+  "_comment": "\"In 2026\" names the past edition, not a later one, so the year-or-hashtag hatch does not apply; both elapsed dates precede exampcon-2027's previousEditionEnd (2026-02-09).",
+  "expect_absent": [
+    {
+      "event_id": "exampcon-2027",
+      "category": "dealers",
+      "kind": "opens",
+      "reason": "elapsed January 5th resolves to 2026-01-05, before the previous edition ended (2026-02-09); \"In 2026\" names the past edition, so the escape hatch does not apply"
+    },
+    {
+      "event_id": "exampcon-2027",
+      "category": "dealers",
+      "kind": "closes",
+      "reason": "elapsed February 1st resolves to 2026-02-01, before the previous edition ended (2026-02-09); \"In 2026\" names the past edition, so the escape hatch does not apply"
+    }
+  ]
+}
