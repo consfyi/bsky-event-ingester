@@ -555,7 +555,13 @@ class SummaryTest(unittest.TestCase):
                   "date": "2999-02-01",
                   "_verdicts": [{"model": "m1", "verdict": "refute",
                                  "reason": "[go](http://e.co)"}]}
-        body = kw.render_summary([], dropped + [direct], [], [], "")
+        # the Held section renders model-authored reasons outside a code span
+        # too — same md_reason neutralization applies
+        held = {"event_id": "testcon-2999", "category": "panels", "kind": "opens",
+                "date": "2999-02-01",
+                "_verdicts": [{"model": "m1", "verdict": "hold",
+                               "reason": "[go](http://e.co)"}]}
+        body = kw.render_summary([], dropped + [direct], [held], [], "")
         for line in body.splitlines():
             # nothing renderable as a live link outside a code span: the text
             # after a line's last backtick (the whole line when it has none)
@@ -1297,6 +1303,7 @@ class AfterEndGuardTest(unittest.TestCase):
         # entry — no crash (KeyError/TypeError), no change, and never a
         # null/bogus key or date written into the con file
         cases = [("event_id", None), ("event_id", "unknown-9999"),
+                 ("event_id", ["x"]),  # unhashable — would TypeError in `in by_id`
                  ("category", None), ("category", "bogus"),
                  ("kind", None),
                  ("date", None), ("date", ""), ("date", "[go](http://e.co)"),

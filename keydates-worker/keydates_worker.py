@@ -697,10 +697,12 @@ def merge(con, dates, dropped=None):
         # wholesale corrupt-entry guard (CON-55): ledger entries re-applied
         # here never pass through this run's passes_guardrails, so validate
         # every field BEFORE the by_id lookup. The isinstance checks come
-        # first so passes_guardrails can't TypeError on a None date or a
-        # string confidence; the rest (event_id in by_id, category, kind,
+        # first so passes_guardrails can't TypeError on a None date, a string
+        # confidence, or an unhashable (list/dict) event_id in the by_id
+        # lookup; the rest (event_id in by_id, category, kind,
         # DATE_RE, asOf, threshold) is exactly passes_guardrails.
-        if not (isinstance(d.get("date"), str)
+        if not (isinstance(d.get("event_id"), str)
+                and isinstance(d.get("date"), str)
                 and isinstance(d.get("confidence"), (int, float))
                 and passes_guardrails(by_id, d)):
             log(f"  corrupt entry skipped: {str(d)[:300]}")
@@ -1520,6 +1522,14 @@ def md_link(label, url):
     return "`" + md_inline(url or "(no source)", 200) + "`"
 
 
+def md_reason(text, cap):
+    """md_inline plus square-bracket neutralization for model-authored or
+    mechanical reasons rendered OUTSIDE a code span: a [x](y) payload in a
+    reason cannot render as a disguised-label link. A bare URL may still
+    autolink, but its destination stays visible."""
+    return md_inline(text, cap).replace("[", "(").replace("]", ")")
+
+
 def render_summary(all_changes, all_refuted, all_held, all_rejected, skipped_note,
                    removals=(), account_flags=(), bulk_flags=(), pending=(), pins=()):
     lines = ["## Key dates from Bluesky", ""]
@@ -1539,7 +1549,7 @@ def render_summary(all_changes, all_refuted, all_held, all_rejected, skipped_not
         lines.append("\n### Held — verifier disagreement or same-run conflict, needs a human (`/reject` or hand-apply)")
         for p in all_held:
             lines.append(f"- `{p['event_id']}` {p['category']}.{p['kind']} {p['date']} — {md_link('post', p.get('source'))} — " +
-                         "; ".join(f"{v['model'].split('/')[-1]}: {v['verdict']} ({md_inline(v['reason'], 120)})" for v in p["_verdicts"]))
+                         "; ".join(f"{v['model'].split('/')[-1]}: {v['verdict']} ({md_reason(v['reason'], 120)})" for v in p["_verdicts"]))
     if all_refuted:
         lines.append("\n### Refuted by verification (not applied)")
         for p in all_refuted:
@@ -1550,11 +1560,12 @@ def render_summary(all_changes, all_refuted, all_held, all_rejected, skipped_not
             # ONE code span (md_inline neutralizes backticks so the span can't
             # be closed early; bare md_inline text could still smuggle [x](y)).
             # The reason renders OUTSIDE the code span, so square brackets are
-            # also neutralized — a [x](y) payload riding a reason (mechanical
-            # or model-authored) must never render as a live link
+            # also neutralized (md_reason) — a [x](y) payload riding a reason
+            # (mechanical or model-authored) cannot render as a disguised-label
+            # link; a bare URL may still autolink with its destination visible
             lines.append(f"- `{md_inline(p['event_id'], 60)} {md_inline(p['category'], 20)}.{md_inline(p['kind'], 10)} "
                          f"{md_inline(p['date'], 20)}` — "
-                         f"{md_inline(reason, 160).replace('[', '(').replace(']', ')')}")
+                         f"{md_reason(reason, 160)}")
     if all_rejected:
         lines.append("\n### Skipped — matches an entry in keydates_rejections.json")
         for p in all_rejected:
