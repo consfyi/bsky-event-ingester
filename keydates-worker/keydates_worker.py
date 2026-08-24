@@ -694,9 +694,18 @@ def merge(con, dates, dropped=None):
     by_id = {e["id"]: e for e in con.get("events", [])}
     changes = []
     for d in dates:
+        # wholesale corrupt-entry guard (CON-55): ledger entries re-applied
+        # here never pass through this run's passes_guardrails, so validate
+        # every field BEFORE the by_id lookup. The isinstance checks come
+        # first so passes_guardrails can't TypeError on a None date or a
+        # string confidence; the rest (event_id in by_id, category, kind,
+        # DATE_RE, asOf, threshold) is exactly passes_guardrails.
+        if not (isinstance(d.get("date"), str)
+                and isinstance(d.get("confidence"), (int, float))
+                and passes_guardrails(by_id, d)):
+            log(f"  corrupt entry skipped: {str(d)[:300]}")
+            continue
         ev = by_id[d["event_id"]]
-        if not d.get("date") or d.get("confidence") is None:
-            continue  # corrupt ledger entry (null/empty date or confidence) — never merge it
         # backstop for the ledger re-apply path (CON-55): process_con already
         # refutes after-endDate proposals mechanically pre-verify, but a stale
         # ledger entry re-applied here never goes through that check.
@@ -704,9 +713,12 @@ def merge(con, dates, dropped=None):
             log(f"  after-end drop: {d['event_id']} {d['category']}.{d['kind']} "
                 f"{d['date']} is after endDate {ev['endDate']}")
             if dropped is not None:
+                # md_inline at construction: d["date"] is DATE_RE-clean by the
+                # guard above, but ev["endDate"] is con-file text — neutralize
+                # both so a tampered value can't smuggle markup via the reason
                 dropped.append({**d, "_verdicts": mechanical_refute(
-                    f"{d['date']} is after the edition's end "
-                    f"({ev['endDate']}) — outstanding ledger entry "
+                    f"{md_inline(d['date'], 20)} is after the edition's end "
+                    f"({md_inline(ev['endDate'], 20)}) — outstanding ledger entry "
                     f"invalidated by an upstream endDate change")})
             continue
         cat = ev.setdefault("keyDates", {}).setdefault(d["category"], {})
@@ -1448,9 +1460,12 @@ def process_con(fn, cache, rejections, provided_posts=None, extra_post=None):
             # of the post's lands past the con — impossible by construction,
             # so refute mechanically and save the verify calls
             d["_file"] = os.path.basename(fn)
+            # neutralize at construction: ev_end is con-file text (d["date"] is
+            # DATE_RE-clean, wrapped anyway for depth) — the reason renders
+            # outside a code span in the PR body
             d["_verdicts"] = mechanical_refute(
-                f"{d['date']} is after the edition's end "
-                f"({ev_end}) — an application window can't "
+                f"{md_inline(d['date'], 20)} is after the edition's end "
+                f"({md_inline(ev_end, 20)}) — an application window can't "
                 f"open or close once the con is over")
             stale_drops.append(d)
             continue
@@ -1533,9 +1548,13 @@ def render_summary(all_changes, all_refuted, all_held, all_rejected, skipped_not
             # drops) land here without passing passes_guardrails, so even the id
             # fields are attacker-influenceable — render the whole id tuple in
             # ONE code span (md_inline neutralizes backticks so the span can't
-            # be closed early; bare md_inline text could still smuggle [x](y))
+            # be closed early; bare md_inline text could still smuggle [x](y)).
+            # The reason renders OUTSIDE the code span, so square brackets are
+            # also neutralized — a [x](y) payload riding a reason (mechanical
+            # or model-authored) must never render as a live link
             lines.append(f"- `{md_inline(p['event_id'], 60)} {md_inline(p['category'], 20)}.{md_inline(p['kind'], 10)} "
-                         f"{md_inline(p['date'], 20)}` — {md_inline(reason, 160)}")
+                         f"{md_inline(p['date'], 20)}` — "
+                         f"{md_inline(reason, 160).replace('[', '(').replace(']', ')')}")
     if all_rejected:
         lines.append("\n### Skipped — matches an entry in keydates_rejections.json")
         for p in all_rejected:
@@ -1755,25 +1774,21 @@ def main():
         if changes or refuted or held:
             log(f"{base}: +{len(changes)} applied, {len(refuted)} refuted, {len(held)} held")
 
+    ledger_drops = []
     if PUSH and not DRY_RUN:
-        ledger_drops = []
         all_changes += reapply_outstanding(all_changes, rejections, dropped=ledger_drops)
         # a backstop drop on the re-apply path prunes the ledger entry; without
         # this it would vanish from the rolling PR with no body-visible trace.
         # A slot process_con already refuted pre-verify this run would show up
-        # twice — skip drops whose id tuple is already in the Refuted section.
-        seen_refuted = {(p["event_id"], p["category"], p["kind"]) for p in all_refuted}
+        # twice — skip drops whose (slot, date) is already in the Refuted
+        # section; a drop for a DIFFERENT date than the refuted one still
+        # surfaces.
+        seen_refuted = {(p["event_id"], p["category"], p["kind"], p.get("date"))
+                        for p in all_refuted}
         ledger_drops = [d for d in ledger_drops
-                        if (d["event_id"], d["category"], d["kind"]) not in seen_refuted]
+                        if (d["event_id"], d["category"], d["kind"], d.get("date"))
+                        not in seen_refuted]
         all_refuted += ledger_drops
-        if ledger_drops and not all_changes:
-            # a run whose ONLY outcome is a ledger backstop drop changes no
-            # files, so publish() bails and the PR body never shows it — page
-            # ops so the drop still reaches a human (ops_notify length-caps).
-            # When the run applied changes, publish() runs and the PR body
-            # already carries the drop, so no page is needed.
-            ops_notify(f"⚠️ keydates: {len(ledger_drops)} outstanding entr(ies) dropped "
-                       "on re-apply (endDate moved earlier upstream) — see the run summary.")
 
     removals, account_flags, bulk_flags, pending, pins = [], [], [], [], []
     if args.sweep:
@@ -1830,6 +1845,20 @@ def main():
             alert.append("See the keydates bot PR: "
                          "https://github.com/consfyi/data/pulls?q=is%3Apr+is%3Aopen+head%3Abot%2Fbsky-keydates")
             ops_notify("\n".join(alert))
+
+    if ledger_drops and not (all_changes or removals or pins):
+        # a run whose ONLY outcome is a ledger backstop drop publishes nothing
+        # (format/publish gate on all_changes/removals/pins below), so the PR
+        # body never shows it — page ops so the drop still reaches a human,
+        # naming the slots (ops_notify length-caps at 4096). When the run
+        # publishes anything, the PR body already carries the drop.
+        slots = "; ".join(
+            f"{md_inline(d['event_id'], 60)} {md_inline(d['category'], 20)}."
+            f"{md_inline(d['kind'], 10)} {md_inline(d['date'], 20)}"
+            for d in ledger_drops)
+        ops_notify(f"⚠️ keydates: {len(ledger_drops)} outstanding entr(ies) dropped "
+                   f"on re-apply (endDate moved earlier upstream): {slots} — "
+                   "see the run summary.")
 
     save_cache(cache)
 

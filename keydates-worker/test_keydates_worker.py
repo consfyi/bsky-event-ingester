@@ -540,6 +540,27 @@ class SummaryTest(unittest.TestCase):
                 self.assertNotIn("](http", line)
             self.assertFalse(line.startswith("- `injected"))
 
+    def test_link_payload_in_refuted_reason_rendered_inert(self):
+        # the Refuted reason renders OUTSIDE the id code span, so a [x](y)
+        # payload riding it — a tampered endDate reaching merge()'s backstop
+        # reason, or a model-authored reason — must never render as a live link
+        con = make_con({})
+        con["events"][0]["endDate"] = "2999-01-01\n[go](http://e.co)"
+        dropped = []
+        changes = kw.merge(con, [proposal("2999-05-01", "3bbb")], dropped=dropped)
+        self.assertEqual(changes, [])
+        self.assertEqual(len(dropped), 1)
+        self.assertIn("](http", dropped[0]["_verdicts"][0]["reason"])  # payload really rode the reason
+        direct = {"event_id": "testcon-2999", "category": "panels", "kind": "opens",
+                  "date": "2999-02-01",
+                  "_verdicts": [{"model": "m1", "verdict": "refute",
+                                 "reason": "[go](http://e.co)"}]}
+        body = kw.render_summary([], dropped + [direct], [], [], "")
+        for line in body.splitlines():
+            # nothing renderable as a live link outside a code span: the text
+            # after a line's last backtick (the whole line when it has none)
+            self.assertNotIn("](http", line.rsplit("`", 1)[-1])
+
     def test_md_link_fallback_span_cannot_be_closed_by_payload_backticks(self):
         # a non-bsky url falls back to a code span; backticks inside the url
         # must not close that span and let a smuggled link go live
@@ -835,9 +856,11 @@ class MainSmokeTest(unittest.TestCase):
         self.assertIn("### Refuted by verification (not applied)", body)
         self.assertIn("2999-02-01", body)
         publish.assert_not_called()  # no file changes — the ops page is the only signal
-        self.assertTrue(any("dropped" in str(c.args[0]) and "re-apply" in str(c.args[0])
-                            for c in notify.call_args_list),
-                        f"no ledger-drop ops page in {notify.call_args_list}")
+        pages = [str(c.args[0]) for c in notify.call_args_list
+                 if "dropped" in str(c.args[0]) and "re-apply" in str(c.args[0])]
+        self.assertTrue(pages, f"no ledger-drop ops page in {notify.call_args_list}")
+        # the page names the dropped slot, not just a count
+        self.assertIn("testcon-2999 panels.opens 2999-02-01", pages[0])
 
     def test_ledger_backstop_drop_deduped_and_no_ops_page_when_run_applies(self):
         # sibling of the test above: (a) a slot process_con already refuted
@@ -865,13 +888,20 @@ class MainSmokeTest(unittest.TestCase):
                    "date": "2999-02-01",
                    "_verdicts": [{"model": "mechanical", "verdict": "refute",
                                   "reason": "after end"}]}
+        # same slot as the dealers ledger entry but a DIFFERENT date: the drop
+        # dedup keys on (slot, date), so this must NOT suppress the ledger drop
+        refuted_dealers = {"event_id": "testcon-2999", "category": "dealers",
+                           "kind": "opens", "date": "2999-05-01",
+                           "_verdicts": [{"model": "mechanical", "verdict": "refute",
+                                          "reason": "after end"}]}
         applied = {"event_id": "testcon-2999", "category": "hotel", "kind": "opens",
                    "date": "2999-01-02", "source": did_entry("3bbb")["source"],
                    "asOf": "2998-12-02T00:00:00.000Z", "confidence": 0.9,
                    "_post_text": "post", "verb": "add"}
         ok = unittest.mock.Mock(returncode=0, stdout="")
         with unittest.mock.patch.object(
-                 kw, "process_con", return_value=([dict(applied)], [refuted], [], [], True)), \
+                 kw, "process_con",
+                 return_value=([dict(applied)], [refuted, refuted_dealers], [], [], True)), \
              unittest.mock.patch.object(
                  kw, "check_source_liveness", return_value=([], [], [], [], [])), \
              unittest.mock.patch.object(kw, "publish"), \
@@ -882,8 +912,10 @@ class MainSmokeTest(unittest.TestCase):
             body = f.read()
         # one Refuted line for the slot, not two (process_con + ledger backstop)
         self.assertEqual(body.count("testcon-2999 panels.opens 2999-02-01"), 1)
-        # the unique drop still surfaces in the Refuted section
+        # the dealers ledger drop (2999-03-01) is a DIFFERENT date than the
+        # pre-verify dealers refute (2999-05-01) — both must surface
         self.assertEqual(body.count("testcon-2999 dealers.opens 2999-03-01"), 1)
+        self.assertEqual(body.count("testcon-2999 dealers.opens 2999-05-01"), 1)
         # the run published other output, so no re-apply ops page
         self.assertFalse(any("re-apply" in str(c.args[0])
                              for c in notify.call_args_list),
@@ -1259,24 +1291,23 @@ class AfterEndGuardTest(unittest.TestCase):
         changes = kw.merge(con, [proposal("2999-09-01", "3bbb")])
         self.assertEqual(len(changes), 1)
 
-    def test_null_date_ledger_entry_does_not_crash(self):
-        # a ledger entry can carry date: None or "" (save_outstanding uses
-        # .get); merge() must skip both entirely — no crash, no change, and
-        # never a date: null/"" written into the con file
-        for bad in (None, ""):
-            with self.subTest(date=bad):
+    def test_corrupt_ledger_entry_skipped_wholesale(self):
+        # a ledger entry can carry a corrupt value in ANY field (save_outstanding
+        # uses .get; the file is human-editable); merge() must skip the whole
+        # entry — no crash (KeyError/TypeError), no change, and never a
+        # null/bogus key or date written into the con file
+        cases = [("event_id", None), ("event_id", "unknown-9999"),
+                 ("category", None), ("category", "bogus"),
+                 ("kind", None),
+                 ("date", None), ("date", ""), ("date", "[go](http://e.co)"),
+                 ("confidence", None), ("confidence", "0.9")]
+        for field, bad in cases:
+            with self.subTest(**{field: bad}):
                 con = make_con({})
-                changes = kw.merge(con, [proposal(bad, "3bbb")])
+                changes = kw.merge(con, [{**proposal("2999-01-02", "3bbb"),
+                                          field: bad}])
                 self.assertEqual(changes, [])
                 self.assertNotIn("keyDates", con["events"][0])
-        # confidence: None is the same corruption class — round() would
-        # TypeError and kill the whole run via reapply_outstanding
-        with self.subTest(confidence=None):
-            con = make_con({})
-            changes = kw.merge(con, [{**proposal("2999-01-02", "3bbb"),
-                                      "confidence": None}])
-            self.assertEqual(changes, [])
-            self.assertNotIn("keyDates", con["events"][0])
 
     def test_process_con_refutes_after_end_before_verify(self):
         # the pre-verify layer: an after-endDate proposal is refuted

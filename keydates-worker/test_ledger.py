@@ -200,5 +200,26 @@ check("run14: drop surfaced with a mechanical refute verdict",
 check("run14: dropped entry renders in the Refuted section",
       "2026-09-15" in kw.render_summary([], dropped, [], [], ""))
 
+# Run 15: a corrupt ledger ENTRY (valid file, tampered/bogus field) on the
+# re-apply path is skipped wholesale by merge()'s guard — the run survives,
+# writes nothing for it, and a valid sibling entry still lands.
+write_main_state()
+good = change("con-a-2026", "con-a.json", "2026-08-01", "2026-07-01T00:00:00Z", cat="hotel")
+bad = change("con-a-2026", "con-a.json", "2026-08-02", "2026-07-01T00:00:00Z")
+bad["category"] = "bogus"
+save_ledger(good, bad)
+try:
+    carried = kw.reapply_outstanding([], [])
+    crashed = False
+except Exception:
+    crashed = True
+    carried = None
+check("run15: corrupt entry skipped without crashing",
+      not crashed and carried is not None and len(carried) == 1)
+kd15 = read("con-a.json")["events"][0].get("keyDates", {})
+check("run15: valid sibling still applied",
+      kd15.get("hotel", {}).get("opens", {}).get("date") == "2026-08-01")
+check("run15: bogus category never written", "bogus" not in kd15)
+
 print()
 sys.exit(1 if fails else 0)
