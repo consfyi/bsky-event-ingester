@@ -1088,7 +1088,8 @@ class RecencyReminderTest(unittest.TestCase):
     def test_amend_carries_prev_and_renders_reminder(self):
         # a closes amend (deadline moved) still carries _prev + the reminder;
         # opens-moved-later no longer amends (CON-30), so exercise closes here
-        con = make_con({"registration": {"closes": entry("3aaa", date="2999-05-13")}})
+        con = make_con({"registration": {"closes": entry("3aaa", date="2999-05-13")}},
+                       end_date="2999-12-31")
         newer = {**proposal("2999-07-15", "3bbb", asof="2999-06-01T00:00:00.000Z",
                             slot=("testcon-2999", "registration", "closes")),
                  "_file": "testcon.json", "_post_text": "deadline extended"}
@@ -1101,13 +1102,41 @@ class RecencyReminderTest(unittest.TestCase):
         self.assertIn("[previous post](https://bsky.app/profile/testcon.example/post/3aaa)", body)
 
     def test_fresh_add_has_no_reminder(self):
-        con = make_con({})
+        con = make_con({}, end_date="2999-12-31")
         add = {**proposal("2999-07-15", "3bbb", asof="2999-06-01T00:00:00.000Z"),
                "_file": "testcon.json", "_post_text": "dance battle open"}
         changes = kw.merge(con, [add])
         self.assertEqual(len(changes), 1)
         self.assertNotIn("_prev", changes[0])
         self.assertNotIn("recency-wins", kw.render_summary(changes, [], [], [], ""))
+
+
+class AfterEndGuardTest(unittest.TestCase):
+    """CON-55: a proposed key date after the edition's endDate is impossible by
+    construction (windows can't open/close after the con) — merge() must drop
+    it, whether it arrives from this run's proposals or a ledger re-apply."""
+
+    def test_date_after_end_date_dropped(self):
+        # edition ends 2999-06-01; the model anchored a bare month-day to the
+        # wrong year and proposed 2999-09-01 (the Scotiacon 2027 shape)
+        con = make_con({})
+        changes = kw.merge(con, [proposal("2999-09-01", "3bbb")])
+        self.assertEqual(changes, [])
+        self.assertNotIn("keyDates", con["events"][0])
+
+    def test_date_on_end_date_still_applies(self):
+        # boundary: a close on the con's last day is legitimate
+        con = make_con({})
+        changes = kw.merge(con, [proposal(FUTURE, "3bbb",
+                                          slot=("testcon-2999", "dealers", "closes"))])
+        self.assertEqual(len(changes), 1)
+        self.assertEqual(con["events"][0]["keyDates"]["dealers"]["closes"]["date"], FUTURE)
+
+    def test_missing_end_date_does_not_drop(self):
+        con = make_con({})
+        del con["events"][0]["endDate"]
+        changes = kw.merge(con, [proposal("2999-09-01", "3bbb")])
+        self.assertEqual(len(changes), 1)
 
 
 class OpensRecencyTest(unittest.TestCase):
@@ -1140,14 +1169,16 @@ class OpensRecencyTest(unittest.TestCase):
 
     def test_closes_still_moves_later(self):
         # closes keeps recency-wins: a later deadline (extension) applies
-        con = make_con({"registration": {"closes": entry("3aaa", date="2999-07-27")}})
+        con = make_con({"registration": {"closes": entry("3aaa", date="2999-07-27")}},
+                       end_date="2999-12-31")
         changes = kw.merge(con, [self._newer("2999-08-02", ("testcon-2999", "registration", "closes"))])
         self.assertEqual(len(changes), 1)
         self.assertEqual(self._date(con, "registration", "closes"), "2999-08-02")
 
     def test_closes_still_moves_earlier(self):
         # and a moved-up deadline (tails-of-summer 07-27 -> 07-24) applies too
-        con = make_con({"registration": {"closes": entry("3aaa", date="2999-07-27")}})
+        con = make_con({"registration": {"closes": entry("3aaa", date="2999-07-27")}},
+                       end_date="2999-12-31")
         changes = kw.merge(con, [self._newer("2999-07-24", ("testcon-2999", "registration", "closes"))])
         self.assertEqual(len(changes), 1)
         self.assertEqual(self._date(con, "registration", "closes"), "2999-07-24")
