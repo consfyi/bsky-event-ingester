@@ -524,8 +524,21 @@ class SummaryTest(unittest.TestCase):
         body = kw.render_summary([], [evil], [], [], "")
         refuted_lines = [l for l in body.splitlines() if l.startswith("- `")]
         self.assertEqual(len(refuted_lines), 1)  # payload can't mint a second entry
+        # exactly the two wrapping backticks survive — the payload's own
+        # backticks were neutralized, so the code span can't be closed early
+        self.assertEqual(refuted_lines[0].count("`"), 2)
+        self.assertNotIn("](http", body)  # and no live link escaped anywhere
         for line in body.splitlines():
             self.assertFalse(line.startswith("- `injected"))
+
+    def test_md_link_fallback_span_cannot_be_closed_by_payload_backticks(self):
+        # a non-bsky url falls back to a code span; backticks inside the url
+        # must not close that span and let a smuggled link go live
+        out = kw.md_link("source", "javascript:`[live](https://evil.example)`")
+        # one unbroken code span: wrapping backticks only, none inside — the
+        # `](...)` text stays inside the span and can't render as a live link
+        self.assertTrue(out.startswith("`") and out.endswith("`"))
+        self.assertNotIn("`", out[1:-1])
 
     def test_summary_tolerates_missing_date(self):
         r = {"_file": "testcon.json", "event_id": "testcon-2999", "category": "panels",
@@ -1361,10 +1374,19 @@ class CacheKeyTest(unittest.TestCase):
         self.assertNotEqual(k1, k2)
 
     def test_key_stable_for_same_prompt(self):
+        """Guards against a per-run/per-call salt sneaking into the key (e.g. a
+        timestamp in raw) — that would silently defeat the cache entirely."""
         with unittest.mock.patch.object(kw, "VERIFY_SYSTEM", "prompt v1"):
             k1 = kw.cache_key(self.PROPOSAL)
             k2 = kw.cache_key(dict(self.PROPOSAL))
         self.assertEqual(k1, k2)
+
+    def test_key_changes_when_prev_end_changes(self):
+        # _prev_end feeds VERIFY_SYSTEM's lower-bound rule, so a cached verdict
+        # computed against a different previous-edition end must not be reused
+        k1 = kw.cache_key({**self.PROPOSAL, "_prev_end": "2998-11-30"})
+        k2 = kw.cache_key({**self.PROPOSAL, "_prev_end": "2999-01-15"})
+        self.assertNotEqual(k1, k2)
 
 
 class FixtureSmokeTest(unittest.TestCase):
@@ -1381,9 +1403,16 @@ class FixtureSmokeTest(unittest.TestCase):
                 fx = json.load(f)
             for key in ("con", "posts", "expect"):
                 self.assertIn(key, fx, f"{name}: missing {key}")
+            for item in fx["expect"]:
+                for key in ("event_id", "category", "kind", "date", "source"):
+                    self.assertIn(key, item, f"{name}: expect item missing {key}")
             if "expect_absent" in fx:  # optional; validate shape when present
                 self.assertIsInstance(fx["expect_absent"], list,
                                       f"{name}: expect_absent must be a list")
+                for item in fx["expect_absent"]:
+                    for key in ("event_id", "category", "kind", "reason"):
+                        self.assertIn(key, item,
+                                      f"{name}: expect_absent item missing {key}")
             # a fixture that expects nothing and forbids nothing asserts nothing
             self.assertTrue(fx.get("expect") or fx.get("expect_absent"),
                             f"{name}: at least one of expect/expect_absent must be non-empty")

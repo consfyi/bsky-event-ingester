@@ -2,7 +2,7 @@
 
 Regression cases for the extract/verify prompts, in the shape the future eval
 harness (CON-9) expects. `FixtureSmokeTest` in `test_keydates_worker.py`
-validates the contract below.
+validates the required keys below.
 
 ## Schema
 

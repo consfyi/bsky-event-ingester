@@ -121,9 +121,7 @@ VERIFY_BATCH = 8
 # Groq free tier is token-per-minute limited (8000 TPM for gpt-oss). A request is
 # billed prompt + max_tokens against that window, so the trim/pace budget must
 # reserve the output allowance — not just fit the payload. (EXTRACT_SYSTEM is
-# ~850 tokens; the request's OUTPUT allowance is the big reservation. CON-55
-# grew EXTRACT_SYSTEM by ~270 tokens, so the post-trim boundary in
-# extract_for_con shifted down accordingly.)
+# ~1120 tokens; the request's OUTPUT allowance is the big reservation.)
 MODEL_TPM = int(os.environ.get("MODEL_TPM", "8000"))
 MODEL_MAX_OUTPUT_TOKENS = int(os.environ.get("MODEL_MAX_OUTPUT_TOKENS", "3000"))
 # per-request INPUT budget for payload trimming: reserve the output allowance the
@@ -1032,7 +1030,7 @@ def check_source_liveness(files):
 
 # --- verdict cache -------------------------------------------------------------
 def cache_key(d):
-    raw = "|".join(str(d.get(k, "")) for k in ("event_id", "category", "kind", "date", "source", "asOf"))
+    raw = "|".join(str(d.get(k, "")) for k in ("event_id", "category", "kind", "date", "source", "asOf", "_prev_end"))
     # salt with the verify prompt so cached verdicts from an older VERIFY_SYSTEM
     # (90-day TTL) can't short-circuit rules the current prompt adds
     raw += "|" + hashlib.sha256(VERIFY_SYSTEM.encode()).hexdigest()[:8]
