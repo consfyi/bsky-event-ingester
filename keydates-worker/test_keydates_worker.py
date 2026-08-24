@@ -517,8 +517,10 @@ class SummaryTest(unittest.TestCase):
         # ledger-sourced refuted entries never pass guardrails, so a tampered
         # event_id could carry a backtick+newline to close the code span and
         # start its own markdown list line — md_inline must neutralize both
-        evil = {"event_id": "testcon-2999\n- `injected`", "category": "panels",
-                "kind": "opens", "date": "2999-01-01",
+        # category/kind/date must sit inside the same code span: bare md_inline
+        # text would still render a smuggled [x](y) as a live link
+        evil = {"event_id": "testcon-2999\n- `injected`", "category": "[go](http://e.co)",
+                "kind": "[go](http://e.co)", "date": "[go](http://e.co)",
                 "_verdicts": [{"model": "mechanical", "verdict": "refute",
                                "reason": "test"}]}
         body = kw.render_summary([], [evil], [], [], "")
@@ -527,8 +529,15 @@ class SummaryTest(unittest.TestCase):
         # exactly the two wrapping backticks survive — the payload's own
         # backticks were neutralized, so the code span can't be closed early
         self.assertEqual(refuted_lines[0].count("`"), 2)
-        self.assertNotIn("](http", body)  # and no live link escaped anywhere
+        # the link payloads land only INSIDE the code span (inert); nothing
+        # renderable as a live link survives outside it, on any line
+        before, inside, after = refuted_lines[0].split("`")
+        self.assertIn("](http", inside)
+        self.assertNotIn("](http", before)
+        self.assertNotIn("](http", after)
         for line in body.splitlines():
+            if line != refuted_lines[0]:
+                self.assertNotIn("](http", line)
             self.assertFalse(line.startswith("- `injected"))
 
     def test_md_link_fallback_span_cannot_be_closed_by_payload_backticks(self):
@@ -829,6 +838,56 @@ class MainSmokeTest(unittest.TestCase):
         self.assertTrue(any("dropped" in str(c.args[0]) and "re-apply" in str(c.args[0])
                             for c in notify.call_args_list),
                         f"no ledger-drop ops page in {notify.call_args_list}")
+
+    def test_ledger_backstop_drop_deduped_and_no_ops_page_when_run_applies(self):
+        # sibling of the test above: (a) a slot process_con already refuted
+        # pre-verify must not gain a SECOND Refuted line from the ledger
+        # backstop, and (b) a run that applied other changes publishes a PR
+        # body carrying the drop, so the ops page must not fire
+        with open(os.path.join(self.data_dir, "con-a.json"), "w") as f:
+            json.dump({"events": [{"id": "testcon-2999", "name": "Testcon 2999",
+                                   "startDate": "2999-01-01", "endDate": "2999-01-05"}]}, f)
+        os.makedirs(os.path.dirname(kw.OUTSTANDING_FILE), exist_ok=True)
+        with open(kw.OUTSTANDING_FILE, "w") as f:
+            json.dump({"testcon-2999|panels|opens": {
+                "event_id": "testcon-2999", "category": "panels", "kind": "opens",
+                "date": "2999-02-01", "source": did_entry("3aaa")["source"],
+                "asOf": "2998-12-01T00:00:00.000Z", "confidence": 0.9,
+                "_file": "con-a.json", "_post_text": "post"},
+                # unique drop: keeps ledger_drops non-empty after dedup, so the
+                # ops gate — not the dedup — is what must suppress the page
+                "testcon-2999|dealers|opens": {
+                "event_id": "testcon-2999", "category": "dealers", "kind": "opens",
+                "date": "2999-03-01", "source": did_entry("3ccc")["source"],
+                "asOf": "2998-12-01T00:00:00.000Z", "confidence": 0.9,
+                "_file": "con-a.json", "_post_text": "post"}}, f)
+        refuted = {"event_id": "testcon-2999", "category": "panels", "kind": "opens",
+                   "date": "2999-02-01",
+                   "_verdicts": [{"model": "mechanical", "verdict": "refute",
+                                  "reason": "after end"}]}
+        applied = {"event_id": "testcon-2999", "category": "hotel", "kind": "opens",
+                   "date": "2999-01-02", "source": did_entry("3bbb")["source"],
+                   "asOf": "2998-12-02T00:00:00.000Z", "confidence": 0.9,
+                   "_post_text": "post", "verb": "add"}
+        ok = unittest.mock.Mock(returncode=0, stdout="")
+        with unittest.mock.patch.object(
+                 kw, "process_con", return_value=([dict(applied)], [refuted], [], [], True)), \
+             unittest.mock.patch.object(
+                 kw, "check_source_liveness", return_value=([], [], [], [], [])), \
+             unittest.mock.patch.object(kw, "publish"), \
+             unittest.mock.patch.object(kw, "ops_notify") as notify, \
+             unittest.mock.patch.object(kw.subprocess, "run", return_value=ok):
+            kw.main()
+        with open(self.summary_file) as f:
+            body = f.read()
+        # one Refuted line for the slot, not two (process_con + ledger backstop)
+        self.assertEqual(body.count("testcon-2999 panels.opens 2999-02-01"), 1)
+        # the unique drop still surfaces in the Refuted section
+        self.assertEqual(body.count("testcon-2999 dealers.opens 2999-03-01"), 1)
+        # the run published other output, so no re-apply ops page
+        self.assertFalse(any("re-apply" in str(c.args[0])
+                             for c in notify.call_args_list),
+                         f"unexpected ledger-drop ops page in {notify.call_args_list}")
 
     def test_pins_only_sweep_still_formats_and_publishes(self):
         # CON-26 backfill case: a sweep whose only outcome is DID-pinning must
@@ -1210,6 +1269,14 @@ class AfterEndGuardTest(unittest.TestCase):
                 changes = kw.merge(con, [proposal(bad, "3bbb")])
                 self.assertEqual(changes, [])
                 self.assertNotIn("keyDates", con["events"][0])
+        # confidence: None is the same corruption class — round() would
+        # TypeError and kill the whole run via reapply_outstanding
+        with self.subTest(confidence=None):
+            con = make_con({})
+            changes = kw.merge(con, [{**proposal("2999-01-02", "3bbb"),
+                                      "confidence": None}])
+            self.assertEqual(changes, [])
+            self.assertNotIn("keyDates", con["events"][0])
 
     def test_process_con_refutes_after_end_before_verify(self):
         # the pre-verify layer: an after-endDate proposal is refuted

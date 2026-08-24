@@ -121,7 +121,7 @@ VERIFY_BATCH = 8
 # Groq free tier is token-per-minute limited (8000 TPM for gpt-oss). A request is
 # billed prompt + max_tokens against that window, so the trim/pace budget must
 # reserve the output allowance — not just fit the payload. (EXTRACT_SYSTEM is
-# ~1120 tokens; the request's OUTPUT allowance is the big reservation.)
+# ~1180 tokens; the request's OUTPUT allowance is the big reservation.)
 MODEL_TPM = int(os.environ.get("MODEL_TPM", "8000"))
 MODEL_MAX_OUTPUT_TOKENS = int(os.environ.get("MODEL_MAX_OUTPUT_TOKENS", "3000"))
 # per-request INPUT budget for payload trimming: reserve the output allowance the
@@ -695,8 +695,8 @@ def merge(con, dates, dropped=None):
     changes = []
     for d in dates:
         ev = by_id[d["event_id"]]
-        if not d.get("date"):
-            continue  # corrupt ledger entry (null/empty date) — never merge it
+        if not d.get("date") or d.get("confidence") is None:
+            continue  # corrupt ledger entry (null/empty date or confidence) — never merge it
         # backstop for the ledger re-apply path (CON-55): process_con already
         # refutes after-endDate proposals mechanically pre-verify, but a stale
         # ledger entry re-applied here never goes through that check.
@@ -1531,9 +1531,11 @@ def render_summary(all_changes, all_refuted, all_held, all_rejected, skipped_not
             reason = next((v["reason"] for v in p["_verdicts"] if v["verdict"] == "refute"), "")
             # unlike the other sections, ledger-sourced entries (merge backstop
             # drops) land here without passing passes_guardrails, so even the id
-            # fields are attacker-influenceable — md_inline-wrap all of them
-            lines.append(f"- `{md_inline(p['event_id'], 60)}` {md_inline(p['category'], 20)}.{md_inline(p['kind'], 10)} "
-                         f"{md_inline(p['date'], 20)} — {md_inline(reason, 160)}")
+            # fields are attacker-influenceable — render the whole id tuple in
+            # ONE code span (md_inline neutralizes backticks so the span can't
+            # be closed early; bare md_inline text could still smuggle [x](y))
+            lines.append(f"- `{md_inline(p['event_id'], 60)} {md_inline(p['category'], 20)}.{md_inline(p['kind'], 10)} "
+                         f"{md_inline(p['date'], 20)}` — {md_inline(reason, 160)}")
     if all_rejected:
         lines.append("\n### Skipped — matches an entry in keydates_rejections.json")
         for p in all_rejected:
@@ -1757,12 +1759,19 @@ def main():
         ledger_drops = []
         all_changes += reapply_outstanding(all_changes, rejections, dropped=ledger_drops)
         # a backstop drop on the re-apply path prunes the ledger entry; without
-        # this it would vanish from the rolling PR with no body-visible trace
+        # this it would vanish from the rolling PR with no body-visible trace.
+        # A slot process_con already refuted pre-verify this run would show up
+        # twice — skip drops whose id tuple is already in the Refuted section.
+        seen_refuted = {(p["event_id"], p["category"], p["kind"]) for p in all_refuted}
+        ledger_drops = [d for d in ledger_drops
+                        if (d["event_id"], d["category"], d["kind"]) not in seen_refuted]
         all_refuted += ledger_drops
-        if ledger_drops:
+        if ledger_drops and not all_changes:
             # a run whose ONLY outcome is a ledger backstop drop changes no
             # files, so publish() bails and the PR body never shows it — page
-            # ops so the drop still reaches a human (ops_notify length-caps)
+            # ops so the drop still reaches a human (ops_notify length-caps).
+            # When the run applied changes, publish() runs and the PR body
+            # already carries the drop, so no page is needed.
             ops_notify(f"⚠️ keydates: {len(ledger_drops)} outstanding entr(ies) dropped "
                        "on re-apply (endDate moved earlier upstream) — see the run summary.")
 
