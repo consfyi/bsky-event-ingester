@@ -1113,8 +1113,9 @@ class RecencyReminderTest(unittest.TestCase):
 
 class AfterEndGuardTest(unittest.TestCase):
     """CON-55: a proposed key date after the edition's endDate is impossible by
-    construction (windows can't open/close after the con) — merge() must drop
-    it, whether it arrives from this run's proposals or a ledger re-apply."""
+    construction (windows can't open/close after the con) — process_con refutes
+    it mechanically pre-verify, and merge() drops it as the backstop for the
+    ledger re-apply path."""
 
     def test_date_after_end_date_dropped(self):
         # edition ends 2999-06-01; the model anchored a bare month-day to the
@@ -1138,6 +1139,66 @@ class AfterEndGuardTest(unittest.TestCase):
         changes = kw.merge(con, [proposal("2999-09-01", "3bbb")])
         self.assertEqual(len(changes), 1)
 
+    def test_null_date_ledger_entry_does_not_crash(self):
+        # a ledger entry can carry date: None (save_outstanding uses .get);
+        # the guard comparison must tolerate it, not raise TypeError
+        con = make_con({})
+        kw.merge(con, [proposal(None, "3bbb")])
+
+    def test_process_con_refutes_after_end_before_verify(self):
+        # the pre-verify layer: an after-endDate proposal is refuted
+        # mechanically — no verify model call — and lands in the PR's
+        # Refuted section
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        con = make_con({})
+        fn = os.path.join(tmp.name, "testcon.json")
+        with open(fn, "w") as f:
+            json.dump(con, f)
+        post = {"url": did_entry("3abc")["source"], "asOf": "2999-05-01T00:00:00.000Z",
+                "text": "proposals for our 3000 con open September 1"}
+
+        def fake_extract(con_, events, posts, tz="UTC"):
+            # the model anchored the bare month-day to the wrong year:
+            # 2999-09-01 is after endDate 2999-06-01
+            return [{"event_id": "testcon-2999", "category": "djs",
+                     "kind": "opens", "date": "2999-09-01",
+                     "source": posts[0]["url"], "confidence": 0.95}]
+
+        with unittest.mock.patch.object(kw, "extract_for_con", side_effect=fake_extract), \
+             unittest.mock.patch.object(kw, "load_event_timezones", return_value={}), \
+             unittest.mock.patch.object(kw, "verify_proposals") as vp:
+            changes, refuted, held, rejected, did_extract = kw.process_con(
+                fn, {}, [], provided_posts=[post])
+        vp.assert_not_called()  # dropped mechanically, both verify calls saved
+        self.assertEqual(changes, [])
+        self.assertEqual(len(refuted), 1)
+        self.assertEqual(refuted[0]["_verdicts"][0]["model"], "mechanical")
+        self.assertIn("after the edition's end", refuted[0]["_verdicts"][0]["reason"])
+        body = kw.render_summary([], refuted, [], [], "")
+        self.assertIn("### Refuted by verification (not applied)", body)
+        self.assertIn("2999-09-01", body)
+
+
+class FixtureSmokeTest(unittest.TestCase):
+    """Every prompt fixture must stay loadable with the shape the future
+    eval harness (CON-9) expects."""
+
+    FIXTURES_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fixtures")
+
+    def test_fixtures_parse_with_required_keys(self):
+        names = [n for n in os.listdir(self.FIXTURES_DIR) if n.endswith(".json")]
+        self.assertTrue(names)  # the directory must not silently go empty
+        for name in names:
+            with open(os.path.join(self.FIXTURES_DIR, name)) as f:
+                fx = json.load(f)
+            for key in ("con", "posts", "expect", "expect_absent"):
+                self.assertIn(key, fx, f"{name}: missing {key}")
+            self.assertTrue(fx["posts"], f"{name}: no posts")
+            for p in fx["posts"]:
+                for key in ("url", "createdAt", "text"):
+                    self.assertIn(key, p, f"{name}: post missing {key}")
+
 
 class OpensRecencyTest(unittest.TestCase):
     """CON-30: recency-wins is asymmetric for opens — a newer post can correct
@@ -1154,7 +1215,8 @@ class OpensRecencyTest(unittest.TestCase):
 
     def test_opens_not_moved_later_by_a_newer_post(self):
         # existing opens 05-03; a newer "sign up now!" post says 06-08 -> ignored
-        con = make_con({"panels": {"opens": entry("3aaa", date="2999-05-03")}})
+        con = make_con({"panels": {"opens": entry("3aaa", date="2999-05-03")}},
+                       end_date="2999-12-31")
         changes = kw.merge(con, [self._newer("2999-06-08", ("testcon-2999", "panels", "opens"))])
         self.assertEqual(changes, [])
         self.assertEqual(self._date(con, "panels", "opens"), "2999-05-03")

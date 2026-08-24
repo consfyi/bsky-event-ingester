@@ -233,11 +233,13 @@ Rules:
   overrides the weekday resolution when both appear for the same event — but not when
   they name different events ("Reg now open! Panels close this Friday" opens reg on the
   post's date and closes panels that Friday).
-- A bare month-day with no year ("September 1st") resolves to its next occurrence on or
-  after the post's date — even in a sentence about a later edition ("proposals for our
-  2027 con open September 1st" posted 2026-08-24 means 2026-09-01, not 2027-09-01).
-  Never borrow the year from the edition under discussion; only a year stated in the
-  date itself ("September 1st, 2027") overrides this.
+- A bare month-day with no year ("September 1st") announced as upcoming resolves to its
+  next occurrence on or after the post's date — even in a sentence about a later edition
+  ("proposals for our 2027 con open September 1st" posted 2026-08-24 means 2026-09-01,
+  not 2027-09-01). One stated as already elapsed ("has been open since March 3rd",
+  "opened on March 3rd", "closed on March 3rd") resolves to its most recent occurrence
+  ON OR BEFORE the post's date. Never borrow the year from the edition under discussion;
+  only a year stated in the date itself ("September 1st, 2027") overrides this.
 - Attribute to the correct edition via event_id. If the convention has MORE THAN ONE
   upcoming edition, only extract when the post carries explicit edition evidence
   (year, hashtag like #FWA2027, or an unambiguous date range).
@@ -273,10 +275,7 @@ the date is not explicitly stated in the post; the category is a stretch per the
 the deadline applies only to already-accepted applicants; the "close" or "open" is actually a
 temporary pause or a resumption of something already open; the post is a reminder that
 something is still open (or a follow-up for people already accepted) rather than the
-announcement of the opening; the claimed date falls after the stated event's endDate
-(an application window can't open or close once the con is over — the usual cause is
-a bare month-day anchored to the edition's year instead of resolved to its next
-occurrence after post_timestamp); the claimed date contradicts the post text once the open/close
+announcement of the opening; the claimed date contradicts the post text once the open/close
 event's own relative references are resolved against post_timestamp, which is given in the
 venue's local time (post_timezone) — "today" is post_timestamp's local calendar date (a
 weekday reference like "this Sunday" for that event means the next such weekday on or
@@ -676,12 +675,10 @@ def merge(con, dates):
     changes = []
     for d in dates:
         ev = by_id[d["event_id"]]
-        # a key date after the edition ends is nonsense by construction — an
-        # application window can't open or close once the con is over. The
-        # usual cause is a bare month-day anchored to the edition's year
-        # instead of the post's (CON-55); never apply one, from this run or
-        # from a ledger re-apply.
-        if ev.get("endDate") and d["date"] > ev["endDate"]:
+        # backstop for the ledger re-apply path (CON-55): process_con already
+        # refutes after-endDate proposals mechanically pre-verify, but a stale
+        # ledger entry re-applied here never goes through that check.
+        if ev.get("endDate") and (d.get("date") or "") > ev["endDate"]:
             log(f"  after-end drop: {d['event_id']} {d['category']}.{d['kind']} "
                 f"{d['date']} is after endDate {ev['endDate']}")
             continue
@@ -1405,6 +1402,18 @@ def process_con(fn, cache, rejections, provided_posts=None, extra_post=None):
                                "reason": f"source post ({d['asOf'][:10]}) predates the previous "
                                          f"edition's end ({prev_end}) — almost certainly refers "
                                          f"to an earlier edition"}]
+            stale_drops.append(d)
+            continue
+        ev_end = by_id[d["event_id"]].get("endDate")
+        if ev_end and d["date"] > ev_end:
+            # CON-55: a bare month-day anchored to the edition's year instead
+            # of the post's lands past the con — impossible by construction,
+            # so refute mechanically and save the verify calls
+            d["_file"] = os.path.basename(fn)
+            d["_verdicts"] = [{"model": "mechanical", "verdict": "refute",
+                               "reason": f"{d['date']} is after the edition's end "
+                                         f"({ev_end}) — an application window can't "
+                                         f"open or close once the con is over"}]
             stale_drops.append(d)
             continue
         rej = is_rejected(rejections, d)

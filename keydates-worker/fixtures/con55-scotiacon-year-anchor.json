@@ -30,6 +30,7 @@
       "source": "https://bsky.app/profile/did:plc:ykiko7fa24cbv2bmffeylfys/post/3mttwaqonoc2t"
     }
   ],
+  "_comment": "expect_absent entries name a slot (event_id, category, kind). With a date, that slot must not carry that date; without a date, the slot must be absent entirely.",
   "expect_absent": [
     {
       "event_id": "scotiacon-2027",

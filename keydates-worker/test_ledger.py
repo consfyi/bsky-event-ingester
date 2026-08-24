@@ -183,5 +183,15 @@ except Exception:
     carried = None
 check("run13: dot _file dropped without crashing", not crashed and carried == [] and kw.load_outstanding() == {})
 
+# Run 14: an outstanding entry dated after its edition's endDate (wrong-year
+# anchoring, CON-55) hits merge()'s after-end backstop on re-apply: not carried,
+# not written to the con file, and pruned from the ledger.
+write_main_state()
+save_ledger(change("con-a-2026", "con-a.json", "2026-09-15", "2026-07-01T00:00:00Z"))
+carried = kw.reapply_outstanding([], [])
+check("run14: after-endDate entry not carried", carried == [])
+check("run14: after-endDate entry not written to file", "keyDates" not in read("con-a.json")["events"][0])
+check("run14: after-endDate entry pruned from ledger", kw.load_outstanding() == {})
+
 print()
 sys.exit(1 if fails else 0)
