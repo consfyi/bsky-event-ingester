@@ -1,0 +1,47 @@
+{
+  "issue": "CON-55",
+  "synthetic": true,
+  "description": "Elapsed bare month-day dates that fall before the previous edition ended belong to that past edition, not the upcoming one. A retrospective posted between editions recounts the past edition's dealer window; extracting it would date the 2027 edition with the 2026 edition's timeline. The prompt's lower bound (previousEditionEnd) must suppress both slots.",
+  "con": {
+    "name": "Exampcon",
+    "bluesky": {"did": "did:plc:aaaaaaaaaaaaaaaaaaaaaaaa"},
+    "events": [
+      {
+        "id": "exampcon-2026",
+        "name": "Exampcon 2026",
+        "startDate": "2026-02-06",
+        "endDate": "2026-02-09"
+      },
+      {
+        "id": "exampcon-2027",
+        "name": "Exampcon 2027",
+        "startDate": "2027-02-05",
+        "endDate": "2027-02-08"
+      }
+    ]
+  },
+  "timezone": "America/Chicago",
+  "posts": [
+    {
+      "url": "https://bsky.app/profile/did:plc:aaaaaaaaaaaaaaaaaaaaaaaa/post/3synth2elapsed",
+      "createdAt": "2026-08-24T16:00:00.000Z",
+      "text": "Looking back at this year's dealers den: applications opened on January 5th and closed on February 1st, and we filled every table. Watch this space for next year's timeline!"
+    }
+  ],
+  "expect": [],
+  "_comment": "expect_absent entries name a slot (event_id, category, kind). With a date, that slot must not carry that date; without a date, the slot must be absent entirely. Both elapsed occurrences (2026-01-05 and 2026-02-01) precede exampcon-2027's previousEditionEnd (2026-02-09), so they describe the 2026 edition and set nothing for 2027.",
+  "expect_absent": [
+    {
+      "event_id": "exampcon-2027",
+      "category": "dealers",
+      "kind": "opens",
+      "reason": "elapsed January 5th resolves to 2026-01-05, before the previous edition ended (2026-02-09) — it recounts the 2026 edition's window"
+    },
+    {
+      "event_id": "exampcon-2027",
+      "category": "dealers",
+      "kind": "closes",
+      "reason": "elapsed February 1st resolves to 2026-02-01, before the previous edition ended (2026-02-09) — it recounts the 2026 edition's window"
+    }
+  ]
+}

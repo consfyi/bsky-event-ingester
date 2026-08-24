@@ -239,9 +239,12 @@ Rules:
   not 2027-09-01). One stated as already elapsed ("applications opened on March 3rd
   and closed on April 1st") resolves to its most recent occurrence ON OR BEFORE the
   post's date — but an elapsed date only sets a slot for the edition it actually
-  belongs to: when that occurrence falls before the previous edition ended, the post
-  is recounting the past edition's timeline, so do not extract it for an upcoming
-  edition. Never borrow the year from the edition under discussion;
+  belongs to: when that occurrence falls before that edition's previousEditionEnd
+  (given per edition in the payload; null when unknown), the post is recounting the
+  past edition's timeline, so do not extract it for an upcoming edition — unless
+  the sentence explicitly names the later edition (a year or hashtag like
+  #FWA2027), in which case it is a retroactive announcement for that edition and
+  may be extracted. Never borrow the year from the edition under discussion;
   only a year stated in the date itself ("September 1st, 2027") overrides this.
 - Attribute to the correct edition via event_id. If the convention has MORE THAN ONE
   upcoming edition, only extract when the post carries explicit edition evidence
@@ -274,8 +277,9 @@ a different edition/year than the stated event (check the edition dates given �
 many months before the edition, especially one predating the convention's previous edition,
 almost certainly refers to that earlier edition unless it carries explicit evidence like a year
 or hashtag); the claimed date is stated as already elapsed and falls before the stated
-edition's own plausible application timeline (e.g. before the previous edition ended) — it
-belongs to an earlier edition; the "closing" is soft ("closing soon", "almost sold out") with no explicit date;
+edition's previousEditionEnd (given in the edition object; null when unknown) — it
+belongs to an earlier edition, unless the post explicitly names the stated edition
+(year or hashtag); the "closing" is soft ("closing soon", "almost sold out") with no explicit date;
 the date is not explicitly stated in the post; the category is a stretch per the definitions;
 the deadline applies only to already-accepted applicants; the "close" or "open" is actually a
 temporary pause or a resumption of something already open; the post is a reminder that
@@ -1237,7 +1241,11 @@ def extract_for_con(con, events, posts, tz="UTC"):
     # Post timestamps go to the model in the venue's local time (CON-50): a US
     # con posting "today" at 9 PM ET is already tomorrow in UTC.
     local_posts = [{**p, "asOf": localize_timestamp(p.get("asOf"), tz)[0]} for p in posts]
-    payload = {"convention": con["name"], "timezone": tz, "editions": events, "posts": local_posts}
+    # the elapsed-date lower bound in EXTRACT_SYSTEM references each edition's
+    # previousEditionEnd — thread the fact in so the model evaluates given data
+    # instead of guessing when the previous edition ended
+    editions = [{**e, "previousEditionEnd": previous_edition_end(con, e["id"])} for e in events]
+    payload = {"convention": con["name"], "timezone": tz, "editions": editions, "posts": local_posts}
     while (len(payload["posts"]) > 1
            and estimate_tokens(EXTRACT_SYSTEM, json.dumps(payload, ensure_ascii=False))
                > MODEL_MAX_REQUEST_TOKENS):
@@ -1264,7 +1272,8 @@ def verify_proposals(proposals, cache):
         return {
             "index": i,
             "convention": p["_con_name"],
-            "edition": {"id": p["event_id"], "startDate": p["_ev_dates"][0], "endDate": p["_ev_dates"][1]},
+            "edition": {"id": p["event_id"], "startDate": p["_ev_dates"][0], "endDate": p["_ev_dates"][1],
+                        "previousEditionEnd": p.get("_prev_end")},
             "sibling_upcoming_editions": p["_siblings"],
             "claim": {k2: p[k2] for k2 in ("category", "kind", "date", "confidence")},
             "post_text": p["_post_text"],
@@ -1414,6 +1423,7 @@ def process_con(fn, cache, rejections, provided_posts=None, extra_post=None):
         if already and already.get("date") == d["date"]:
             continue  # same date already recorded; re-announcements add nothing, save the verify calls
         prev_end = previous_edition_end(con, d["event_id"])
+        d["_prev_end"] = prev_end  # verify_item threads it to VERIFY_SYSTEM's lower-bound rule
         if prev_end and (d["asOf"] or "")[:10] <= prev_end:
             d["_file"] = os.path.basename(fn)
             d["_verdicts"] = [{"model": "mechanical", "verdict": "refute",
@@ -1509,7 +1519,8 @@ def render_summary(all_changes, all_refuted, all_held, all_rejected, skipped_not
         lines.append("\n### Refuted by verification (not applied)")
         for p in all_refuted:
             reason = next((v["reason"] for v in p["_verdicts"] if v["verdict"] == "refute"), "")
-            lines.append(f"- `{p['event_id']}` {p['category']}.{p['kind']} {p['date']} — {md_inline(reason, 160)}")
+            lines.append(f"- `{md_inline(p['event_id'], 60)}` {md_inline(p['category'], 20)}.{md_inline(p['kind'], 10)} "
+                         f"{md_inline(p['date'], 20)} — {md_inline(reason, 160)}")
     if all_rejected:
         lines.append("\n### Skipped — matches an entry in keydates_rejections.json")
         for p in all_rejected:
@@ -1735,6 +1746,12 @@ def main():
         # a backstop drop on the re-apply path prunes the ledger entry; without
         # this it would vanish from the rolling PR with no body-visible trace
         all_refuted += ledger_drops
+        if ledger_drops:
+            # a run whose ONLY outcome is a ledger backstop drop changes no
+            # files, so publish() bails and the PR body never shows it — page
+            # ops so the drop still reaches a human (ops_notify length-caps)
+            ops_notify(f"⚠️ keydates: {len(ledger_drops)} outstanding entr(ies) dropped "
+                       "on re-apply (endDate moved earlier upstream) — see the run summary.")
 
     removals, account_flags, bulk_flags, pending, pins = [], [], [], [], []
     if args.sweep:

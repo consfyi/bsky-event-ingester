@@ -769,6 +769,40 @@ class MainSmokeTest(unittest.TestCase):
         self.assertNotIn("### Applied", body)
         self.assertIn("Source post deleted", body)
 
+    def test_ledger_backstop_drop_lands_in_refuted_summary_and_pages_ops(self):
+        # CON-55 round 4: an outstanding ledger entry invalidated by an
+        # upstream endDate change is dropped by merge()'s backstop on the
+        # re-apply path; main() must fold it into the Refuted summary section
+        # AND page ops — such a run changes no files, so publish() would bail
+        # and the drop would otherwise vanish without a trace
+        with open(os.path.join(self.data_dir, "con-a.json"), "w") as f:
+            json.dump({"events": [{"id": "testcon-2999", "name": "Testcon 2999",
+                                   "startDate": "2999-01-01", "endDate": "2999-01-05"}]}, f)
+        os.makedirs(os.path.dirname(kw.OUTSTANDING_FILE), exist_ok=True)
+        with open(kw.OUTSTANDING_FILE, "w") as f:
+            json.dump({"testcon-2999|panels|opens": {
+                "event_id": "testcon-2999", "category": "panels", "kind": "opens",
+                "date": "2999-02-01", "source": did_entry("3aaa")["source"],
+                "asOf": "2998-12-01T00:00:00.000Z", "confidence": 0.9,
+                "_file": "con-a.json", "_post_text": "post"}}, f)
+        ok = unittest.mock.Mock(returncode=0, stdout="")
+        with unittest.mock.patch.object(
+                 kw, "process_con", return_value=([], [], [], [], True)), \
+             unittest.mock.patch.object(
+                 kw, "check_source_liveness", return_value=([], [], [], [], [])), \
+             unittest.mock.patch.object(kw, "publish") as publish, \
+             unittest.mock.patch.object(kw, "ops_notify") as notify, \
+             unittest.mock.patch.object(kw.subprocess, "run", return_value=ok):
+            kw.main()
+        with open(self.summary_file) as f:
+            body = f.read()
+        self.assertIn("### Refuted by verification (not applied)", body)
+        self.assertIn("2999-02-01", body)
+        publish.assert_not_called()  # no file changes — the ops page is the only signal
+        self.assertTrue(any("dropped" in str(c.args[0]) and "re-apply" in str(c.args[0])
+                            for c in notify.call_args_list),
+                        f"no ledger-drop ops page in {notify.call_args_list}")
+
     def test_pins_only_sweep_still_formats_and_publishes(self):
         # CON-26 backfill case: a sweep whose only outcome is DID-pinning must
         # still format the touched files and publish — otherwise the rewritten
@@ -1140,13 +1174,15 @@ class AfterEndGuardTest(unittest.TestCase):
         self.assertEqual(len(changes), 1)
 
     def test_null_date_ledger_entry_does_not_crash(self):
-        # a ledger entry can carry date: None (save_outstanding uses .get);
-        # merge() must skip it entirely — no crash, no change, and never a
-        # date: null written into the con file
-        con = make_con({})
-        changes = kw.merge(con, [proposal(None, "3bbb")])
-        self.assertEqual(changes, [])
-        self.assertNotIn("keyDates", con["events"][0])
+        # a ledger entry can carry date: None or "" (save_outstanding uses
+        # .get); merge() must skip both entirely — no crash, no change, and
+        # never a date: null/"" written into the con file
+        for bad in (None, ""):
+            with self.subTest(date=bad):
+                con = make_con({})
+                changes = kw.merge(con, [proposal(bad, "3bbb")])
+                self.assertEqual(changes, [])
+                self.assertNotIn("keyDates", con["events"][0])
 
     def test_process_con_refutes_after_end_before_verify(self):
         # the pre-verify layer: an after-endDate proposal is refuted
@@ -1210,6 +1246,55 @@ class AfterEndGuardTest(unittest.TestCase):
         self.assertEqual(refuted, [])
 
 
+class PrevEditionEndPayloadTest(unittest.TestCase):
+    """CON-55 round 4: the prompts' elapsed-date lower bound references
+    previousEditionEnd, so both model payloads must actually carry it."""
+
+    def test_extract_and_verify_payloads_carry_previous_edition_end(self):
+        con = make_con({})
+        # a past edition (excluded from upcoming_events) supplies the bound
+        con["events"].append({"id": "testcon-2998", "name": "Testcon 2998",
+                              "startDate": "2026-01-02", "endDate": "2026-01-05"})
+        post = {"url": did_entry("3abc")["source"], "asOf": "2999-05-01T00:00:00.000Z",
+                "text": "dealer applications close June 1"}
+        sent = {}
+
+        def fake_chat(model, system, user, schema, name):
+            sent[name] = json.loads(user)
+            if name == "keydates":
+                return {"dates": [{"event_id": "testcon-2999", "category": "dealers",
+                                   "kind": "closes", "date": FUTURE,
+                                   "source": post["url"], "confidence": 0.95}]}
+            return {"verdicts": [{"index": 0, "verdict": "confirm", "reason": "ok"}]}
+
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        fn = os.path.join(tmp.name, "testcon.json")
+        with open(fn, "w") as f:
+            json.dump(con, f)
+        with unittest.mock.patch.object(kw, "chat", side_effect=fake_chat), \
+             unittest.mock.patch.object(kw, "DRY_RUN", True), \
+             unittest.mock.patch.object(kw, "load_event_timezones", return_value={}):
+            kw.process_con(fn, {}, [], provided_posts=[post])
+        self.assertEqual(sent["keydates"]["editions"][0]["previousEditionEnd"], "2026-01-05")
+        self.assertEqual(sent["verdicts"]["items"][0]["edition"]["previousEditionEnd"],
+                         "2026-01-05")
+
+    def test_previous_edition_end_null_when_no_prior_edition(self):
+        editions = [{"id": "e", "name": "E", "startDate": "2999-01-01", "endDate": "2999-02-01"}]
+        captured = {}
+
+        def fake_chat(model, system, user, schema, name):
+            captured["user"] = json.loads(user)
+            return {"dates": []}
+
+        with unittest.mock.patch.object(kw, "chat", side_effect=fake_chat):
+            kw.extract_for_con({"name": "T", "events": editions}, editions,
+                               [{"asOf": "2999-01-01T00:00:00Z", "text": "hi",
+                                 "url": "https://bsky.app/profile/x/post/3a"}])
+        self.assertIsNone(captured["user"]["editions"][0]["previousEditionEnd"])
+
+
 class PromptRuleTest(unittest.TestCase):
     """CON-55: the bare month-day rule lives in the prompts; a prompt refactor
     that drops it must fail a test. Pin its distinguishing phrases."""
@@ -1218,12 +1303,18 @@ class PromptRuleTest(unittest.TestCase):
         self.assertIn("next occurrence on or after the post's date", kw.EXTRACT_SYSTEM)
         self.assertIn("most recent occurrence ON OR BEFORE", kw.EXTRACT_SYSTEM)
         # the elapsed-date lower bound: dates before the previous edition's
-        # end describe the past edition, not the upcoming one
-        self.assertIn("before the previous edition ended", kw.EXTRACT_SYSTEM)
+        # end describe the past edition, not the upcoming one — evaluated
+        # against the previousEditionEnd field the payload provides, with an
+        # escape hatch for posts that explicitly name the later edition
+        flat = " ".join(kw.EXTRACT_SYSTEM.split())
+        self.assertIn("falls before that edition's previousEditionEnd", flat)
+        self.assertIn("unless the sentence explicitly names the later edition", flat)
 
     def test_verify_prompt_carries_elapsed_lower_bound(self):
-        self.assertIn("before the previous edition ended", kw.VERIFY_SYSTEM)
-        self.assertIn("belongs to an earlier edition", kw.VERIFY_SYSTEM)
+        flat = " ".join(kw.VERIFY_SYSTEM.split())
+        self.assertIn("before the stated edition's previousEditionEnd", flat)
+        self.assertIn("belongs to an earlier edition", flat)
+        self.assertIn("unless the post explicitly names the stated edition", flat)
 
 
 class FixtureSmokeTest(unittest.TestCase):
@@ -1243,6 +1334,9 @@ class FixtureSmokeTest(unittest.TestCase):
             if "expect_absent" in fx:  # optional; validate shape when present
                 self.assertIsInstance(fx["expect_absent"], list,
                                       f"{name}: expect_absent must be a list")
+            # a fixture that expects nothing and forbids nothing asserts nothing
+            self.assertTrue(fx.get("expect") or fx.get("expect_absent"),
+                            f"{name}: at least one of expect/expect_absent must be non-empty")
             self.assertTrue(fx["posts"], f"{name}: no posts")
             for p in fx["posts"]:
                 for key in ("url", "createdAt", "text"):
