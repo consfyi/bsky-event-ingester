@@ -1526,8 +1526,12 @@ def md_reason(text, cap):
     """md_inline plus square-bracket neutralization for model-authored or
     mechanical reasons rendered OUTSIDE a code span: a [x](y) payload in a
     reason cannot render as a disguised-label link. A bare URL may still
-    autolink, but its destination stays visible."""
-    return md_inline(text, cap).replace("[", "(").replace("]", ")")
+    autolink, but its destination stays visible. Angle brackets are
+    neutralized too: GitHub renders a subset of raw HTML in PR bodies, so a
+    smuggled <a href> would otherwise render as a disguised-label link."""
+    return (md_inline(text, cap)
+            .replace("[", "(").replace("]", ")")
+            .replace("<", "(").replace(">", ")"))
 
 
 def render_summary(all_changes, all_refuted, all_held, all_rejected, skipped_note,

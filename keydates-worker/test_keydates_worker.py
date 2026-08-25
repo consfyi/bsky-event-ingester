@@ -524,7 +524,7 @@ class SummaryTest(unittest.TestCase):
                 "_verdicts": [{"model": "mechanical", "verdict": "refute",
                                "reason": "test"}]}
         body = kw.render_summary([], [evil], [], [], "")
-        refuted_lines = [l for l in body.splitlines() if l.startswith("- `")]
+        refuted_lines = [line for line in body.splitlines() if line.startswith("- `")]
         self.assertEqual(len(refuted_lines), 1)  # payload can't mint a second entry
         # exactly the two wrapping backticks survive — the payload's own
         # backticks were neutralized, so the code span can't be closed early
@@ -555,17 +555,26 @@ class SummaryTest(unittest.TestCase):
                   "date": "2999-02-01",
                   "_verdicts": [{"model": "m1", "verdict": "refute",
                                  "reason": "[go](http://e.co)"}]}
+        # GitHub renders a subset of raw HTML in PR bodies, so a smuggled
+        # <a href> is the same disguised-label class — md_reason neutralizes
+        # angle brackets too
+        html = {"event_id": "testcon-2999", "category": "panels", "kind": "opens",
+                "date": "2999-03-01",
+                "_verdicts": [{"model": "m1", "verdict": "refute",
+                               "reason": '<a href="http://e.co">approve</a>'}]}
         # the Held section renders model-authored reasons outside a code span
         # too — same md_reason neutralization applies
         held = {"event_id": "testcon-2999", "category": "panels", "kind": "opens",
                 "date": "2999-02-01",
                 "_verdicts": [{"model": "m1", "verdict": "hold",
                                "reason": "[go](http://e.co)"}]}
-        body = kw.render_summary([], dropped + [direct], [held], [], "")
+        body = kw.render_summary([], [*dropped, direct, html], [held], [], "")
         for line in body.splitlines():
             # nothing renderable as a live link outside a code span: the text
             # after a line's last backtick (the whole line when it has none)
-            self.assertNotIn("](http", line.rsplit("`", 1)[-1])
+            tail = line.rsplit("`", 1)[-1]
+            self.assertNotIn("](http", tail)
+            self.assertNotIn("<a ", tail)
 
     def test_md_link_fallback_span_cannot_be_closed_by_payload_backticks(self):
         # a non-bsky url falls back to a code span; backticks inside the url
