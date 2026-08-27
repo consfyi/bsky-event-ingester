@@ -221,9 +221,9 @@ DO NOT extract (these are the known failure classes — none of them qualify):
   ("our Overflow Hotel opens June 14th") — a subordinated block never sets
   hotel dates; when the post does not distinguish, treat it as the main block
 - a SINGLE named competition's applications ("Dance Competition applications
-  open") when the post indicates broader performance signups are separate or
-  still to come; when the named competition IS the con's performance signup,
-  it does set performances dates
+  open") ONLY when the post indicates broader performance signups are separate
+  or still to come — by default a named competition's signup DOES set
+  performances dates
 - at-the-door / day-of registration for the edition currently running ("doors
   are open", on-site badge pickup or registration desk hours) — walk-up sales
   on con days are not registration opening; but an at-con announcement that a
@@ -290,8 +290,9 @@ Strict category definitions:
   NOT tier- or lottery-qualified phases (sponsor/patron/VIP/residential registration, lottery
   windows) — a qualified tier never opens or closes general registration, but a post that
   closes general/pre-reg sales and merely lists which tiers disappear with it IS a hard
-  close. NOT at-the-door / day-of sales or check-in during the edition currently running,
-  and NOT a during- or post-con recap that registration "is now closed".
+  close. NOT at-the-door / day-of opens or check-in during the edition currently running
+  (a definitive attendee sell-out is still a hard close, even mid-con), and NOT a
+  during- or post-con recap that registration "is now closed".
 - hotel = room block / hotel booking open or close only. NOT event-suite lotteries, and NOT
   "sold out" posts — a full block is not a booking close date. NOT a block the post itself
   marks as secondary, overflow, or added later; when the post does not distinguish, it

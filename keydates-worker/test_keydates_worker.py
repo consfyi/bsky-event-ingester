@@ -1645,7 +1645,10 @@ class PromptRuleTest(unittest.TestCase):
         self.assertIn("treat it as the main block", flat)
         # r1-05: a named competition is excluded only when broader signups are separate
         self.assertIn("broader performance signups are separate or still to come", flat)
-        self.assertIn("it does set performances dates", flat)
+        # r3-03: extract states the same default as verify — a named competition's
+        # signup IS the performances slot unless the post itself signals otherwise
+        self.assertIn("by default a named competition's signup DOES set performances dates",
+                      flat)
 
     def test_extract_prompt_carries_onsite_and_recap_rules(self):
         # CON-31: day-of check-in is not an open; a during-con recap is not a close
@@ -1695,7 +1698,11 @@ class PromptRuleTest(unittest.TestCase):
         self.assertIn("posted during or after the edition the claim belongs to", flat)
         self.assertIn("dated by the post rather than explicitly stated in it", flat)
         # r1-03: the registration definition's own on-site and recap sentences
-        self.assertIn("day-of sales or check-in during the edition currently running", flat)
+        self.assertIn("day-of opens or check-in during the edition currently running", flat)
+        # r3-02: the day-of exclusion is scoped to opens/check-in — a definitive
+        # sell-out stays a hard close even while the con is running
+        self.assertIn("a definitive attendee sell-out is still a hard close, even mid-con",
+                      flat)
         self.assertIn('a during- or post-con recap that registration "is now closed"', flat)
 
     def test_prompts_carry_injection_guard(self):
@@ -1827,13 +1834,15 @@ class FixtureSmokeTest(unittest.TestCase):
         for name in names:
             with open(os.path.join(self.FIXTURES_DIR, name)) as f:
                 raw = f.read()
-            fx, resolved = self._resolve_today(json.loads(raw))
-            if resolved:
-                # token-dated fixtures must always resolve to a live edition
-                upcoming = {e["id"] for e in kw.upcoming_events(fx["con"])}
-                for item in fx.get("expect", []) + fx.get("expect_absent", []):
-                    self.assertIn(item["event_id"], upcoming,
-                                  f"{name}: TODAY-relative edition fell out of upcoming_events")
+            fx, _ = self._resolve_today(json.loads(raw))
+            # r3-05: every fixture — token-dated or static — must target a live
+            # edition, so a static fixture fails loudly on its decay date
+            # instead of its expect/expect_absent checks going vacuous
+            upcoming = {e["id"] for e in kw.upcoming_events(fx["con"])}
+            for item in fx.get("expect", []) + fx.get("expect_absent", []):
+                self.assertIn(item["event_id"], upcoming,
+                              f"{name}: edition fell out of upcoming_events — "
+                              "refresh the fixture (see its description)")
             for key in ("con", "posts", "expect"):
                 self.assertIn(key, fx, f"{name}: missing {key}")
             for item in fx["expect"]:

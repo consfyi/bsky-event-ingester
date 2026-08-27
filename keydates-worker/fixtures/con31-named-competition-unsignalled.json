@@ -1,7 +1,7 @@
 {
   "issue": "CON-31",
   "synthetic": true,
-  "description": "A named competition's applications with NO signal that broader performance signups are separate — the shape of the live calfurry post. Accepted trade-off (CON-31 round 2): prompts can only use knowledge inside the post, so an unsignalled named competition DOES set performances dates by default; the calfurry false-positive class is caught only when the post itself signals separate or upcoming broader signups (see con31-named-competition.json). Static-dated because the expected closes date comes from an absolute month-day in the text; once exampcon-2026 ends (2026-11-08) the edition falls out of upcoming_events() and these expectations start failing — refresh the dates then.",
+  "description": "A named competition's applications with NO signal that broader performance signups are separate — the shape of the live calfurry post. Accepted trade-off (CON-31 round 2): prompts can only use knowledge inside the post, so an unsignalled named competition DOES set performances dates by default; the calfurry false-positive class is caught only when the post itself signals separate or upcoming broader signups (see con31-named-competition.json). Static-dated because the expected closes date comes from an absolute month-day in the text; once exampcon-2026 ends (2026-11-08) the edition falls out of upcoming_events() and the suite fails on this fixture — refresh the dates then.",
   "con": {
     "name": "Exampcon",
     "bluesky": {"did": "did:plc:aaaaaaaaaaaaaaaaaaaaaaaa"},

@@ -1,7 +1,7 @@
 {
   "issue": "CON-31",
   "synthetic": true,
-  "description": "Day-of at-the-door check-in is not registration.opens, and a during-con \"registration is now officially closed\" recap is not registration.closes. Modeled on eufuria, where a 07-23 doors-open post (the con's first day) produced registration.opens and a 07-25 closing-ceremonies recap produced registration.closes. Dates are TODAY-relative tokens so the con is always currently running — a fixed past edition would be filtered by upcoming_events() and the expect_absent checks would pass vacuously.",
+  "description": "Day-of at-the-door check-in is not registration.opens, and a during-con \"registration is now officially closed\" recap is not registration.closes. Modeled on eufuria, where a 07-23 doors-open post (the con's first day) produced registration.opens and a 07-25 closing-ceremonies recap produced registration.closes. Dates are TODAY-relative tokens so the con is always currently running — a fixed past edition would be filtered by upcoming_events() and the expect_absent checks would pass vacuously. The edition ends TODAY+0 so the closing-ceremonies recap lands on its last day; upcoming_events()'s 2-day grace keeps it live.",
   "con": {
     "name": "Exampcon",
     "bluesky": {"did": "did:plc:aaaaaaaaaaaaaaaaaaaaaaaa"},
@@ -10,7 +10,7 @@
         "id": "exampcon-current",
         "name": "Exampcon",
         "startDate": "TODAY-2",
-        "endDate": "TODAY+1"
+        "endDate": "TODAY+0"
       }
     ]
   },
