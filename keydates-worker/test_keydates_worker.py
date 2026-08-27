@@ -676,11 +676,14 @@ class SummaryTest(unittest.TestCase):
         rej = {"event_id": "[go](http://e.co)", "category": "[go](http://e.co)",
                "kind": "opens", "date": "[go](http://e.co)",
                "_reason": '<a href="http://e.co">x</a> [go](http://e.co)'}
-        rem = {"_file": "testcon.json", "event_id": "[go](http://e.co)",
+        # _file is a con-file name too — hostile filename must not render a
+        # live link in the bold field either (Applied/liveness) nor in pins
+        rem = {"_file": "[go](http://e.co).json", "event_id": "[go](http://e.co)",
                "category": "[go](http://e.co)", "kind": "opens",
                "date": "[go](http://e.co)", "asOf": '<a href="http://e.co">x</a>',
                "source": did_entry("3aaa")["source"]}
-        body = kw.render_summary([], [], [], [rej], "", removals=[rem], pending=[rem])
+        body = kw.render_summary([], [], [], [rej], "", removals=[rem], pending=[rem],
+                                 pins=[rem])
         # the payloads really rode through into the body (inside code spans)
         self.assertIn("go", body)
         for line in body.splitlines():

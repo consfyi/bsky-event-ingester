@@ -1579,10 +1579,10 @@ def render_summary(all_changes, all_refuted, all_held, all_rejected, skipped_not
             # rendering defensive like the Refuted section): id tuple in one
             # code span, post text through md_post so a [x](y) or <a href> in
             # a post cannot render as a disguised-label link (CON-56/CON-58)
-            lines.append(f"\n**{md_inline(c['_file'], 60)}** — {md_id(c['event_id'], c['category'], c['kind'])} → "
+            lines.append(f"\n**{md_post(c['_file'], 60)}** — {md_id(c['event_id'], c['category'], c['kind'])} → "
                          f"**{md_inline(c['date'], 20)}** ({md_post(c['verb'], 60)}, conf {c['confidence']})")
             lines.append(f"> {md_post(c['_post_text'], 400)}")
-            lines.append(f"> — {md_link('source post', c['source'])} at {md_inline(c['asOf'], 40)}")
+            lines.append(f"> — {md_link('source post', c['source'])} at {md_post(c['asOf'], 40)}")
             if c.get("_prev"):
                 prev = c["_prev"]
                 # prev date/asOf are con-file text; md_post (not md_inline) so a
@@ -1594,7 +1594,7 @@ def render_summary(all_changes, all_refuted, all_held, all_rejected, skipped_not
         lines.append("\n### Held — verifier disagreement or same-run conflict, needs a human (`/reject` or hand-apply)")
         for p in all_held:
             lines.append(f"- {md_id(p['event_id'], p['category'], p['kind'], p['date'])} — {md_link('post', p.get('source'))} — " +
-                         "; ".join(f"{v['model'].split('/')[-1]}: {md_inline(v['verdict'], 20)} ({md_reason(v['reason'], 120)})" for v in p["_verdicts"]))
+                         "; ".join(f"{v['model'].split('/')[-1]}: {md_reason(v['verdict'], 20)} ({md_reason(v['reason'], 120)})" for v in p["_verdicts"]))
     if all_refuted:
         lines.append("\n### Refuted by verification (not applied)")
         for p in all_refuted:
@@ -1615,23 +1615,23 @@ def render_summary(all_changes, all_refuted, all_held, all_rejected, skipped_not
     if removals:
         lines.append("\n### Source post deleted — entry removed (no replacement seen)")
         for r in removals:
-            lines.append(f"- **{md_inline(r['_file'], 60)}** — {md_id(r['event_id'], r['category'], r['kind'], r.get('date'))} — "
+            lines.append(f"- **{md_post(r['_file'], 60)}** — {md_id(r['event_id'], r['category'], r['kind'], r.get('date'))} — "
                          f"{md_link('deleted source', r['source'])}, was asOf {md_post(r.get('asOf'), 40)}")
     if pending:
         lines.append("\n### Source post missing — will remove next sweep if still gone")
         for r in pending:
-            lines.append(f"- **{md_inline(r['_file'], 60)}** — {md_id(r['event_id'], r['category'], r['kind'], r.get('date'))} — "
+            lines.append(f"- **{md_post(r['_file'], 60)}** — {md_id(r['event_id'], r['category'], r['kind'], r.get('date'))} — "
                          f"{md_link('missing source', r['source'])}")
     if account_flags:
         lines.append("\n### Source account unreachable — entries left untouched (deactivated/suspended?)")
         for r in account_flags:
-            lines.append(f"- **{md_inline(r['_file'], 60)}** — {md_id(r['event_id'], r['category'], r['kind'], r.get('date'))} — "
+            lines.append(f"- **{md_post(r['_file'], 60)}** — {md_id(r['event_id'], r['category'], r['kind'], r.get('date'))} — "
                          f"{md_link('source', r['source'])}")
     if bulk_flags:
         lines.append("\n### Every source post missing but account is live — held, needs a human "
                      "(account migration? re-source or hand-remove; nothing was auto-removed)")
         for r in bulk_flags:
-            lines.append(f"- **{md_inline(r['_file'], 60)}** — {md_id(r['event_id'], r['category'], r['kind'], r.get('date'))} — "
+            lines.append(f"- **{md_post(r['_file'], 60)}** — {md_id(r['event_id'], r['category'], r['kind'], r.get('date'))} — "
                          f"{md_link('source', r['source'])}")
     if pins:
         lines.append("\n### Source URLs pinned to account DID (migration-proofing; no date changes)")
@@ -1639,7 +1639,7 @@ def render_summary(all_changes, all_refuted, all_held, all_rejected, skipped_not
         for r in pins:
             counts[r["_file"]] = counts.get(r["_file"], 0) + 1
         for f_name, n in sorted(counts.items()):
-            lines.append(f"- **{md_inline(f_name, 60)}** — {n} source URL(s) pinned")
+            lines.append(f"- **{md_post(f_name, 60)}** — {n} source URL(s) pinned")
     if skipped_note:
         lines.append(f"\n_{skipped_note}_")
     body = "\n".join(lines)
