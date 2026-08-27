@@ -1779,8 +1779,8 @@ class FixtureSmokeTest(unittest.TestCase):
     def _resolve_today(cls, fx):
         """Resolve TODAY±N tokens in fx's date fields in place.
 
-        Returns (fx, resolved) where resolved lists the tokens replaced, so
-        callers can tell whether the fixture is token-dated at all."""
+        Returns (fx, resolved) where resolved lists the tokens replaced;
+        the resolver test uses it to tell token-dated from static fixtures."""
         resolved = []
         for ev in fx.get("con", {}).get("events", []):
             for key in ("startDate", "endDate"):
@@ -1817,8 +1817,9 @@ class FixtureSmokeTest(unittest.TestCase):
         self.assertEqual(fx["posts"][0]["text"],
                          "REGISTRATION CLOSES TODAY at midnight")
         self.assertEqual(fx["description"], "TODAY+1 in prose stays put")
-        # a token-less fixture reports itself as such, so the liveness
-        # assertion isn't forced on fixtures that merely mention the word
+        # a token-less fixture reports an empty resolved list — the
+        # distinction only matters to this resolver test, since the liveness
+        # assertion below runs for every fixture
         static = {"posts": [{"createdAt": "2026-08-20T18:00:00.000Z",
                              "text": "closes TODAY"}]}
         _, resolved2 = self._resolve_today(static)
