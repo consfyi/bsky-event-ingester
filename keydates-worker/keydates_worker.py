@@ -281,7 +281,10 @@ or hashtag); the claimed date is stated as already elapsed and falls before the 
 edition's previousEditionEnd (given in the edition object; null when unknown) — it
 belongs to an earlier edition, unless the post explicitly names the stated edition
 (a year or hashtag naming that stated edition — an earlier edition's year does not
-count); the "closing" is soft ("closing soon", "almost sold out") with no explicit date;
+count); the claim resolves a bare month-day announced as UPCOMING to a later year
+than its next occurrence on or after post_timestamp — the year was borrowed from
+the edition under discussion instead of the post's own calendar (only a year stated
+in the date itself overrides this); the "closing" is soft ("closing soon", "almost sold out") with no explicit date;
 the date is not explicitly stated in the post; the category is a stretch per the definitions;
 the deadline applies only to already-accepted applicants; the "close" or "open" is actually a
 temporary pause or a resumption of something already open; the post is a reminder that
@@ -604,6 +607,12 @@ def fetch_posts(actor):
                   {"actor": actor, "limit": POSTS_PER_CON, "filter": "posts_no_replies"})
     out = []
     for it in feed.get("feed", []):
+        # posts_no_replies still includes REPOSTS (marked by a feed-item
+        # "reason"): a third party's post the con boosted is not the con's
+        # own announcement, and splicing the con's actor onto the foreign
+        # rkey below would fabricate a dead source URL (CON-57)
+        if it.get("reason"):
+            continue
         p = it.get("post", {})
         rec = p.get("record", {})
         txt = (rec.get("text") or "").strip()
@@ -1522,16 +1531,24 @@ def md_link(label, url):
     return "`" + md_inline(url or "(no source)", 200) + "`"
 
 
-def md_reason(text, cap):
-    """md_inline plus square-bracket neutralization for model-authored or
-    mechanical reasons rendered OUTSIDE a code span: a [x](y) payload in a
-    reason cannot render as a disguised-label link. A bare URL may still
-    autolink, but its destination stays visible. Angle brackets are
-    neutralized too: GitHub renders a subset of raw HTML in PR bodies, so a
-    smuggled <a href> would otherwise render as a disguised-label link."""
+def md_post(text, cap):
+    """Attacker-authored display text (quoted post bodies) rendered outside a
+    code span: neutralize markdown link syntax AND raw HTML — GitHub renders a
+    subset of raw HTML in PR bodies, so both [x](y) and <a href> would render
+    as disguised-label links (CON-58). Bare URLs still autolink with the
+    destination visible, which quoted posts legitimately contain."""
     return (md_inline(text, cap)
             .replace("[", "(").replace("]", ")")
             .replace("<", "(").replace(">", ")"))
+
+
+def md_reason(text, cap):
+    """Model-authored or mechanical reasons: md_post's neutralization plus a
+    code span, so even a bare URL cannot autolink — unlike a quoted post, a
+    reason has no legitimate need for live links (CON-56). md_inline already
+    stripped backticks, so the payload cannot close the span."""
+    inner = md_post(text, cap)
+    return f"`{inner}`" if inner else ""
 
 
 def render_summary(all_changes, all_refuted, all_held, all_rejected, skipped_note,
@@ -1541,8 +1558,15 @@ def render_summary(all_changes, all_refuted, all_held, all_rejected, skipped_not
     if all_changes:
         lines.append("\n### Applied (unanimously verified — `/reject <event> <category>.<kind>` to drop a bad entry for good)")
         for c in all_changes:
-            lines.append(f"\n**{c['_file']}** — `{c['event_id']}` {c['category']}.{c['kind']} → **{c['date']}** ({c['verb']}, conf {c['confidence']})")
-            lines.append(f"> {md_inline(c['_post_text'], 400)}")
+            # ledger re-applies land here without this run's passes_guardrails
+            # (they were validated by merge()'s wholesale guard, but keep the
+            # rendering defensive like the Refuted section): id tuple in one
+            # code span, post text through md_post so a [x](y) or <a href> in
+            # a post cannot render as a disguised-label link (CON-56/CON-58)
+            lines.append(f"\n**{md_inline(c['_file'], 60)}** — `{md_inline(c['event_id'], 60)} "
+                         f"{md_inline(c['category'], 20)}.{md_inline(c['kind'], 10)}` → "
+                         f"**{md_inline(c['date'], 20)}** ({c['verb']}, conf {c['confidence']})")
+            lines.append(f"> {md_post(c['_post_text'], 400)}")
             lines.append(f"> — {md_link('source post', c['source'])} at {md_inline(c['asOf'], 40)}")
             if c.get("_prev"):
                 prev = c["_prev"]
@@ -1552,7 +1576,8 @@ def render_summary(all_changes, all_refuted, all_held, all_rejected, skipped_not
     if all_held:
         lines.append("\n### Held — verifier disagreement or same-run conflict, needs a human (`/reject` or hand-apply)")
         for p in all_held:
-            lines.append(f"- `{p['event_id']}` {p['category']}.{p['kind']} {p['date']} — {md_link('post', p.get('source'))} — " +
+            lines.append(f"- `{md_inline(p['event_id'], 60)} {md_inline(p['category'], 20)}.{md_inline(p['kind'], 10)} "
+                         f"{md_inline(p['date'], 20)}` — {md_link('post', p.get('source'))} — " +
                          "; ".join(f"{v['model'].split('/')[-1]}: {v['verdict']} ({md_reason(v['reason'], 120)})" for v in p["_verdicts"]))
     if all_refuted:
         lines.append("\n### Refuted by verification (not applied)")
@@ -1563,10 +1588,8 @@ def render_summary(all_changes, all_refuted, all_held, all_rejected, skipped_not
             # fields are attacker-influenceable — render the whole id tuple in
             # ONE code span (md_inline neutralizes backticks so the span can't
             # be closed early; bare md_inline text could still smuggle [x](y)).
-            # The reason renders OUTSIDE the code span, so square brackets are
-            # also neutralized (md_reason) — a [x](y) payload riding a reason
-            # (mechanical or model-authored) cannot render as a disguised-label
-            # link; a bare URL may still autolink with its destination visible
+            # The reason gets md_reason: link syntax neutralized and wrapped in
+            # its own code span, so not even a bare URL can autolink
             lines.append(f"- `{md_inline(p['event_id'], 60)} {md_inline(p['category'], 20)}.{md_inline(p['kind'], 10)} "
                          f"{md_inline(p['date'], 20)}` — "
                          f"{md_reason(reason, 160)}")
