@@ -1832,9 +1832,10 @@ class FixtureSmokeTest(unittest.TestCase):
     def test_fixtures_parse_with_required_keys(self):
         names = [n for n in os.listdir(self.FIXTURES_DIR) if n.endswith(".json")]
         self.assertTrue(names)  # the directory must not silently go empty
+        decayed = []
         for name in names:
             with open(os.path.join(self.FIXTURES_DIR, name)) as f:
-                fx, _ = self._resolve_today(json.load(f))
+                fx, resolved = self._resolve_today(json.load(f))
             for key in ("con", "posts", "expect"):
                 self.assertIn(key, fx, f"{name}: missing {key}")
             for item in fx["expect"]:
@@ -1847,16 +1848,23 @@ class FixtureSmokeTest(unittest.TestCase):
                     for key in ("event_id", "category", "kind", "reason"):
                         self.assertIn(key, item,
                                       f"{name}: expect_absent item missing {key}")
-            # r3-05: every fixture — token-dated or static — must target a live
-            # edition, so a static fixture fails loudly on its decay date
-            # instead of its expect/expect_absent checks going vacuous. Runs
-            # after the shape checks so a missing key still gets its readable
-            # message above.
+            # r3-05: every fixture must target a live edition or say so out
+            # loud. A token-dated fixture that misses upcoming_events() is a
+            # bug in its tokens and fails; a static fixture that decayed only
+            # needs a refresh, and failing here would redden CI for every
+            # unrelated PR (ci.yml runs this suite as a required check), so
+            # decayed static fixtures are collected and surfaced as a visible
+            # unittest skip after the shape checks below. Vacuous silence,
+            # red shared gate: neither.
             upcoming = {e["id"] for e in kw.upcoming_events(fx["con"])}
             for item in fx.get("expect", []) + fx.get("expect_absent", []):
-                self.assertIn(item["event_id"], upcoming,
-                              f"{name}: edition fell out of upcoming_events — "
-                              "refresh the fixture (see its description)")
+                if item["event_id"] in upcoming:
+                    continue
+                if resolved:
+                    self.fail(f"{name}: TODAY-relative edition fell out of "
+                              "upcoming_events — fix the fixture's tokens")
+                decayed.append(name)
+                break
             # a fixture that expects nothing and forbids nothing asserts nothing
             self.assertTrue(fx.get("expect") or fx.get("expect_absent"),
                             f"{name}: at least one of expect/expect_absent must be non-empty")
@@ -1864,6 +1872,9 @@ class FixtureSmokeTest(unittest.TestCase):
             for p in fx["posts"]:
                 for key in ("url", "createdAt", "text"):
                     self.assertIn(key, p, f"{name}: post missing {key}")
+        if decayed:
+            self.skipTest("static fixtures decayed, refresh per their "
+                          f"descriptions: {', '.join(sorted(decayed))}")
 
 
 class OpensRecencyTest(unittest.TestCase):
@@ -2180,6 +2191,15 @@ class ChatErrorTest(unittest.TestCase):
 class BudgetInvariantTest(unittest.TestCase):
     """M1/F2: the default token budget reserves the output allowance so a whole
     request (input estimate + output) stays under the per-minute TPM cap."""
+
+    def test_system_prompts_leave_payload_room(self):
+        # CON-31 review: prompt growth is absorbed by the trim loops, so the
+        # only hard failure mode is a prompt so large the payload starves.
+        # Keep each system prompt under half the per-request input budget so
+        # the next prompt round can't silently squeeze the payload out.
+        for prompt in (kw.EXTRACT_SYSTEM, kw.VERIFY_SYSTEM):
+            self.assertLess(kw.estimate_tokens(prompt),
+                            kw.MODEL_MAX_REQUEST_TOKENS // 2)
 
     def test_default_budget_reserves_output(self):
         # if someone reverts the derivation to a payload-only bound, this fails

@@ -1,6 +1,6 @@
 {
   "issue": "CON-31",
-  "description": "A tier-qualified registration date must not close general registration. The live pipeline extracted registration.closes = 2026-08-28 from this post at confidence 1.0 and both verifiers confirmed; Patron is the $350 top sponsorship tier, and the register page shows general weekend pre-reg closes 2026-09-25 (Sponsor 2026-09-12). Rejected on data#102. Static-dated because it is a real captured post whose text must not be altered; once aquatifur-2026 ends (2026-10-11) the edition falls out of upcoming_events() and the suite fails on this fixture — refresh with a newer live capture then.",
+  "description": "A tier-qualified registration date must not close general registration. The live pipeline extracted registration.closes = 2026-08-28 from this post at confidence 1.0 and both verifiers confirmed; Patron is the $350 top sponsorship tier, and the register page shows general weekend pre-reg closes 2026-09-25 (Sponsor 2026-09-12). Rejected on data#102. Static-dated because it is a real captured post whose text must not be altered; once aquatifur-2026 ends (2026-10-11) the edition falls out of upcoming_events() and the suite skips this fixture with a visible reason — refresh with a newer live capture then.",
   "con": {
     "name": "AquatiFur",
     "bluesky": {"did": "did:plc:efgqcoutfj3rxzkeihyaz26q"},
