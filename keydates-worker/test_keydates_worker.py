@@ -572,11 +572,11 @@ class SummaryTest(unittest.TestCase):
                                "reason": "[go](http://e.co)"}]}
         body = kw.render_summary([], [*dropped, direct, html], [held], [], "")
         for line in body.splitlines():
-            # nothing renderable as a live link outside a code span: the text
-            # after a line's last backtick (the whole line when it has none)
-            tail = line.rsplit("`", 1)[-1]
-            self.assertNotIn("](http", tail)
-            self.assertNotIn("<a ", tail)
+            # nothing renderable as a live link outside a code span: split on
+            # backticks, even segments are the bare (markdown-rendered) portions
+            for bare in line.split("`")[0::2]:
+                self.assertNotIn("](http", bare)
+                self.assertNotIn("<a ", bare)
 
     def test_applied_section_renders_post_text_and_ids_inert(self):
         # CON-58: the quoted post body is attacker-authored (the con's account,
@@ -600,6 +600,28 @@ class SummaryTest(unittest.TestCase):
                 self.assertNotIn("<a ", bare)
         quote = next(l2 for l2 in body.splitlines() if l2.startswith("> reg opens"))
         self.assertIn("(click here)(http://e.co)", quote)  # visible but inert
+
+        # r1-01: the amend verb embeds the PRIOR con-file date, and _prev carries
+        # the prior date + asOf — all con-file text. Drive a REAL merge() amend so
+        # a [x](y)/<a href> payload rides existing['date']/asOf, then assert the
+        # Applied render keeps it inert (nothing live outside a code span).
+        con = make_con({"registration": {"closes": {
+            "date": "[go](http://e.co)",
+            "source": did_entry("3aaa")["source"],
+            "asOf": '<a href="http://e.co">x</a>', "confidence": 0.9}}},
+            end_date="2999-12-31")
+        newer = {**proposal("2999-07-15", "3bbb", asof="zzzz-newer",
+                            slot=("testcon-2999", "registration", "closes")),
+                 "_file": "testcon.json", "_post_text": "deadline extended"}
+        amended = kw.merge(con, [newer])
+        self.assertEqual(len(amended), 1)
+        self.assertIn("[go](http://e.co)", amended[0]["verb"])          # payload rode the verb
+        self.assertEqual(amended[0]["_prev"]["asOf"], '<a href="http://e.co">x</a>')  # and _prev asOf
+        amend_body = kw.render_summary(amended, [], [], [], "")
+        for line in amend_body.splitlines():
+            for bare in line.split("`")[0::2]:
+                self.assertNotIn("](http://e.co", bare)
+                self.assertNotIn("<a ", bare)
 
     def test_bare_url_in_reason_cannot_autolink(self):
         # CON-56: reasons render in their own code span, so even a bare URL
@@ -629,6 +651,52 @@ class SummaryTest(unittest.TestCase):
         body = kw.render_summary([], [], [], [], "", removals=[r], account_flags=[r],
                                  pending=[r])
         self.assertIn("testcon-2999", body)
+
+    def test_held_id_tuple_cannot_escape_code_span(self):
+        # r1-03: Held id fields are con-file/ledger text; a [x](y) or <a href>
+        # in event_id/category must render INSIDE the code span, never live.
+        # Catches a revert of md_id here to a bare (non-code-span) id format.
+        link = {"event_id": "[go](http://e.co)", "category": "[go](http://e.co)",
+                "kind": "opens", "date": "2999-01-01",
+                "_verdicts": [{"model": "m1", "verdict": "hold", "reason": "why"}]}
+        html = {"event_id": '<a href="http://e.co">x</a>',
+                "category": '<a href="http://e.co">x</a>', "kind": "opens",
+                "date": "2999-01-01",
+                "_verdicts": [{"model": "m1", "verdict": "hold", "reason": "why"}]}
+        body = kw.render_summary([], [], [link, html], [], "")
+        for line in body.splitlines():
+            for bare in line.split("`")[0::2]:
+                self.assertNotIn("](http://e.co", bare)
+                self.assertNotIn("<a ", bare)
+
+    def test_skipped_and_liveness_ids_render_inert(self):
+        # r1-02: the Skipped _reason (from keydates_rejections.json) and the
+        # liveness sections (removals/pending) print con-file/ledger text with
+        # no guardrail — id fields, date, asOf, and _reason must all stay inert
+        rej = {"event_id": "[go](http://e.co)", "category": "[go](http://e.co)",
+               "kind": "opens", "date": "[go](http://e.co)",
+               "_reason": '<a href="http://e.co">x</a> [go](http://e.co)'}
+        rem = {"_file": "testcon.json", "event_id": "[go](http://e.co)",
+               "category": "[go](http://e.co)", "kind": "opens",
+               "date": "[go](http://e.co)", "asOf": '<a href="http://e.co">x</a>',
+               "source": did_entry("3aaa")["source"]}
+        body = kw.render_summary([], [], [], [rej], "", removals=[rem], pending=[rem])
+        # the payloads really rode through into the body (inside code spans)
+        self.assertIn("go", body)
+        for line in body.splitlines():
+            for bare in line.split("`")[0::2]:
+                self.assertNotIn("](http://e.co", bare)
+                self.assertNotIn("<a ", bare)
+
+    def test_refuted_without_refute_verdict_has_no_empty_code_span(self):
+        # r1-08: reason defaults to "" when no verdict is a refute; md_reason
+        # returns "" (not an empty ``), so the line carries no stray code span
+        refuted = {"event_id": "testcon-2999", "category": "panels", "kind": "opens",
+                   "date": "2999-02-01",
+                   "_verdicts": [{"model": "m1", "verdict": "hold", "reason": "x"}]}
+        body = kw.render_summary([], [refuted], [], [], "")
+        line = next(l2 for l2 in body.splitlines() if "2999-02-01" in l2)
+        self.assertNotIn("``", line)
 
 
 class SourceIdentTest(unittest.TestCase):
@@ -667,6 +735,13 @@ class SourceIdentTest(unittest.TestCase):
                       "author": {"did": other},
                       "record": {"text": "registration closes September 1st",
                                  "createdAt": "2998-12-02"}}},
+            # a #reasonPin item is the con's OWN post pinned to its profile —
+            # not a boosted foreign post, so it must be KEPT (CON-57)
+            {"reason": {"$type": "app.bsky.feed.defs#reasonPin"},
+             "post": {"uri": f"at://{DID}/app.bsky.feed.post/3pin",
+                      "author": {"did": DID},
+                      "record": {"text": "registration opens in June",
+                                 "createdAt": "2998-12-03"}}},
             {"post": {"uri": f"at://{DID}/app.bsky.feed.post/3abc",
                       "author": {"did": DID},
                       "record": {"text": "registration opens tomorrow",
@@ -675,7 +750,8 @@ class SourceIdentTest(unittest.TestCase):
         with unittest.mock.patch.object(kw, "appget", lambda method, params: feed):
             posts = kw.fetch_posts(DID)
         self.assertEqual([p["url"] for p in posts],
-                         [f"https://bsky.app/profile/{DID}/post/3abc"])
+                         [f"https://bsky.app/profile/{DID}/post/3pin",
+                          f"https://bsky.app/profile/{DID}/post/3abc"])
 
     def test_handle_form_rejection_suppresses_did_form_candidate(self):
         # a /reject recorded before pinning must keep suppressing the same post

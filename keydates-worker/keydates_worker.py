@@ -607,11 +607,12 @@ def fetch_posts(actor):
                   {"actor": actor, "limit": POSTS_PER_CON, "filter": "posts_no_replies"})
     out = []
     for it in feed.get("feed", []):
-        # posts_no_replies still includes REPOSTS (marked by a feed-item
-        # "reason"): a third party's post the con boosted is not the con's
-        # own announcement, and splicing the con's actor onto the foreign
-        # rkey below would fabricate a dead source URL (CON-57)
-        if it.get("reason"):
+        # posts_no_replies still includes REPOSTS (a feed-item "reason" of
+        # #reasonRepost): a third party's post the con boosted is not the con's
+        # own announcement, and splicing the con's actor onto the foreign rkey
+        # below would fabricate a dead source URL (CON-57). Match only reposts,
+        # not #reasonPin — a con's own pinned post is legitimately its own.
+        if (it.get("reason") or {}).get("$type", "").endswith("#reasonRepost"):
             continue
         p = it.get("post", {})
         rec = p.get("record", {})
@@ -752,7 +753,10 @@ def merge(con, dates, dropped=None):
         if existing == new_val:
             continue
         cat[d["kind"]] = new_val
-        verb = f"amend {existing['date']} -> {d['date']}" if existing and existing.get("date") != d["date"] else ("update" if existing else "add")
+        # md_inline existing['date'] at construction: it is con-file text, so a
+        # tampered value can't smuggle whitespace/backticks into the verb that
+        # render_summary prints (matches the after-end drop reason above)
+        verb = f"amend {md_inline(existing['date'], 20)} -> {d['date']}" if existing and existing.get("date") != d["date"] else ("update" if existing else "add")
         change = {**d, "verb": verb}
         if existing and existing.get("date") != d["date"]:
             # recency-wins reminder for the PR body: the human sees what was
@@ -1551,6 +1555,18 @@ def md_reason(text, cap):
     return f"`{inner}`" if inner else ""
 
 
+def md_id(event_id, category, kind, date=None):
+    """The event-id tuple (and optional date) in ONE code span, each field
+    md_inline'd so a backtick can't close the span early and no field can
+    smuggle a live [x](y) link out of it. These are all con-file/ledger values
+    — attacker-influenceable under this project's threat model — so every
+    render_summary section that prints an id tuple routes it through here."""
+    inner = f"{md_inline(event_id, 60)} {md_inline(category, 20)}.{md_inline(kind, 10)}"
+    if date is not None:
+        inner += f" {md_inline(date, 20)}"
+    return f"`{inner}`"
+
+
 def render_summary(all_changes, all_refuted, all_held, all_rejected, skipped_note,
                    removals=(), account_flags=(), bulk_flags=(), pending=(), pins=()):
     lines = ["## Key dates from Bluesky", ""]
@@ -1563,22 +1579,22 @@ def render_summary(all_changes, all_refuted, all_held, all_rejected, skipped_not
             # rendering defensive like the Refuted section): id tuple in one
             # code span, post text through md_post so a [x](y) or <a href> in
             # a post cannot render as a disguised-label link (CON-56/CON-58)
-            lines.append(f"\n**{md_inline(c['_file'], 60)}** — `{md_inline(c['event_id'], 60)} "
-                         f"{md_inline(c['category'], 20)}.{md_inline(c['kind'], 10)}` → "
-                         f"**{md_inline(c['date'], 20)}** ({c['verb']}, conf {c['confidence']})")
+            lines.append(f"\n**{md_inline(c['_file'], 60)}** — {md_id(c['event_id'], c['category'], c['kind'])} → "
+                         f"**{md_inline(c['date'], 20)}** ({md_post(c['verb'], 60)}, conf {c['confidence']})")
             lines.append(f"> {md_post(c['_post_text'], 400)}")
             lines.append(f"> — {md_link('source post', c['source'])} at {md_inline(c['asOf'], 40)}")
             if c.get("_prev"):
                 prev = c["_prev"]
-                lines.append(f"> ⚠️ recency-wins: this replaced **{md_inline(prev.get('date'), 40)}** "
-                             f"({md_link('previous post', prev.get('source'))}, asOf {md_inline(prev.get('asOf'), 40)}) — "
+                # prev date/asOf are con-file text; md_post (not md_inline) so a
+                # [x](y)/<a href> in them can't render as a live link (r1-01)
+                lines.append(f"> ⚠️ recency-wins: this replaced **{md_post(prev.get('date'), 40)}** "
+                             f"({md_link('previous post', prev.get('source'))}, asOf {md_post(prev.get('asOf'), 40)}) — "
                              f"a different sign-up rather than a correction? `/reject` this date and hand-restore the old one.")
     if all_held:
         lines.append("\n### Held — verifier disagreement or same-run conflict, needs a human (`/reject` or hand-apply)")
         for p in all_held:
-            lines.append(f"- `{md_inline(p['event_id'], 60)} {md_inline(p['category'], 20)}.{md_inline(p['kind'], 10)} "
-                         f"{md_inline(p['date'], 20)}` — {md_link('post', p.get('source'))} — " +
-                         "; ".join(f"{v['model'].split('/')[-1]}: {v['verdict']} ({md_reason(v['reason'], 120)})" for v in p["_verdicts"]))
+            lines.append(f"- {md_id(p['event_id'], p['category'], p['kind'], p['date'])} — {md_link('post', p.get('source'))} — " +
+                         "; ".join(f"{v['model'].split('/')[-1]}: {md_inline(v['verdict'], 20)} ({md_reason(v['reason'], 120)})" for v in p["_verdicts"]))
     if all_refuted:
         lines.append("\n### Refuted by verification (not applied)")
         for p in all_refuted:
@@ -1590,33 +1606,32 @@ def render_summary(all_changes, all_refuted, all_held, all_rejected, skipped_not
             # be closed early; bare md_inline text could still smuggle [x](y)).
             # The reason gets md_reason: link syntax neutralized and wrapped in
             # its own code span, so not even a bare URL can autolink
-            lines.append(f"- `{md_inline(p['event_id'], 60)} {md_inline(p['category'], 20)}.{md_inline(p['kind'], 10)} "
-                         f"{md_inline(p['date'], 20)}` — "
+            lines.append(f"- {md_id(p['event_id'], p['category'], p['kind'], p['date'])} — "
                          f"{md_reason(reason, 160)}")
     if all_rejected:
         lines.append("\n### Skipped — matches an entry in keydates_rejections.json")
         for p in all_rejected:
-            lines.append(f"- `{p['event_id']}` {p['category']}.{p['kind']} {p['date']} — {p.get('_reason','')}")
+            lines.append(f"- {md_id(p['event_id'], p['category'], p['kind'], p['date'])} — {md_reason(p.get('_reason',''), 160)}")
     if removals:
         lines.append("\n### Source post deleted — entry removed (no replacement seen)")
         for r in removals:
-            lines.append(f"- **{r['_file']}** — `{r['event_id']}` {r['category']}.{r['kind']} {r.get('date')} — "
-                         f"{md_link('deleted source', r['source'])}, was asOf {md_inline(r.get('asOf'), 40)}")
+            lines.append(f"- **{md_inline(r['_file'], 60)}** — {md_id(r['event_id'], r['category'], r['kind'], r.get('date'))} — "
+                         f"{md_link('deleted source', r['source'])}, was asOf {md_post(r.get('asOf'), 40)}")
     if pending:
         lines.append("\n### Source post missing — will remove next sweep if still gone")
         for r in pending:
-            lines.append(f"- **{r['_file']}** — `{r['event_id']}` {r['category']}.{r['kind']} {r.get('date')} — "
+            lines.append(f"- **{md_inline(r['_file'], 60)}** — {md_id(r['event_id'], r['category'], r['kind'], r.get('date'))} — "
                          f"{md_link('missing source', r['source'])}")
     if account_flags:
         lines.append("\n### Source account unreachable — entries left untouched (deactivated/suspended?)")
         for r in account_flags:
-            lines.append(f"- **{r['_file']}** — `{r['event_id']}` {r['category']}.{r['kind']} {r.get('date')} — "
+            lines.append(f"- **{md_inline(r['_file'], 60)}** — {md_id(r['event_id'], r['category'], r['kind'], r.get('date'))} — "
                          f"{md_link('source', r['source'])}")
     if bulk_flags:
         lines.append("\n### Every source post missing but account is live — held, needs a human "
                      "(account migration? re-source or hand-remove; nothing was auto-removed)")
         for r in bulk_flags:
-            lines.append(f"- **{r['_file']}** — `{r['event_id']}` {r['category']}.{r['kind']} {r.get('date')} — "
+            lines.append(f"- **{md_inline(r['_file'], 60)}** — {md_id(r['event_id'], r['category'], r['kind'], r.get('date'))} — "
                          f"{md_link('source', r['source'])}")
     if pins:
         lines.append("\n### Source URLs pinned to account DID (migration-proofing; no date changes)")
@@ -1624,7 +1639,7 @@ def render_summary(all_changes, all_refuted, all_held, all_rejected, skipped_not
         for r in pins:
             counts[r["_file"]] = counts.get(r["_file"], 0) + 1
         for f_name, n in sorted(counts.items()):
-            lines.append(f"- **{f_name}** — {n} source URL(s) pinned")
+            lines.append(f"- **{md_inline(f_name, 60)}** — {n} source URL(s) pinned")
     if skipped_note:
         lines.append(f"\n_{skipped_note}_")
     body = "\n".join(lines)
