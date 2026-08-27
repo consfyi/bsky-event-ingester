@@ -1834,16 +1834,7 @@ class FixtureSmokeTest(unittest.TestCase):
         self.assertTrue(names)  # the directory must not silently go empty
         for name in names:
             with open(os.path.join(self.FIXTURES_DIR, name)) as f:
-                raw = f.read()
-            fx, _ = self._resolve_today(json.loads(raw))
-            # r3-05: every fixture — token-dated or static — must target a live
-            # edition, so a static fixture fails loudly on its decay date
-            # instead of its expect/expect_absent checks going vacuous
-            upcoming = {e["id"] for e in kw.upcoming_events(fx["con"])}
-            for item in fx.get("expect", []) + fx.get("expect_absent", []):
-                self.assertIn(item["event_id"], upcoming,
-                              f"{name}: edition fell out of upcoming_events — "
-                              "refresh the fixture (see its description)")
+                fx, _ = self._resolve_today(json.load(f))
             for key in ("con", "posts", "expect"):
                 self.assertIn(key, fx, f"{name}: missing {key}")
             for item in fx["expect"]:
@@ -1856,6 +1847,16 @@ class FixtureSmokeTest(unittest.TestCase):
                     for key in ("event_id", "category", "kind", "reason"):
                         self.assertIn(key, item,
                                       f"{name}: expect_absent item missing {key}")
+            # r3-05: every fixture — token-dated or static — must target a live
+            # edition, so a static fixture fails loudly on its decay date
+            # instead of its expect/expect_absent checks going vacuous. Runs
+            # after the shape checks so a missing key still gets its readable
+            # message above.
+            upcoming = {e["id"] for e in kw.upcoming_events(fx["con"])}
+            for item in fx.get("expect", []) + fx.get("expect_absent", []):
+                self.assertIn(item["event_id"], upcoming,
+                              f"{name}: edition fell out of upcoming_events — "
+                              "refresh the fixture (see its description)")
             # a fixture that expects nothing and forbids nothing asserts nothing
             self.assertTrue(fx.get("expect") or fx.get("expect_absent"),
                             f"{name}: at least one of expect/expect_absent must be non-empty")

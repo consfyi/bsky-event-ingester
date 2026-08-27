@@ -121,7 +121,7 @@ VERIFY_BATCH = 8
 # Groq free tier is token-per-minute limited (8000 TPM for gpt-oss). A request is
 # billed prompt + max_tokens against that window, so the trim/pace budget must
 # reserve the output allowance — not just fit the payload. (EXTRACT_SYSTEM is
-# ~1180 tokens; the request's OUTPUT allowance is the big reservation.)
+# ~1600 tokens (VERIFY_SYSTEM ~1280); the request's OUTPUT allowance is the big reservation.)
 MODEL_TPM = int(os.environ.get("MODEL_TPM", "8000"))
 MODEL_MAX_OUTPUT_TOKENS = int(os.environ.get("MODEL_MAX_OUTPUT_TOKENS", "3000"))
 # per-request INPUT budget for payload trimming: reserve the output allowance the
