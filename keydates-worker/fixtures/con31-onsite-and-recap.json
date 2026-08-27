@@ -7,8 +7,8 @@
     "bluesky": {"did": "did:plc:aaaaaaaaaaaaaaaaaaaaaaaa"},
     "events": [
       {
-        "id": "exampcon-2026",
-        "name": "Exampcon 2026",
+        "id": "exampcon-current",
+        "name": "Exampcon",
         "startDate": "TODAY-2",
         "endDate": "TODAY+1"
       }
@@ -30,13 +30,13 @@
   "expect": [],
   "expect_absent": [
     {
-      "event_id": "exampcon-2026",
+      "event_id": "exampcon-current",
       "category": "registration",
       "kind": "opens",
       "reason": "day-of at-the-door check-in on the con's first day is walk-up logistics, not a registration opening"
     },
     {
-      "event_id": "exampcon-2026",
+      "event_id": "exampcon-current",
       "category": "registration",
       "kind": "closes",
       "reason": "a closing-ceremonies recap that registration \"is now officially closed\" restates something that already ended; it is not a close dated by the post"

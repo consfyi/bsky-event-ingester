@@ -1,16 +1,16 @@
 {
   "issue": "CON-31",
   "synthetic": true,
-  "description": "A secondary/overflow hotel opening must not set the general hotel slot. Modeled on tails-of-summer, where the Overflow Hotel's 06-14 opening was picked over the main room block's 06-10.",
+  "description": "A secondary/overflow hotel opening must not set the general hotel slot. Modeled on tails-of-summer, where the Overflow Hotel's opening was picked over the main room block's earlier one. Dates are TODAY-relative tokens so the edition never falls out of upcoming_events(); the post dates its opening with a weekday (\"this Sunday\") so the text stays coherent with the floating dates.",
   "con": {
     "name": "Exampcon",
     "bluesky": {"did": "did:plc:aaaaaaaaaaaaaaaaaaaaaaaa"},
     "events": [
       {
-        "id": "exampcon-2026",
-        "name": "Exampcon 2026",
-        "startDate": "2026-09-18",
-        "endDate": "2026-09-20"
+        "id": "exampcon-current",
+        "name": "Exampcon",
+        "startDate": "TODAY+100",
+        "endDate": "TODAY+102"
       }
     ]
   },
@@ -18,17 +18,17 @@
   "posts": [
     {
       "url": "https://bsky.app/profile/did:plc:aaaaaaaaaaaaaaaaaaaaaaaa/post/3synth31overflow",
-      "createdAt": "2026-06-08T16:00:00.000Z",
-      "text": "Wow, our main hotel block filled up fast! Good news: we've secured an Overflow Hotel across the street. Overflow bookings open June 14th at noon."
+      "createdAt": "TODAY+0T16:00:00.000Z",
+      "text": "Wow, our main hotel block filled up fast! Good news: we've secured an Overflow Hotel across the street. Overflow bookings open this Sunday at noon."
     }
   ],
   "expect": [],
   "expect_absent": [
     {
-      "event_id": "exampcon-2026",
+      "event_id": "exampcon-current",
       "category": "hotel",
       "kind": "opens",
-      "reason": "June 14th opens the overflow hotel, a qualified sub-instance — only the main room block sets hotel dates"
+      "reason": "this Sunday opens the overflow hotel, a qualified sub-instance — only the main room block sets hotel dates"
     }
   ]
 }

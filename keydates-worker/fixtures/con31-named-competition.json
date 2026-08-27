@@ -1,16 +1,16 @@
 {
   "issue": "CON-31",
   "synthetic": true,
-  "description": "One named competition's applications must not open or close the general performances slot. Modeled on calfurry, where \"Dance Competition applications\" set the performances category even though the con runs broader performance signups.",
+  "description": "One named competition's applications must not open or close the general performances slot when the post itself signals that broader performance signups are separate or still to come. This is the SIGNALLED variant of the calfurry case — the live calfurry post carried no such signal and by the CON-31 round-2 decision extracts as performances by default; see con31-named-competition-unsignalled.json. Dates are TODAY-relative tokens so the edition never falls out of upcoming_events(); the post uses relative wording (\"open now\", \"next Friday\") so its text stays coherent with the floating dates.",
   "con": {
     "name": "Exampcon",
     "bluesky": {"did": "did:plc:aaaaaaaaaaaaaaaaaaaaaaaa"},
     "events": [
       {
-        "id": "exampcon-2026",
-        "name": "Exampcon 2026",
-        "startDate": "2026-11-06",
-        "endDate": "2026-11-08"
+        "id": "exampcon-current",
+        "name": "Exampcon",
+        "startDate": "TODAY+78",
+        "endDate": "TODAY+80"
       }
     ]
   },
@@ -18,20 +18,20 @@
   "posts": [
     {
       "url": "https://bsky.app/profile/did:plc:aaaaaaaaaaaaaaaaaaaaaaaa/post/3synth31dance",
-      "createdAt": "2026-08-20T18:00:00.000Z",
-      "text": "Think you've got the moves? Dance Competition applications are open now through September 5th! Performer and variety show signups will be announced separately."
+      "createdAt": "TODAY+0T18:00:00.000Z",
+      "text": "Think you've got the moves? Dance Competition applications are open now through next Friday! Performer and variety show signups will be announced separately."
     }
   ],
   "expect": [],
   "expect_absent": [
     {
-      "event_id": "exampcon-2026",
+      "event_id": "exampcon-current",
       "category": "performances",
       "kind": "closes",
-      "reason": "September 5th closes one named competition's applications, not the con's general performance/variety signups (announced separately)"
+      "reason": "next Friday closes one named competition's applications, not the con's general performance/variety signups (announced separately)"
     },
     {
-      "event_id": "exampcon-2026",
+      "event_id": "exampcon-current",
       "category": "performances",
       "kind": "opens",
       "reason": "the \"open now\" is the named Dance Competition only; general performance signups are explicitly still to come"
