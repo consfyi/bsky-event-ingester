@@ -1630,6 +1630,34 @@ class PromptRuleTest(unittest.TestCase):
         # upcoming must not borrow a later edition's year
         self.assertIn("later year than its next occurrence", flat)
 
+    def test_extract_prompt_carries_sub_instance_qualifiers(self):
+        # CON-31: a tier-, overflow-, or named-competition-qualified date must
+        # not open or close the general category
+        flat = " ".join(kw.EXTRACT_SYSTEM.split())
+        self.assertIn("a qualified tier never opens or closes general registration", flat)
+        self.assertIn("only the MAIN room block sets hotel dates", flat)
+        self.assertIn("never opens or closes the performances category", flat)
+
+    def test_extract_prompt_carries_onsite_and_recap_rules(self):
+        # CON-31: day-of check-in is not an open; a during-con recap is not a close
+        flat = " ".join(kw.EXTRACT_SYSTEM.split())
+        self.assertIn("walk-up sales on con days are not registration opening", flat)
+        self.assertIn("a recap of something that already ended is not a close dated by the post",
+                      flat)
+
+    def test_verify_prompt_carries_sub_instance_refutes(self):
+        # CON-31: the same qualifier discrimination on the verify side
+        flat = " ".join(kw.VERIFY_SYSTEM.split())
+        self.assertIn("a qualified tier never closes general registration", flat)
+        self.assertIn("only the MAIN room block counts", flat)
+        self.assertIn("standing in for general performance submissions", flat)
+        self.assertIn("applies only to a qualified sub-instance", flat)
+
+    def test_verify_prompt_carries_onsite_and_recap_refutes(self):
+        flat = " ".join(kw.VERIFY_SYSTEM.split())
+        self.assertIn("at-the-door or day-of registration during the con itself", flat)
+        self.assertIn("retrospective recap posted during or after the con", flat)
+
 
 class CacheKeyTest(unittest.TestCase):
     """r4-01: verdicts cached under an older VERIFY_SYSTEM (90-day TTL) must not

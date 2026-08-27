@@ -1,0 +1,45 @@
+{
+  "issue": "CON-31",
+  "synthetic": true,
+  "description": "Day-of at-the-door check-in is not registration.opens, and a during-con \"registration is now officially closed\" recap is not registration.closes. Modeled on eufuria, where a 07-23 doors-open post (the con's first day) produced registration.opens and a 07-25 closing-ceremonies recap produced registration.closes.",
+  "con": {
+    "name": "Exampcon",
+    "bluesky": {"did": "did:plc:aaaaaaaaaaaaaaaaaaaaaaaa"},
+    "events": [
+      {
+        "id": "exampcon-2026",
+        "name": "Exampcon 2026",
+        "startDate": "2026-07-23",
+        "endDate": "2026-07-26"
+      }
+    ]
+  },
+  "timezone": "America/Chicago",
+  "posts": [
+    {
+      "url": "https://bsky.app/profile/did:plc:aaaaaaaaaaaaaaaaaaaaaaaa/post/3synth31doors",
+      "createdAt": "2026-07-23T14:00:00.000Z",
+      "text": "The doors are open! Come grab your at-the-door badge at the registration desk — we can't wait to see you this weekend!"
+    },
+    {
+      "url": "https://bsky.app/profile/did:plc:aaaaaaaaaaaaaaaaaaaaaaaa/post/3synth31recap",
+      "createdAt": "2026-07-25T22:00:00.000Z",
+      "text": "What a weekend it's been! As of closing ceremonies, registration is now officially closed. Thank you to every single attendee — see you next year!"
+    }
+  ],
+  "expect": [],
+  "expect_absent": [
+    {
+      "event_id": "exampcon-2026",
+      "category": "registration",
+      "kind": "opens",
+      "reason": "day-of at-the-door check-in on the con's first day is walk-up logistics, not a registration opening"
+    },
+    {
+      "event_id": "exampcon-2026",
+      "category": "registration",
+      "kind": "closes",
+      "reason": "a closing-ceremonies recap that registration \"is now officially closed\" restates something that already ended; it is not a close dated by the post"
+    }
+  ]
+}

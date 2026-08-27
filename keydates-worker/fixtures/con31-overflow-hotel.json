@@ -1,0 +1,34 @@
+{
+  "issue": "CON-31",
+  "synthetic": true,
+  "description": "A secondary/overflow hotel opening must not set the general hotel slot. Modeled on tails-of-summer, where the Overflow Hotel's 06-14 opening was picked over the main room block's 06-10.",
+  "con": {
+    "name": "Exampcon",
+    "bluesky": {"did": "did:plc:aaaaaaaaaaaaaaaaaaaaaaaa"},
+    "events": [
+      {
+        "id": "exampcon-2026",
+        "name": "Exampcon 2026",
+        "startDate": "2026-09-18",
+        "endDate": "2026-09-20"
+      }
+    ]
+  },
+  "timezone": "America/Chicago",
+  "posts": [
+    {
+      "url": "https://bsky.app/profile/did:plc:aaaaaaaaaaaaaaaaaaaaaaaa/post/3synth31overflow",
+      "createdAt": "2026-06-08T16:00:00.000Z",
+      "text": "Wow, our main hotel block filled up fast! Good news: we've secured an Overflow Hotel across the street. Overflow bookings open June 14th at noon."
+    }
+  ],
+  "expect": [],
+  "expect_absent": [
+    {
+      "event_id": "exampcon-2026",
+      "category": "hotel",
+      "kind": "opens",
+      "reason": "June 14th opens the overflow hotel, a qualified sub-instance — only the main room block sets hotel dates"
+    }
+  ]
+}
