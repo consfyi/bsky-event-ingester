@@ -613,7 +613,8 @@ def fetch_posts(actor):
         # below would fabricate a dead source URL (CON-57). Match only reposts,
         # not #reasonPin — a con's own pinned post is legitimately its own.
         reason = it.get("reason")
-        if isinstance(reason, dict) and reason.get("$type", "").endswith("#reasonRepost"):
+        rtype = reason.get("$type") if isinstance(reason, dict) else None
+        if isinstance(rtype, str) and rtype.endswith("#reasonRepost"):
             continue
         p = it.get("post", {})
         rec = p.get("record", {})

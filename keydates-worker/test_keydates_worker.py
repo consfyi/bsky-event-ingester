@@ -753,6 +753,14 @@ class SourceIdentTest(unittest.TestCase):
                       "author": {"did": DID},
                       "record": {"text": "registration opens in June",
                                  "createdAt": "2998-12-03"}}},
+            # a malformed reason ($type present but None) must not crash the
+            # whole feed — the item is kept, not skipped, and later posts still
+            # process
+            {"reason": {"$type": None},
+             "post": {"uri": f"at://{DID}/app.bsky.feed.post/3mal",
+                      "author": {"did": DID},
+                      "record": {"text": "registration opens in May",
+                                 "createdAt": "2998-12-04"}}},
             {"post": {"uri": f"at://{DID}/app.bsky.feed.post/3abc",
                       "author": {"did": DID},
                       "record": {"text": "registration opens tomorrow",
@@ -762,6 +770,7 @@ class SourceIdentTest(unittest.TestCase):
             posts = kw.fetch_posts(DID)
         self.assertEqual([p["url"] for p in posts],
                          [f"https://bsky.app/profile/{DID}/post/3pin",
+                          f"https://bsky.app/profile/{DID}/post/3mal",
                           f"https://bsky.app/profile/{DID}/post/3abc"])
 
     def test_handle_form_rejection_suppresses_did_form_candidate(self):
