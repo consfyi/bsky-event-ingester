@@ -615,13 +615,21 @@ class SummaryTest(unittest.TestCase):
                  "_file": "testcon.json", "_post_text": "deadline extended"}
         amended = kw.merge(con, [newer])
         self.assertEqual(len(amended), 1)
-        self.assertIn("[go](http://e.co)", amended[0]["verb"])          # payload rode the verb
-        self.assertEqual(amended[0]["_prev"]["asOf"], '<a href="http://e.co">x</a>')  # and _prev asOf
+        # the payload rode the prior date, but merge() neutralizes it at verb
+        # construction (md_post), so the stored verb is already inert
+        self.assertIn("(go)(http://e.co)", amended[0]["verb"])
+        self.assertNotIn("[go](http://e.co)", amended[0]["verb"])
+        self.assertEqual(amended[0]["_prev"]["asOf"], '<a href="http://e.co">x</a>')  # _prev asOf raw until render
         amend_body = kw.render_summary(amended, [], [], [], "")
         for line in amend_body.splitlines():
             for bare in line.split("`")[0::2]:
                 self.assertNotIn("](http://e.co", bare)
                 self.assertNotIn("<a ", bare)
+        # the literal "->" arrow must survive: verb is rendered raw (not md_post'd
+        # again), so md_post's ">"→")" rewrite can't corrupt it to "-)"
+        amend_line = next(l2 for l2 in amend_body.splitlines() if "amend " in l2)
+        self.assertIn(" -> ", amend_line)
+        self.assertNotIn(" -) ", amend_line)
 
     def test_bare_url_in_reason_cannot_autolink(self):
         # CON-56: reasons render in their own code span, so even a bare URL

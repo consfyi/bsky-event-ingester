@@ -753,10 +753,12 @@ def merge(con, dates, dropped=None):
         if existing == new_val:
             continue
         cat[d["kind"]] = new_val
-        # md_inline existing['date'] at construction: it is con-file text, so a
-        # tampered value can't smuggle whitespace/backticks into the verb that
-        # render_summary prints (matches the after-end drop reason above)
-        verb = f"amend {md_inline(existing['date'], 20)} -> {d['date']}" if existing and existing.get("date") != d["date"] else ("update" if existing else "add")
+        # md_post existing['date'] at construction: it is con-file text, so a
+        # tampered value can't smuggle link syntax/backticks into the verb that
+        # render_summary prints raw. Neutralize the DATE, not the whole verb —
+        # md_post rewrites ">", which would corrupt the literal "->" arrow.
+        # d['date'] is DATE_RE-clean (passes_guardrails), so it needs none.
+        verb = f"amend {md_post(existing['date'], 20)} -> {d['date']}" if existing and existing.get("date") != d["date"] else ("update" if existing else "add")
         change = {**d, "verb": verb}
         if existing and existing.get("date") != d["date"]:
             # recency-wins reminder for the PR body: the human sees what was
@@ -1562,7 +1564,7 @@ def md_id(event_id, category, kind, date=None):
     — attacker-influenceable under this project's threat model — so every
     render_summary section that prints an id tuple routes it through here."""
     inner = f"{md_inline(event_id, 60)} {md_inline(category, 20)}.{md_inline(kind, 10)}"
-    if date is not None:
+    if date:  # falsy (None or "") omits the field rather than trailing a space
         inner += f" {md_inline(date, 20)}"
     return f"`{inner}`"
 
@@ -1580,7 +1582,7 @@ def render_summary(all_changes, all_refuted, all_held, all_rejected, skipped_not
             # code span, post text through md_post so a [x](y) or <a href> in
             # a post cannot render as a disguised-label link (CON-56/CON-58)
             lines.append(f"\n**{md_post(c['_file'], 60)}** — {md_id(c['event_id'], c['category'], c['kind'])} → "
-                         f"**{md_inline(c['date'], 20)}** ({md_post(c['verb'], 60)}, conf {c['confidence']})")
+                         f"**{md_inline(c['date'], 20)}** ({c['verb']}, conf {c['confidence']})")
             lines.append(f"> {md_post(c['_post_text'], 400)}")
             lines.append(f"> — {md_link('source post', c['source'])} at {md_post(c['asOf'], 40)}")
             if c.get("_prev"):
