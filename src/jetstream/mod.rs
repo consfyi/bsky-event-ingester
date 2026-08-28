@@ -84,8 +84,10 @@ pub const RELAY_BUFFER: usize = 32_768;
 
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
+    // boxed: tungstenite::Error is large enough to trip clippy's
+    // result_large_err on every Result<_, Error> in this module
     #[error("tungstenite: {0}")]
-    Tungstenite(#[from] tokio_tungstenite::tungstenite::Error),
+    Tungstenite(Box<tokio_tungstenite::tungstenite::Error>),
 
     #[error("serde_json: {0}")]
     SerdeJson(#[from] serde_json::Error),
@@ -101,6 +103,14 @@ pub enum Error {
 
     #[error("pong write timed out after {0:?}")]
     WriteTimeout(std::time::Duration),
+}
+
+// hand-written so `?` keeps converting bare tungstenite errors; #[from] on the
+// boxed variant would only accept an already-boxed error
+impl From<tokio_tungstenite::tungstenite::Error> for Error {
+    fn from(e: tokio_tungstenite::tungstenite::Error) -> Self {
+        Self::Tungstenite(Box::new(e))
+    }
 }
 
 /// When the socket behind a `connect()` stream ended, measured by the relay
