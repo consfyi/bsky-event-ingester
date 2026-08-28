@@ -612,7 +612,8 @@ def fetch_posts(actor):
         # own announcement, and splicing the con's actor onto the foreign rkey
         # below would fabricate a dead source URL (CON-57). Match only reposts,
         # not #reasonPin — a con's own pinned post is legitimately its own.
-        if (it.get("reason") or {}).get("$type", "").endswith("#reasonRepost"):
+        reason = it.get("reason")
+        if isinstance(reason, dict) and reason.get("$type", "").endswith("#reasonRepost"):
             continue
         p = it.get("post", {})
         rec = p.get("record", {})
