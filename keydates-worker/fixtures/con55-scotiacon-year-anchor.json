@@ -1,0 +1,48 @@
+{
+  "issue": "CON-55",
+  "description": "Bare month-day in a future-edition post must resolve against the post date, not the edition's year. The live pipeline extracted djs.opens = 2027-09-01 (both verifiers confirmed at 0.95); the correct date is 2026-09-01. The same post also produced a panels.opens overreach that the verifier correctly refuted — keep that as the negative case.",
+  "con": {
+    "name": "Scotiacon",
+    "bluesky": {"did": "did:plc:ykiko7fa24cbv2bmffeylfys"},
+    "events": [
+      {
+        "id": "scotiacon-2027",
+        "name": "Scotiacon 2027",
+        "startDate": "2027-02-05",
+        "endDate": "2027-02-08"
+      }
+    ]
+  },
+  "timezone": "Europe/London",
+  "posts": [
+    {
+      "url": "https://bsky.app/profile/did:plc:ykiko7fa24cbv2bmffeylfys/post/3mttwaqonoc2t",
+      "createdAt": "2026-08-24T18:21:18.436Z",
+      "text": "Hi folks! We're grateful to the attendees that pitch events to be considered for our schedule each year and help to make Scotiacon the fantastic celebration of our community that it is.\n\nWe wanted to let you know that we'll open for event & DJ set proposals for our 2027 con on September 1st at 7pm."
+    }
+  ],
+  "expect": [
+    {
+      "event_id": "scotiacon-2027",
+      "category": "djs",
+      "kind": "opens",
+      "date": "2026-09-01",
+      "source": "https://bsky.app/profile/did:plc:ykiko7fa24cbv2bmffeylfys/post/3mttwaqonoc2t"
+    }
+  ],
+  "expect_absent": [
+    {
+      "event_id": "scotiacon-2027",
+      "category": "panels",
+      "kind": "opens",
+      "reason": "\"event & DJ set proposals\" never mentions panel/programming submissions"
+    },
+    {
+      "event_id": "scotiacon-2027",
+      "category": "djs",
+      "kind": "opens",
+      "date": "2027-09-01",
+      "reason": "year borrowed from \"our 2027 con\" — seven months after the edition ends"
+    }
+  ]
+}

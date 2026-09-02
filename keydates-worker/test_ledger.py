@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Functional test for reapply_outstanding(): replays the production clobber
 scenario from consfyi/bsky-event-ingester#17 without git, gh, or model calls."""
+import datetime
 import importlib.util
 import json
 import os
@@ -18,8 +19,15 @@ spec = importlib.util.spec_from_file_location(
 kw = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(kw)
 
-MAIN_A = {"events": [{"id": "con-a-2026", "startDate": "2026-09-01", "endDate": "2026-09-03"}]}
-MAIN_B = {"events": [{"id": "con-b-2026", "startDate": "2026-10-01", "endDate": "2026-10-03"}]}
+# edition dates derive from TODAY: reapply_outstanding prunes any entry whose
+# event ended more than 2 days ago, so hardcoded dates would silently stop
+# exercising merge() once the calendar passes them
+_A_START = kw.TODAY + datetime.timedelta(days=30)
+_B_START = kw.TODAY + datetime.timedelta(days=60)
+MAIN_A = {"events": [{"id": "con-a-2026", "startDate": _A_START.isoformat(),
+                      "endDate": (_A_START + datetime.timedelta(days=2)).isoformat()}]}
+MAIN_B = {"events": [{"id": "con-b-2026", "startDate": _B_START.isoformat(),
+                      "endDate": (_B_START + datetime.timedelta(days=2)).isoformat()}]}
 
 def write_main_state(extra_a=None):
     """Simulate sync_checkout_to_main(): files reset to origin/main."""
@@ -182,6 +190,45 @@ except Exception:
     crashed = True
     carried = None
 check("run13: dot _file dropped without crashing", not crashed and carried == [] and kw.load_outstanding() == {})
+
+# Run 14: an outstanding entry dated after its edition's endDate (wrong-year
+# anchoring, CON-55) hits merge()'s after-end backstop on re-apply: not carried,
+# not written to the con file, and pruned from the ledger — but the drop is
+# surfaced via the collector so the PR's Refuted section shows it.
+write_main_state()
+after_end = (_A_START + datetime.timedelta(days=20)).isoformat()
+save_ledger(change("con-a-2026", "con-a.json", after_end, "2026-07-01T00:00:00Z"))
+dropped = []
+carried = kw.reapply_outstanding([], [], dropped=dropped)
+check("run14: after-endDate entry not carried", carried == [])
+check("run14: after-endDate entry not written to file", "keyDates" not in read("con-a.json")["events"][0])
+check("run14: after-endDate entry pruned from ledger", kw.load_outstanding() == {})
+check("run14: drop surfaced with a mechanical refute verdict",
+      len(dropped) == 1 and dropped[0]["_verdicts"][0]["model"] == "mechanical"
+      and dropped[0]["_verdicts"][0]["verdict"] == "refute")
+check("run14: dropped entry renders in the Refuted section",
+      after_end in kw.render_summary([], dropped, [], [], ""))
+
+# Run 15: a corrupt ledger ENTRY (valid file, tampered/bogus field) on the
+# re-apply path is skipped wholesale by merge()'s guard — the run survives,
+# writes nothing for it, and a valid sibling entry still lands.
+write_main_state()
+good = change("con-a-2026", "con-a.json", "2026-08-01", "2026-07-01T00:00:00Z", cat="hotel")
+bad = change("con-a-2026", "con-a.json", "2026-08-02", "2026-07-01T00:00:00Z")
+bad["category"] = "bogus"
+save_ledger(good, bad)
+try:
+    carried = kw.reapply_outstanding([], [])
+    crashed = False
+except Exception:
+    crashed = True
+    carried = None
+check("run15: corrupt entry skipped without crashing",
+      not crashed and carried is not None and len(carried) == 1)
+kd15 = read("con-a.json")["events"][0].get("keyDates", {})
+check("run15: valid sibling still applied",
+      kd15.get("hotel", {}).get("opens", {}).get("date") == "2026-08-01")
+check("run15: bogus category never written", "bogus" not in kd15)
 
 print()
 sys.exit(1 if fails else 0)

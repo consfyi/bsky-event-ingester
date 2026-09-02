@@ -513,6 +513,78 @@ class SummaryTest(unittest.TestCase):
         for line in body.splitlines():  # payload can't start a fresh markdown line
             self.assertFalse(line.startswith("[approve all]"))
 
+    def test_backtick_and_newline_in_refuted_id_cannot_escape_code_span(self):
+        # ledger-sourced refuted entries never pass guardrails, so a tampered
+        # event_id could carry a backtick+newline to close the code span and
+        # start its own markdown list line — md_inline must neutralize both
+        # category/kind/date must sit inside the same code span: bare md_inline
+        # text would still render a smuggled [x](y) as a live link
+        evil = {"event_id": "testcon-2999\n- `injected`", "category": "[go](http://e.co)",
+                "kind": "[go](http://e.co)", "date": "[go](http://e.co)",
+                "_verdicts": [{"model": "mechanical", "verdict": "refute",
+                               "reason": "test"}]}
+        body = kw.render_summary([], [evil], [], [], "")
+        refuted_lines = [line for line in body.splitlines() if line.startswith("- `")]
+        self.assertEqual(len(refuted_lines), 1)  # payload can't mint a second entry
+        # exactly the two wrapping backticks survive — the payload's own
+        # backticks were neutralized, so the code span can't be closed early
+        self.assertEqual(refuted_lines[0].count("`"), 2)
+        # the link payloads land only INSIDE the code span (inert); nothing
+        # renderable as a live link survives outside it, on any line
+        before, inside, after = refuted_lines[0].split("`")
+        self.assertIn("](http", inside)
+        self.assertNotIn("](http", before)
+        self.assertNotIn("](http", after)
+        for line in body.splitlines():
+            if line != refuted_lines[0]:
+                self.assertNotIn("](http", line)
+            self.assertFalse(line.startswith("- `injected"))
+
+    def test_link_payload_in_refuted_reason_rendered_inert(self):
+        # the Refuted reason renders OUTSIDE the id code span, so a [x](y)
+        # payload riding it — a tampered endDate reaching merge()'s backstop
+        # reason, or a model-authored reason — must never render as a live link
+        con = make_con({})
+        con["events"][0]["endDate"] = "2999-01-01\n[go](http://e.co)"
+        dropped = []
+        changes = kw.merge(con, [proposal("2999-05-01", "3bbb")], dropped=dropped)
+        self.assertEqual(changes, [])
+        self.assertEqual(len(dropped), 1)
+        self.assertIn("](http", dropped[0]["_verdicts"][0]["reason"])  # payload really rode the reason
+        direct = {"event_id": "testcon-2999", "category": "panels", "kind": "opens",
+                  "date": "2999-02-01",
+                  "_verdicts": [{"model": "m1", "verdict": "refute",
+                                 "reason": "[go](http://e.co)"}]}
+        # GitHub renders a subset of raw HTML in PR bodies, so a smuggled
+        # <a href> is the same disguised-label class — md_reason neutralizes
+        # angle brackets too
+        html = {"event_id": "testcon-2999", "category": "panels", "kind": "opens",
+                "date": "2999-03-01",
+                "_verdicts": [{"model": "m1", "verdict": "refute",
+                               "reason": '<a href="http://e.co">approve</a>'}]}
+        # the Held section renders model-authored reasons outside a code span
+        # too — same md_reason neutralization applies
+        held = {"event_id": "testcon-2999", "category": "panels", "kind": "opens",
+                "date": "2999-02-01",
+                "_verdicts": [{"model": "m1", "verdict": "hold",
+                               "reason": "[go](http://e.co)"}]}
+        body = kw.render_summary([], [*dropped, direct, html], [held], [], "")
+        for line in body.splitlines():
+            # nothing renderable as a live link outside a code span: the text
+            # after a line's last backtick (the whole line when it has none)
+            tail = line.rsplit("`", 1)[-1]
+            self.assertNotIn("](http", tail)
+            self.assertNotIn("<a ", tail)
+
+    def test_md_link_fallback_span_cannot_be_closed_by_payload_backticks(self):
+        # a non-bsky url falls back to a code span; backticks inside the url
+        # must not close that span and let a smuggled link go live
+        out = kw.md_link("source", "javascript:`[live](https://evil.example)`")
+        # one unbroken code span: wrapping backticks only, none inside — the
+        # `](...)` text stays inside the span and can't render as a live link
+        self.assertTrue(out.startswith("`") and out.endswith("`"))
+        self.assertNotIn("`", out[1:-1])
+
     def test_summary_tolerates_missing_date(self):
         r = {"_file": "testcon.json", "event_id": "testcon-2999", "category": "panels",
              "kind": "opens", "source": entry("3aaa")["source"],
@@ -768,6 +840,101 @@ class MainSmokeTest(unittest.TestCase):
             body = f.read()
         self.assertNotIn("### Applied", body)
         self.assertIn("Source post deleted", body)
+
+    def test_ledger_backstop_drop_lands_in_refuted_summary_and_pages_ops(self):
+        # CON-55 round 4: an outstanding ledger entry invalidated by an
+        # upstream endDate change is dropped by merge()'s backstop on the
+        # re-apply path; main() must fold it into the Refuted summary section
+        # AND page ops — such a run changes no files, so publish() would bail
+        # and the drop would otherwise vanish without a trace
+        with open(os.path.join(self.data_dir, "con-a.json"), "w") as f:
+            json.dump({"events": [{"id": "testcon-2999", "name": "Testcon 2999",
+                                   "startDate": "2999-01-01", "endDate": "2999-01-05"}]}, f)
+        os.makedirs(os.path.dirname(kw.OUTSTANDING_FILE), exist_ok=True)
+        with open(kw.OUTSTANDING_FILE, "w") as f:
+            json.dump({"testcon-2999|panels|opens": {
+                "event_id": "testcon-2999", "category": "panels", "kind": "opens",
+                "date": "2999-02-01", "source": did_entry("3aaa")["source"],
+                "asOf": "2998-12-01T00:00:00.000Z", "confidence": 0.9,
+                "_file": "con-a.json", "_post_text": "post"}}, f)
+        ok = unittest.mock.Mock(returncode=0, stdout="")
+        with unittest.mock.patch.object(
+                 kw, "process_con", return_value=([], [], [], [], True)), \
+             unittest.mock.patch.object(
+                 kw, "check_source_liveness", return_value=([], [], [], [], [])), \
+             unittest.mock.patch.object(kw, "publish") as publish, \
+             unittest.mock.patch.object(kw, "ops_notify") as notify, \
+             unittest.mock.patch.object(kw.subprocess, "run", return_value=ok):
+            kw.main()
+        with open(self.summary_file) as f:
+            body = f.read()
+        self.assertIn("### Refuted by verification (not applied)", body)
+        self.assertIn("2999-02-01", body)
+        publish.assert_not_called()  # no file changes — the ops page is the only signal
+        pages = [str(c.args[0]) for c in notify.call_args_list
+                 if "dropped" in str(c.args[0]) and "re-apply" in str(c.args[0])]
+        self.assertTrue(pages, f"no ledger-drop ops page in {notify.call_args_list}")
+        # the page names the dropped slot, not just a count
+        self.assertIn("testcon-2999 panels.opens 2999-02-01", pages[0])
+
+    def test_ledger_backstop_drop_deduped_and_no_ops_page_when_run_applies(self):
+        # sibling of the test above: (a) a slot process_con already refuted
+        # pre-verify must not gain a SECOND Refuted line from the ledger
+        # backstop, and (b) a run that applied other changes publishes a PR
+        # body carrying the drop, so the ops page must not fire
+        with open(os.path.join(self.data_dir, "con-a.json"), "w") as f:
+            json.dump({"events": [{"id": "testcon-2999", "name": "Testcon 2999",
+                                   "startDate": "2999-01-01", "endDate": "2999-01-05"}]}, f)
+        os.makedirs(os.path.dirname(kw.OUTSTANDING_FILE), exist_ok=True)
+        with open(kw.OUTSTANDING_FILE, "w") as f:
+            json.dump({"testcon-2999|panels|opens": {
+                "event_id": "testcon-2999", "category": "panels", "kind": "opens",
+                "date": "2999-02-01", "source": did_entry("3aaa")["source"],
+                "asOf": "2998-12-01T00:00:00.000Z", "confidence": 0.9,
+                "_file": "con-a.json", "_post_text": "post"},
+                # unique drop: keeps ledger_drops non-empty after dedup, so the
+                # ops gate — not the dedup — is what must suppress the page
+                "testcon-2999|dealers|opens": {
+                "event_id": "testcon-2999", "category": "dealers", "kind": "opens",
+                "date": "2999-03-01", "source": did_entry("3ccc")["source"],
+                "asOf": "2998-12-01T00:00:00.000Z", "confidence": 0.9,
+                "_file": "con-a.json", "_post_text": "post"}}, f)
+        refuted = {"event_id": "testcon-2999", "category": "panels", "kind": "opens",
+                   "date": "2999-02-01",
+                   "_verdicts": [{"model": "mechanical", "verdict": "refute",
+                                  "reason": "after end"}]}
+        # same slot as the dealers ledger entry but a DIFFERENT date: the drop
+        # dedup keys on (slot, date), so this must NOT suppress the ledger drop
+        refuted_dealers = {"event_id": "testcon-2999", "category": "dealers",
+                           "kind": "opens", "date": "2999-05-01",
+                           "_verdicts": [{"model": "mechanical", "verdict": "refute",
+                                          "reason": "after end"}]}
+        applied = {"event_id": "testcon-2999", "category": "hotel", "kind": "opens",
+                   "date": "2999-01-02", "source": did_entry("3bbb")["source"],
+                   "asOf": "2998-12-02T00:00:00.000Z", "confidence": 0.9,
+                   "_post_text": "post", "verb": "add"}
+        ok = unittest.mock.Mock(returncode=0, stdout="")
+        with unittest.mock.patch.object(
+                 kw, "process_con",
+                 return_value=([dict(applied)], [refuted, refuted_dealers], [], [], True)), \
+             unittest.mock.patch.object(
+                 kw, "check_source_liveness", return_value=([], [], [], [], [])), \
+             unittest.mock.patch.object(kw, "publish"), \
+             unittest.mock.patch.object(kw, "ops_notify") as notify, \
+             unittest.mock.patch.object(kw.subprocess, "run", return_value=ok):
+            kw.main()
+        with open(self.summary_file) as f:
+            body = f.read()
+        # one Refuted line for the slot, not two (process_con + ledger backstop)
+        self.assertEqual(body.count("testcon-2999 panels.opens 2999-02-01"), 1)
+        # the dealers ledger drop (2999-03-01) is a DIFFERENT date than the
+        # pre-verify dealers refute (2999-05-01) — both must surface
+        self.assertEqual(body.count("testcon-2999 dealers.opens 2999-03-01"), 1)
+        self.assertEqual(body.count("testcon-2999 dealers.opens 2999-05-01"), 1)
+        # the run published other output, so no re-apply ops page
+        self.assertFalse(any("re-apply" in str(c.args[0])
+                             for c in notify.call_args_list),
+                         f"unexpected ledger-drop ops page in {notify.call_args_list}")
 
     def test_pins_only_sweep_still_formats_and_publishes(self):
         # CON-26 backfill case: a sweep whose only outcome is DID-pinning must
@@ -1088,7 +1255,8 @@ class RecencyReminderTest(unittest.TestCase):
     def test_amend_carries_prev_and_renders_reminder(self):
         # a closes amend (deadline moved) still carries _prev + the reminder;
         # opens-moved-later no longer amends (CON-30), so exercise closes here
-        con = make_con({"registration": {"closes": entry("3aaa", date="2999-05-13")}})
+        con = make_con({"registration": {"closes": entry("3aaa", date="2999-05-13")}},
+                       end_date="2999-12-31")
         newer = {**proposal("2999-07-15", "3bbb", asof="2999-06-01T00:00:00.000Z",
                             slot=("testcon-2999", "registration", "closes")),
                  "_file": "testcon.json", "_post_text": "deadline extended"}
@@ -1101,13 +1269,271 @@ class RecencyReminderTest(unittest.TestCase):
         self.assertIn("[previous post](https://bsky.app/profile/testcon.example/post/3aaa)", body)
 
     def test_fresh_add_has_no_reminder(self):
-        con = make_con({})
+        con = make_con({}, end_date="2999-12-31")
         add = {**proposal("2999-07-15", "3bbb", asof="2999-06-01T00:00:00.000Z"),
                "_file": "testcon.json", "_post_text": "dance battle open"}
         changes = kw.merge(con, [add])
         self.assertEqual(len(changes), 1)
         self.assertNotIn("_prev", changes[0])
         self.assertNotIn("recency-wins", kw.render_summary(changes, [], [], [], ""))
+
+
+class AfterEndGuardTest(unittest.TestCase):
+    """CON-55: a proposed key date after the edition's endDate is impossible by
+    construction (windows can't open/close after the con) — process_con refutes
+    it mechanically pre-verify, and merge() drops it as the backstop for the
+    ledger re-apply path."""
+
+    def test_date_after_end_date_dropped(self):
+        # edition ends 2999-06-01; the model anchored a bare month-day to the
+        # wrong year and proposed 2999-09-01 (the Scotiacon 2027 shape)
+        con = make_con({})
+        changes = kw.merge(con, [proposal("2999-09-01", "3bbb")])
+        self.assertEqual(changes, [])
+        self.assertNotIn("keyDates", con["events"][0])
+
+    def test_date_on_end_date_still_applies(self):
+        # boundary: a close on the con's last day is legitimate
+        con = make_con({})
+        changes = kw.merge(con, [proposal(FUTURE, "3bbb",
+                                          slot=("testcon-2999", "dealers", "closes"))])
+        self.assertEqual(len(changes), 1)
+        self.assertEqual(con["events"][0]["keyDates"]["dealers"]["closes"]["date"], FUTURE)
+
+    def test_missing_end_date_does_not_drop(self):
+        con = make_con({})
+        del con["events"][0]["endDate"]
+        changes = kw.merge(con, [proposal("2999-09-01", "3bbb")])
+        self.assertEqual(len(changes), 1)
+
+    def test_corrupt_ledger_entry_skipped_wholesale(self):
+        # a ledger entry can carry a corrupt value in ANY field (save_outstanding
+        # uses .get; the file is human-editable); merge() must skip the whole
+        # entry — no crash (KeyError/TypeError), no change, and never a
+        # null/bogus key or date written into the con file
+        cases = [("event_id", None), ("event_id", "unknown-9999"),
+                 ("event_id", ["x"]),  # unhashable — would TypeError in `in by_id`
+                 ("category", None), ("category", "bogus"),
+                 ("kind", None),
+                 ("date", None), ("date", ""), ("date", "[go](http://e.co)"),
+                 ("confidence", None), ("confidence", "0.9")]
+        for field, bad in cases:
+            with self.subTest(**{field: bad}):
+                con = make_con({})
+                changes = kw.merge(con, [{**proposal("2999-01-02", "3bbb"),
+                                          field: bad}])
+                self.assertEqual(changes, [])
+                self.assertNotIn("keyDates", con["events"][0])
+
+    def test_process_con_refutes_after_end_before_verify(self):
+        # the pre-verify layer: an after-endDate proposal is refuted
+        # mechanically — no verify model call — and lands in the PR's
+        # Refuted section
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        con = make_con({})
+        fn = os.path.join(tmp.name, "testcon.json")
+        with open(fn, "w") as f:
+            json.dump(con, f)
+        post = {"url": did_entry("3abc")["source"], "asOf": "2999-05-01T00:00:00.000Z",
+                "text": "proposals for our 3000 con open September 1"}
+
+        def fake_extract(con_, events, posts, tz="UTC"):
+            # the model anchored the bare month-day to the wrong year:
+            # 2999-09-01 is after endDate 2999-06-01
+            return [{"event_id": "testcon-2999", "category": "djs",
+                     "kind": "opens", "date": "2999-09-01",
+                     "source": posts[0]["url"], "confidence": 0.95}]
+
+        with unittest.mock.patch.object(kw, "extract_for_con", side_effect=fake_extract), \
+             unittest.mock.patch.object(kw, "load_event_timezones", return_value={}), \
+             unittest.mock.patch.object(kw, "verify_proposals") as vp:
+            changes, refuted, held, rejected, did_extract = kw.process_con(
+                fn, {}, [], provided_posts=[post])
+        vp.assert_not_called()  # dropped mechanically, both verify calls saved
+        self.assertEqual(changes, [])
+        self.assertEqual(len(refuted), 1)
+        self.assertEqual(refuted[0]["_verdicts"][0]["model"], "mechanical")
+        self.assertIn("after the edition's end", refuted[0]["_verdicts"][0]["reason"])
+        body = kw.render_summary([], refuted, [], [], "")
+        self.assertIn("### Refuted by verification (not applied)", body)
+        self.assertIn("2999-09-01", body)
+
+    def test_process_con_end_date_boundary_not_refuted(self):
+        # boundary sibling: a date exactly ON the edition's endDate is
+        # legitimate (a close on the con's last day) — it must reach verify,
+        # not be refuted mechanically
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        con = make_con({})
+        fn = os.path.join(tmp.name, "testcon.json")
+        with open(fn, "w") as f:
+            json.dump(con, f)
+        post = {"url": did_entry("3abc")["source"], "asOf": "2999-05-01T00:00:00.000Z",
+                "text": "DJ applications close June 1"}
+
+        def fake_extract(con_, events, posts, tz="UTC"):
+            return [{"event_id": "testcon-2999", "category": "djs",
+                     "kind": "closes", "date": FUTURE,
+                     "source": posts[0]["url"], "confidence": 0.95}]
+
+        with unittest.mock.patch.object(kw, "extract_for_con", side_effect=fake_extract), \
+             unittest.mock.patch.object(kw, "load_event_timezones", return_value={}), \
+             unittest.mock.patch.object(kw, "verify_proposals",
+                                        return_value=([], [], [])) as vp:
+            changes, refuted, held, rejected, did_extract = kw.process_con(
+                fn, {}, [], provided_posts=[post])
+        vp.assert_called_once()
+        self.assertEqual(refuted, [])
+
+
+class PrevEditionEndPayloadTest(unittest.TestCase):
+    """CON-55 round 4: the prompts' elapsed-date lower bound references
+    previousEditionEnd, so both model payloads must actually carry it."""
+
+    def test_extract_and_verify_payloads_carry_previous_edition_end(self):
+        con = make_con({})
+        # a past edition (excluded from upcoming_events) supplies the bound
+        con["events"].append({"id": "testcon-2998", "name": "Testcon 2998",
+                              "startDate": "2026-01-02", "endDate": "2026-01-05"})
+        post = {"url": did_entry("3abc")["source"], "asOf": "2999-05-01T00:00:00.000Z",
+                "text": "dealer applications close June 1"}
+        sent = {}
+
+        def fake_chat(model, system, user, schema, name):
+            sent[name] = json.loads(user)
+            if name == "keydates":
+                return {"dates": [{"event_id": "testcon-2999", "category": "dealers",
+                                   "kind": "closes", "date": FUTURE,
+                                   "source": post["url"], "confidence": 0.95}]}
+            return {"verdicts": [{"index": 0, "verdict": "confirm", "reason": "ok"}]}
+
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        fn = os.path.join(tmp.name, "testcon.json")
+        with open(fn, "w") as f:
+            json.dump(con, f)
+        with unittest.mock.patch.object(kw, "chat", side_effect=fake_chat), \
+             unittest.mock.patch.object(kw, "DRY_RUN", True), \
+             unittest.mock.patch.object(kw, "load_event_timezones", return_value={}):
+            kw.process_con(fn, {}, [], provided_posts=[post])
+        self.assertEqual(sent["keydates"]["editions"][0]["previousEditionEnd"], "2026-01-05")
+        self.assertEqual(sent["verdicts"]["items"][0]["edition"]["previousEditionEnd"],
+                         "2026-01-05")
+
+    def test_previous_edition_end_none_when_prior_edition_lacks_end_date(self):
+        # r4-03: a prior edition without endDate must not serialize as
+        # previousEditionEnd "" — the prompts promise null when unknown
+        con = {"events": [
+            {"id": "e-2026", "name": "E 2026", "startDate": "2026-01-01"},
+            {"id": "e-2027", "name": "E 2027", "startDate": "2027-01-01",
+             "endDate": "2027-01-04"},
+        ]}
+        self.assertIsNone(kw.previous_edition_end(con, "e-2027"))
+
+    def test_previous_edition_end_null_when_no_prior_edition(self):
+        editions = [{"id": "e", "name": "E", "startDate": "2999-01-01", "endDate": "2999-02-01"}]
+        captured = {}
+
+        def fake_chat(model, system, user, schema, name):
+            captured["user"] = json.loads(user)
+            return {"dates": []}
+
+        with unittest.mock.patch.object(kw, "chat", side_effect=fake_chat):
+            kw.extract_for_con({"name": "T", "events": editions}, editions,
+                               [{"asOf": "2999-01-01T00:00:00Z", "text": "hi",
+                                 "url": "https://bsky.app/profile/x/post/3a"}])
+        self.assertIsNone(captured["user"]["editions"][0]["previousEditionEnd"])
+
+
+class PromptRuleTest(unittest.TestCase):
+    """CON-55: the bare month-day rule lives in the prompts; a prompt refactor
+    that drops it must fail a test. Pin its distinguishing phrases."""
+
+    def test_extract_prompt_carries_bare_month_day_rule(self):
+        self.assertIn("next occurrence on or after the post's date", kw.EXTRACT_SYSTEM)
+        self.assertIn("most recent occurrence ON OR BEFORE", kw.EXTRACT_SYSTEM)
+        # the elapsed-date lower bound: dates before the previous edition's
+        # end describe the past edition, not the upcoming one — evaluated
+        # against the previousEditionEnd field the payload provides, with an
+        # escape hatch for posts that explicitly name the later edition
+        flat = " ".join(kw.EXTRACT_SYSTEM.split())
+        self.assertIn("falls before that edition's previousEditionEnd", flat)
+        self.assertIn("unless the sentence explicitly names the later edition", flat)
+        # r4-04: the hatch discriminates on WHICH edition the year names
+        self.assertIn("a year or hashtag naming that later edition", flat)
+
+    def test_verify_prompt_carries_elapsed_lower_bound(self):
+        flat = " ".join(kw.VERIFY_SYSTEM.split())
+        self.assertIn("before the stated edition's previousEditionEnd", flat)
+        self.assertIn("belongs to an earlier edition", flat)
+        self.assertIn("unless the post explicitly names the stated edition", flat)
+        # r4-04: same discrimination on the verify side
+        self.assertIn("a year or hashtag naming that stated edition", flat)
+
+
+class CacheKeyTest(unittest.TestCase):
+    """r4-01: verdicts cached under an older VERIFY_SYSTEM (90-day TTL) must not
+    short-circuit rules a newer prompt adds — the key is salted with the prompt."""
+
+    PROPOSAL = {"event_id": "testcon-2999", "category": "dealers", "kind": "opens",
+                "date": "2999-01-01", "source": "https://bsky.app/profile/x/post/3a",
+                "asOf": "2998-12-01T00:00:00.000Z"}
+
+    def test_key_changes_when_verify_prompt_changes(self):
+        with unittest.mock.patch.object(kw, "VERIFY_SYSTEM", "prompt v1"):
+            k1 = kw.cache_key(self.PROPOSAL)
+        with unittest.mock.patch.object(kw, "VERIFY_SYSTEM", "prompt v2"):
+            k2 = kw.cache_key(self.PROPOSAL)
+        self.assertNotEqual(k1, k2)
+
+    def test_key_stable_for_same_prompt(self):
+        """Guards against a per-run/per-call salt sneaking into the key (e.g. a
+        timestamp in raw) — that would silently defeat the cache entirely."""
+        with unittest.mock.patch.object(kw, "VERIFY_SYSTEM", "prompt v1"):
+            k1 = kw.cache_key(self.PROPOSAL)
+            k2 = kw.cache_key(dict(self.PROPOSAL))
+        self.assertEqual(k1, k2)
+
+    def test_key_changes_when_prev_end_changes(self):
+        # _prev_end feeds VERIFY_SYSTEM's lower-bound rule, so a cached verdict
+        # computed against a different previous-edition end must not be reused
+        k1 = kw.cache_key({**self.PROPOSAL, "_prev_end": "2998-11-30"})
+        k2 = kw.cache_key({**self.PROPOSAL, "_prev_end": "2999-01-15"})
+        self.assertNotEqual(k1, k2)
+
+
+class FixtureSmokeTest(unittest.TestCase):
+    """Every prompt fixture must stay loadable with the shape the future
+    eval harness (CON-9) expects."""
+
+    FIXTURES_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fixtures")
+
+    def test_fixtures_parse_with_required_keys(self):
+        names = [n for n in os.listdir(self.FIXTURES_DIR) if n.endswith(".json")]
+        self.assertTrue(names)  # the directory must not silently go empty
+        for name in names:
+            with open(os.path.join(self.FIXTURES_DIR, name)) as f:
+                fx = json.load(f)
+            for key in ("con", "posts", "expect"):
+                self.assertIn(key, fx, f"{name}: missing {key}")
+            for item in fx["expect"]:
+                for key in ("event_id", "category", "kind", "date", "source"):
+                    self.assertIn(key, item, f"{name}: expect item missing {key}")
+            if "expect_absent" in fx:  # optional; validate shape when present
+                self.assertIsInstance(fx["expect_absent"], list,
+                                      f"{name}: expect_absent must be a list")
+                for item in fx["expect_absent"]:
+                    for key in ("event_id", "category", "kind", "reason"):
+                        self.assertIn(key, item,
+                                      f"{name}: expect_absent item missing {key}")
+            # a fixture that expects nothing and forbids nothing asserts nothing
+            self.assertTrue(fx.get("expect") or fx.get("expect_absent"),
+                            f"{name}: at least one of expect/expect_absent must be non-empty")
+            self.assertTrue(fx["posts"], f"{name}: no posts")
+            for p in fx["posts"]:
+                for key in ("url", "createdAt", "text"):
+                    self.assertIn(key, p, f"{name}: post missing {key}")
 
 
 class OpensRecencyTest(unittest.TestCase):
@@ -1125,7 +1551,8 @@ class OpensRecencyTest(unittest.TestCase):
 
     def test_opens_not_moved_later_by_a_newer_post(self):
         # existing opens 05-03; a newer "sign up now!" post says 06-08 -> ignored
-        con = make_con({"panels": {"opens": entry("3aaa", date="2999-05-03")}})
+        con = make_con({"panels": {"opens": entry("3aaa", date="2999-05-03")}},
+                       end_date="2999-12-31")
         changes = kw.merge(con, [self._newer("2999-06-08", ("testcon-2999", "panels", "opens"))])
         self.assertEqual(changes, [])
         self.assertEqual(self._date(con, "panels", "opens"), "2999-05-03")
@@ -1140,14 +1567,16 @@ class OpensRecencyTest(unittest.TestCase):
 
     def test_closes_still_moves_later(self):
         # closes keeps recency-wins: a later deadline (extension) applies
-        con = make_con({"registration": {"closes": entry("3aaa", date="2999-07-27")}})
+        con = make_con({"registration": {"closes": entry("3aaa", date="2999-07-27")}},
+                       end_date="2999-12-31")
         changes = kw.merge(con, [self._newer("2999-08-02", ("testcon-2999", "registration", "closes"))])
         self.assertEqual(len(changes), 1)
         self.assertEqual(self._date(con, "registration", "closes"), "2999-08-02")
 
     def test_closes_still_moves_earlier(self):
         # and a moved-up deadline (tails-of-summer 07-27 -> 07-24) applies too
-        con = make_con({"registration": {"closes": entry("3aaa", date="2999-07-27")}})
+        con = make_con({"registration": {"closes": entry("3aaa", date="2999-07-27")}},
+                       end_date="2999-12-31")
         changes = kw.merge(con, [self._newer("2999-07-24", ("testcon-2999", "registration", "closes"))])
         self.assertEqual(len(changes), 1)
         self.assertEqual(self._date(con, "registration", "closes"), "2999-07-24")

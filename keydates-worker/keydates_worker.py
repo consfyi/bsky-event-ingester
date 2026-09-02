@@ -121,7 +121,7 @@ VERIFY_BATCH = 8
 # Groq free tier is token-per-minute limited (8000 TPM for gpt-oss). A request is
 # billed prompt + max_tokens against that window, so the trim/pace budget must
 # reserve the output allowance — not just fit the payload. (EXTRACT_SYSTEM is
-# ~850 tokens; the request's OUTPUT allowance is the big reservation.)
+# ~1180 tokens; the request's OUTPUT allowance is the big reservation.)
 MODEL_TPM = int(os.environ.get("MODEL_TPM", "8000"))
 MODEL_MAX_OUTPUT_TOKENS = int(os.environ.get("MODEL_MAX_OUTPUT_TOKENS", "3000"))
 # per-request INPUT budget for payload trimming: reserve the output allowance the
@@ -233,6 +233,20 @@ Rules:
   overrides the weekday resolution when both appear for the same event — but not when
   they name different events ("Reg now open! Panels close this Friday" opens reg on the
   post's date and closes panels that Friday).
+- A bare month-day with no year ("September 1st") announced as upcoming resolves to its
+  next occurrence on or after the post's date — even in a sentence about a later edition
+  ("proposals for our 2027 con open September 1st" posted 2026-08-24 means 2026-09-01,
+  not 2027-09-01). One stated as already elapsed ("applications opened on March 3rd
+  and closed on April 1st") resolves to its most recent occurrence ON OR BEFORE the
+  post's date — but an elapsed date only sets a slot for the edition it actually
+  belongs to: when that occurrence falls before that edition's previousEditionEnd
+  (given per edition in the payload; null when unknown), the post is recounting the
+  past edition's timeline, so do not extract it for an upcoming edition — unless
+  the sentence explicitly names the later edition (a year or hashtag naming that
+  later edition, like #FWA2027 — the past edition's own year does not count), in
+  which case it is a retroactive announcement for that edition and
+  may be extracted. Never borrow the year from the edition under discussion;
+  only a year stated in the date itself ("September 1st, 2027") overrides this.
 - Attribute to the correct edition via event_id. If the convention has MORE THAN ONE
   upcoming edition, only extract when the post carries explicit edition evidence
   (year, hashtag like #FWA2027, or an unambiguous date range).
@@ -263,7 +277,11 @@ Refute when ANY of: the date is a price change rather than a true open/close; th
 a different edition/year than the stated event (check the edition dates given — a post written
 many months before the edition, especially one predating the convention's previous edition,
 almost certainly refers to that earlier edition unless it carries explicit evidence like a year
-or hashtag); the "closing" is soft ("closing soon", "almost sold out") with no explicit date;
+or hashtag); the claimed date is stated as already elapsed and falls before the stated
+edition's previousEditionEnd (given in the edition object; null when unknown) — it
+belongs to an earlier edition, unless the post explicitly names the stated edition
+(a year or hashtag naming that stated edition — an earlier edition's year does not
+count); the "closing" is soft ("closing soon", "almost sold out") with no explicit date;
 the date is not explicitly stated in the post; the category is a stretch per the definitions;
 the deadline applies only to already-accepted applicants; the "close" or "open" is actually a
 temporary pause or a resumption of something already open; the post is a reminder that
@@ -625,8 +643,9 @@ def previous_edition_end(con, event_id):
     target = next((e for e in events if e["id"] == event_id), None)
     if target is None:
         return None
-    prior = [e.get("endDate", "") for e in events
-             if e["id"] != event_id and e.get("endDate", "") < target.get("startDate", "")]
+    prior = [e["endDate"] for e in events
+             if e["id"] != event_id and e.get("endDate")
+             and e["endDate"] < target.get("startDate", "")]
     return max(prior) if prior else None
 
 
@@ -662,12 +681,48 @@ def passes_guardrails(by_id, d):
     )
 
 
-def merge(con, dates):
-    """Apply confirmed dates. Returns list of change descriptions."""
+def mechanical_refute(reason):
+    """Verdict list for proposals refuted by code, not a model."""
+    return [{"model": "mechanical", "verdict": "refute", "reason": reason}]
+
+
+def merge(con, dates, dropped=None):
+    """Apply confirmed dates. Returns list of change descriptions. Entries the
+    after-end backstop drops are appended to `dropped` (when given) with a
+    mechanical refute verdict, so the ledger re-apply path can surface them in
+    the PR body instead of losing them to stderr."""
     by_id = {e["id"]: e for e in con.get("events", [])}
     changes = []
     for d in dates:
+        # wholesale corrupt-entry guard (CON-55): ledger entries re-applied
+        # here never pass through this run's passes_guardrails, so validate
+        # every field BEFORE the by_id lookup. The isinstance checks come
+        # first so passes_guardrails can't TypeError on a None date, a string
+        # confidence, or an unhashable (list/dict) event_id in the by_id
+        # lookup; the rest (event_id in by_id, category, kind,
+        # DATE_RE, asOf, threshold) is exactly passes_guardrails.
+        if not (isinstance(d.get("event_id"), str)
+                and isinstance(d.get("date"), str)
+                and isinstance(d.get("confidence"), (int, float))
+                and passes_guardrails(by_id, d)):
+            log(f"  corrupt entry skipped: {str(d)[:300]}")
+            continue
         ev = by_id[d["event_id"]]
+        # backstop for the ledger re-apply path (CON-55): process_con already
+        # refutes after-endDate proposals mechanically pre-verify, but a stale
+        # ledger entry re-applied here never goes through that check.
+        if ev.get("endDate") and d["date"] > ev["endDate"]:
+            log(f"  after-end drop: {d['event_id']} {d['category']}.{d['kind']} "
+                f"{d['date']} is after endDate {ev['endDate']}")
+            if dropped is not None:
+                # md_inline at construction: d["date"] is DATE_RE-clean by the
+                # guard above, but ev["endDate"] is con-file text — neutralize
+                # both so a tampered value can't smuggle markup via the reason
+                dropped.append({**d, "_verdicts": mechanical_refute(
+                    f"{md_inline(d['date'], 20)} is after the edition's end "
+                    f"({md_inline(ev['endDate'], 20)}) — outstanding ledger entry "
+                    f"invalidated by an upstream endDate change")})
+            continue
         cat = ev.setdefault("keyDates", {}).setdefault(d["category"], {})
         existing = cat.get(d["kind"])
         if existing is not None and not importer_owned(existing):
@@ -989,7 +1044,10 @@ def check_source_liveness(files):
 
 # --- verdict cache -------------------------------------------------------------
 def cache_key(d):
-    raw = "|".join(str(d.get(k, "")) for k in ("event_id", "category", "kind", "date", "source", "asOf"))
+    raw = "|".join(str(d.get(k, "")) for k in ("event_id", "category", "kind", "date", "source", "asOf", "_prev_end"))
+    # salt with the verify prompt so cached verdicts from an older VERIFY_SYSTEM
+    # (90-day TTL) can't short-circuit rules the current prompt adds
+    raw += "|" + hashlib.sha256(VERIFY_SYSTEM.encode()).hexdigest()[:8]
     return hashlib.sha256(raw.encode()).hexdigest()[:24]
 
 
@@ -1054,10 +1112,12 @@ def save_outstanding(entries):
     os.replace(tmp, OUTSTANDING_FILE)
 
 
-def reapply_outstanding(run_changes, rejections):
+def reapply_outstanding(run_changes, rejections, dropped=None):
     """Fold this run's changes into the ledger, re-apply every other
     outstanding entry to the fresh checkout, and prune what is no longer
-    outstanding. Returns the re-applied changes (for the summary/PR)."""
+    outstanding. Returns the re-applied changes (for the summary/PR).
+    Entries merge()'s after-end backstop drops are appended to `dropped`
+    (when given) so the run summary can show them."""
     ledger = load_outstanding()
     for c in run_changes:
         key = outstanding_key(c)
@@ -1102,7 +1162,7 @@ def reapply_outstanding(run_changes, rejections):
         # same grace so we don't drop one process_con would still re-propose
         if (event.get("endDate") or "") < (TODAY - datetime.timedelta(days=2)).isoformat():
             continue
-        changes = merge(con, [entry])
+        changes = merge(con, [entry], dropped=dropped)
         if not changes:
             continue  # main already has it, or a newer/curated value won
         tmp = fn + ".tmp"
@@ -1205,7 +1265,11 @@ def extract_for_con(con, events, posts, tz="UTC"):
     # Post timestamps go to the model in the venue's local time (CON-50): a US
     # con posting "today" at 9 PM ET is already tomorrow in UTC.
     local_posts = [{**p, "asOf": localize_timestamp(p.get("asOf"), tz)[0]} for p in posts]
-    payload = {"convention": con["name"], "timezone": tz, "editions": events, "posts": local_posts}
+    # the elapsed-date lower bound in EXTRACT_SYSTEM references each edition's
+    # previousEditionEnd — thread the fact in so the model evaluates given data
+    # instead of guessing when the previous edition ended
+    editions = [{**e, "previousEditionEnd": previous_edition_end(con, e["id"])} for e in events]
+    payload = {"convention": con["name"], "timezone": tz, "editions": editions, "posts": local_posts}
     while (len(payload["posts"]) > 1
            and estimate_tokens(EXTRACT_SYSTEM, json.dumps(payload, ensure_ascii=False))
                > MODEL_MAX_REQUEST_TOKENS):
@@ -1232,7 +1296,8 @@ def verify_proposals(proposals, cache):
         return {
             "index": i,
             "convention": p["_con_name"],
-            "edition": {"id": p["event_id"], "startDate": p["_ev_dates"][0], "endDate": p["_ev_dates"][1]},
+            "edition": {"id": p["event_id"], "startDate": p["_ev_dates"][0], "endDate": p["_ev_dates"][1],
+                        "previousEditionEnd": p.get("_prev_end")},
             "sibling_upcoming_editions": p["_siblings"],
             "claim": {k2: p[k2] for k2 in ("category", "kind", "date", "confidence")},
             "post_text": p["_post_text"],
@@ -1382,12 +1447,28 @@ def process_con(fn, cache, rejections, provided_posts=None, extra_post=None):
         if already and already.get("date") == d["date"]:
             continue  # same date already recorded; re-announcements add nothing, save the verify calls
         prev_end = previous_edition_end(con, d["event_id"])
+        d["_prev_end"] = prev_end  # verify_item threads it to VERIFY_SYSTEM's lower-bound rule
         if prev_end and (d["asOf"] or "")[:10] <= prev_end:
             d["_file"] = os.path.basename(fn)
-            d["_verdicts"] = [{"model": "mechanical", "verdict": "refute",
-                               "reason": f"source post ({d['asOf'][:10]}) predates the previous "
-                                         f"edition's end ({prev_end}) — almost certainly refers "
-                                         f"to an earlier edition"}]
+            d["_verdicts"] = mechanical_refute(
+                f"source post ({d['asOf'][:10]}) predates the previous "
+                f"edition's end ({prev_end}) — almost certainly refers "
+                f"to an earlier edition")
+            stale_drops.append(d)
+            continue
+        ev_end = by_id[d["event_id"]].get("endDate")
+        if ev_end and d["date"] > ev_end:
+            # CON-55: a bare month-day anchored to the edition's year instead
+            # of the post's lands past the con — impossible by construction,
+            # so refute mechanically and save the verify calls
+            d["_file"] = os.path.basename(fn)
+            # neutralize at construction: ev_end is con-file text (d["date"] is
+            # DATE_RE-clean, wrapped anyway for depth) — the reason renders
+            # outside a code span in the PR body
+            d["_verdicts"] = mechanical_refute(
+                f"{md_inline(d['date'], 20)} is after the edition's end "
+                f"({md_inline(ev_end, 20)}) — an application window can't "
+                f"open or close once the con is over")
             stale_drops.append(d)
             continue
         rej = is_rejected(rejections, d)
@@ -1425,20 +1506,32 @@ def process_con(fn, cache, rejections, provided_posts=None, extra_post=None):
 
 
 def md_inline(text, cap):
-    """Collapse whitespace so attacker-influenceable text (post bodies,
-    model reasons) cannot break out of its blockquote/list line in the
-    PR markdown."""
-    return " ".join(str(text).split())[:cap]
+    """Collapse whitespace and neutralize backticks so attacker-influenceable
+    text (post bodies, model reasons) cannot break out of its blockquote/list
+    line in the PR markdown or close a code span it is rendered inside."""
+    return " ".join(str(text).split())[:cap].replace("`", "'")
 
 
 def md_link(label, url):
     """Render a markdown link only when the target is a verified bsky post URL;
     anything else (a tampered ledger/con file value) is rendered inside a code
     span — plain text is NOT inert, a smuggled [x](y) in it would still render
-    as a live link. Backticks are stripped so the span can't be closed early."""
+    as a live link. md_inline strips backticks so the span can't be closed early."""
     if SOURCE_URL_RE.match(url or "") and not re.search(r"[()\[\]\s]", url):
         return f"[{label}]({url})"
-    return "`" + md_inline(url or "(no source)", 200).replace("`", "'") + "`"
+    return "`" + md_inline(url or "(no source)", 200) + "`"
+
+
+def md_reason(text, cap):
+    """md_inline plus square-bracket neutralization for model-authored or
+    mechanical reasons rendered OUTSIDE a code span: a [x](y) payload in a
+    reason cannot render as a disguised-label link. A bare URL may still
+    autolink, but its destination stays visible. Angle brackets are
+    neutralized too: GitHub renders a subset of raw HTML in PR bodies, so a
+    smuggled <a href> would otherwise render as a disguised-label link."""
+    return (md_inline(text, cap)
+            .replace("[", "(").replace("]", ")")
+            .replace("<", "(").replace(">", ")"))
 
 
 def render_summary(all_changes, all_refuted, all_held, all_rejected, skipped_note,
@@ -1460,12 +1553,23 @@ def render_summary(all_changes, all_refuted, all_held, all_rejected, skipped_not
         lines.append("\n### Held — verifier disagreement or same-run conflict, needs a human (`/reject` or hand-apply)")
         for p in all_held:
             lines.append(f"- `{p['event_id']}` {p['category']}.{p['kind']} {p['date']} — {md_link('post', p.get('source'))} — " +
-                         "; ".join(f"{v['model'].split('/')[-1]}: {v['verdict']} ({md_inline(v['reason'], 120)})" for v in p["_verdicts"]))
+                         "; ".join(f"{v['model'].split('/')[-1]}: {v['verdict']} ({md_reason(v['reason'], 120)})" for v in p["_verdicts"]))
     if all_refuted:
         lines.append("\n### Refuted by verification (not applied)")
         for p in all_refuted:
             reason = next((v["reason"] for v in p["_verdicts"] if v["verdict"] == "refute"), "")
-            lines.append(f"- `{p['event_id']}` {p['category']}.{p['kind']} {p['date']} — {md_inline(reason, 160)}")
+            # unlike the other sections, ledger-sourced entries (merge backstop
+            # drops) land here without passing passes_guardrails, so even the id
+            # fields are attacker-influenceable — render the whole id tuple in
+            # ONE code span (md_inline neutralizes backticks so the span can't
+            # be closed early; bare md_inline text could still smuggle [x](y)).
+            # The reason renders OUTSIDE the code span, so square brackets are
+            # also neutralized (md_reason) — a [x](y) payload riding a reason
+            # (mechanical or model-authored) cannot render as a disguised-label
+            # link; a bare URL may still autolink with its destination visible
+            lines.append(f"- `{md_inline(p['event_id'], 60)} {md_inline(p['category'], 20)}.{md_inline(p['kind'], 10)} "
+                         f"{md_inline(p['date'], 20)}` — "
+                         f"{md_reason(reason, 160)}")
     if all_rejected:
         lines.append("\n### Skipped — matches an entry in keydates_rejections.json")
         for p in all_rejected:
@@ -1685,8 +1789,21 @@ def main():
         if changes or refuted or held:
             log(f"{base}: +{len(changes)} applied, {len(refuted)} refuted, {len(held)} held")
 
+    ledger_drops = []
     if PUSH and not DRY_RUN:
-        all_changes += reapply_outstanding(all_changes, rejections)
+        all_changes += reapply_outstanding(all_changes, rejections, dropped=ledger_drops)
+        # a backstop drop on the re-apply path prunes the ledger entry; without
+        # this it would vanish from the rolling PR with no body-visible trace.
+        # A slot process_con already refuted pre-verify this run would show up
+        # twice — skip drops whose (slot, date) is already in the Refuted
+        # section; a drop for a DIFFERENT date than the refuted one still
+        # surfaces.
+        seen_refuted = {(p["event_id"], p["category"], p["kind"], p.get("date"))
+                        for p in all_refuted}
+        ledger_drops = [d for d in ledger_drops
+                        if (d["event_id"], d["category"], d["kind"], d.get("date"))
+                        not in seen_refuted]
+        all_refuted += ledger_drops
 
     removals, account_flags, bulk_flags, pending, pins = [], [], [], [], []
     if args.sweep:
@@ -1743,6 +1860,20 @@ def main():
             alert.append("See the keydates bot PR: "
                          "https://github.com/consfyi/data/pulls?q=is%3Apr+is%3Aopen+head%3Abot%2Fbsky-keydates")
             ops_notify("\n".join(alert))
+
+    if ledger_drops and not (all_changes or removals or pins):
+        # a run whose ONLY outcome is a ledger backstop drop publishes nothing
+        # (format/publish gate on all_changes/removals/pins below), so the PR
+        # body never shows it — page ops so the drop still reaches a human,
+        # naming the slots (ops_notify length-caps at 4096). When the run
+        # publishes anything, the PR body already carries the drop.
+        slots = "; ".join(
+            f"{md_inline(d['event_id'], 60)} {md_inline(d['category'], 20)}."
+            f"{md_inline(d['kind'], 10)} {md_inline(d['date'], 20)}"
+            for d in ledger_drops)
+        ops_notify(f"⚠️ keydates: {len(ledger_drops)} outstanding entr(ies) dropped "
+                   f"on re-apply (endDate moved earlier upstream): {slots} — "
+                   "see the run summary.")
 
     save_cache(cache)
 
