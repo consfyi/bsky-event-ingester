@@ -26,3 +26,21 @@ Each `*.json` fixture carries:
   not carry that specific date (other dates are fine); **without a `date`**,
   the slot must be absent entirely.
 - `_comment` — optional fixture-specific notes.
+
+## TODAY-relative dates
+
+A fixture whose case depends on when it runs relative to the con (for example,
+a during-con post) writes its date fields as `TODAY±N` tokens instead of fixed
+dates: `"startDate": "TODAY-2"`, `"createdAt": "TODAY+0T22:00:00.000Z"`. The
+signed offset is mandatory (`TODAY+0` for today) and the token must be the
+entire field value, optionally followed by a `T...` time suffix. A loader
+resolves tokens ONLY in the known date fields — `startDate`, `endDate`,
+`createdAt`, and `date` values inside `expect`/`expect_absent` — never in free
+text such as post `text` or `description`, so a post that literally says
+"CLOSES TODAY" is left verbatim. Token dating keeps a case from decaying as
+real time passes (a fixed past edition would fall out of `upcoming_events()`
+and turn `expect_absent` checks vacuous); token-dated post text must use
+relative wording ("open now", "this Sunday") so it stays coherent with the
+floating dates. `FixtureSmokeTest._resolve_today` implements the resolution;
+the CON-9 eval harness must apply the same rule before feeding a fixture to
+the pipeline.
