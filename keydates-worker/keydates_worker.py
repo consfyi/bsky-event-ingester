@@ -492,8 +492,8 @@ def chat(model: str, system: str, user: str, schema: dict, schema_name: str):
                 err = e.read()
                 # except Groq's json_validate_failed: the model's output missed the
                 # strict schema, an intermittent sampling failure (gpt-oss-20b hits
-                # it). That is malformed output, not a bad request, so retry it once,
-                # the same as a non-dict response. Match the parsed error.code, not
+                # it). That is malformed output, not a bad request, so retry it once
+                # (its own budget, on any attempt but the last). Match the parsed error.code, not
                 # the raw body: failed_generation echoes model output into it.
                 try:
                     code = json.loads(err)["error"].get("code")
