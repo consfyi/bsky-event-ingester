@@ -430,6 +430,7 @@ def chat(model: str, system: str, user: str, schema: dict, schema_name: str):
     }).encode()
     # pace on the real TPM cost Groq bills: input estimate + the output allowance
     est_tokens = estimate_tokens(system, user) + MODEL_MAX_OUTPUT_TOKENS
+    schema_retry_used = False  # one json_validate_failed retry per call, on any attempt
     for attempt in range(4):
         token_pace(model, est_tokens)
         req = urllib.request.Request(
@@ -489,12 +490,20 @@ def chat(model: str, system: str, user: str, schema: dict, schema_name: str):
                 # treat it as "no result" on ANY attempt, so a persistent 400 after
                 # a transient first attempt isn't misclassified as BackendUnavailable.
                 err = e.read()
-                log(f"  400 on {model}: {err[:200]!r}")
                 # except Groq's json_validate_failed: the model's output missed the
                 # strict schema, an intermittent sampling failure (gpt-oss-20b hits
-                # it) — malformed output, not a bad request, so retry once like it
-                if b"json_validate_failed" in err and attempt < 1:
+                # it). That is malformed output, not a bad request, so retry it once,
+                # the same as a non-dict response. Match the parsed error.code, not
+                # the raw body: failed_generation echoes model output into it.
+                try:
+                    code = json.loads(err)["error"].get("code")
+                except (ValueError, KeyError, TypeError, AttributeError):
+                    code = None
+                if code == "json_validate_failed" and not schema_retry_used:
+                    schema_retry_used = True
+                    log(f"  json_validate_failed on {model}, retrying")
                     continue
+                log(f"  400 on {model}: {err[:200]!r}")
                 return None
             if attempt == 3:
                 # a 5xx (or any other status) that survived every retry is a

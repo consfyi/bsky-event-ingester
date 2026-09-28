@@ -2107,12 +2107,13 @@ class TokenPaceTest(unittest.TestCase):
 
 class ChatErrorTest(unittest.TestCase):
     """CON-34: chat()'s HTTPError branches — 413 (request too large) and a
-    first-attempt 400 both return None rather than raising or retrying forever."""
+    first-attempt 400 both return None rather than raising or retrying forever.
+    The exception is Groq's json_validate_failed 400, which is retried once."""
 
-    def _raise(self, code):
+    def _raise(self, code, body=b"error body"):
         def fake(req, timeout=None):
             raise kw.urllib.error.HTTPError(
-                req.full_url, code, "err", {}, io.BytesIO(b"error body"))
+                req.full_url, code, "err", {}, io.BytesIO(body))
         return fake
 
     def test_413_returns_none(self):
@@ -2171,15 +2172,40 @@ class ChatErrorTest(unittest.TestCase):
         self.assertEqual(kw._run_health["backend_failures"], 0)
 
     def test_other_400_is_not_retried(self):
+        fake = unittest.mock.Mock(
+            side_effect=self._raise(400, b'{"error":{"code":"invalid_request"}}'))
+        self.assertIsNone(self._chat_with(fake))
+        self.assertEqual(fake.call_count, 1)
+
+    def test_json_validate_failed_only_in_model_output_is_not_retried(self):
+        # failed_generation echoes model output; the phrase appearing there must
+        # not trigger the retry when error.code is something else
+        body = json.dumps({"error": {"code": "invalid_request",
+                                     "failed_generation": "json_validate_failed"}}).encode()
+        fake = unittest.mock.Mock(side_effect=self._raise(400, body))
+        self.assertIsNone(self._chat_with(fake))
+        self.assertEqual(fake.call_count, 1)
+
+    def test_json_validate_failed_after_429_still_retries(self):
+        # the schema retry is its own budget: a 429 on attempt 0 must not use it up
         calls = {"n": 0}
+        good = {"verdicts": [{"index": 0, "verdict": "confirm", "reason": "r"}]}
 
         def fake(req, timeout=None):
             calls["n"] += 1
-            raise kw.urllib.error.HTTPError(
-                req.full_url, 400, "err", {}, io.BytesIO(b'{"error":{"code":"invalid_request"}}'))
+            if calls["n"] == 1:
+                raise kw.urllib.error.HTTPError(
+                    req.full_url, 429, "err", {"Retry-After": "0"}, io.BytesIO(b""))
+            if calls["n"] == 2:
+                raise self._groq_400(req)
+            return io.BytesIO(json.dumps(
+                {"choices": [{"message": {"content": json.dumps(good)}}]}).encode())
 
-        self.assertIsNone(self._chat_with(fake))
-        self.assertEqual(calls["n"], 1)
+        kw.reset_run_health()
+        with unittest.mock.patch.object(kw.time, "sleep", lambda s: None):
+            self.assertEqual(self._chat_with(fake), good)
+        self.assertEqual(calls["n"], 3)
+        self.assertEqual(kw._run_health["backend_failures"], 0)
 
     def test_retry_after_fractional_over_cap_raises_dailycap(self):
         # a fractional Retry-After over the 300s cap must parse (int("301.5")
