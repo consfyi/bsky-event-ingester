@@ -499,7 +499,7 @@ def chat(model: str, system: str, user: str, schema: dict, schema_name: str):
                     code = json.loads(err)["error"].get("code")
                 except (ValueError, KeyError, TypeError, AttributeError):
                     code = None
-                if code == "json_validate_failed" and not schema_retry_used:
+                if code == "json_validate_failed" and not schema_retry_used and attempt < 3:
                     schema_retry_used = True
                     log(f"  json_validate_failed on {model}, retrying")
                     continue

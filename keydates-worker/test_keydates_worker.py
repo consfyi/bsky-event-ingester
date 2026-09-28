@@ -2207,6 +2207,40 @@ class ChatErrorTest(unittest.TestCase):
         self.assertEqual(calls["n"], 3)
         self.assertEqual(kw._run_health["backend_failures"], 0)
 
+    def test_json_validate_failed_on_last_attempt_logs_400_not_retry(self):
+        # after three 429s the schema miss lands on the final attempt: there is
+        # no attempt left to retry into, so it must log the 400 body and give up
+        calls = {"n": 0}
+        logged = []
+
+        def fake(req, timeout=None):
+            calls["n"] += 1
+            if calls["n"] <= 3:
+                raise kw.urllib.error.HTTPError(
+                    req.full_url, 429, "err", {"Retry-After": "0"}, io.BytesIO(b""))
+            raise self._groq_400(req)
+
+        kw.reset_run_health()
+        with unittest.mock.patch.object(kw.time, "sleep", lambda s: None), \
+             unittest.mock.patch.object(kw, "log", logged.append):
+            self.assertIsNone(self._chat_with(fake))
+        self.assertEqual(calls["n"], 4)
+        self.assertFalse(any("retrying" in line for line in logged), logged)
+        self.assertTrue(logged[-1].startswith("  400 on m:"), logged)
+        self.assertIn("json_validate_failed", logged[-1])
+        self.assertEqual(kw._run_health["backend_failures"], 0)
+
+    def test_400_with_unexpected_json_shape_returns_none(self):
+        # a JSON 400 body that isn't {"error": {...}} must not crash the
+        # error.code lookup; it is an ordinary non-retried 400
+        for body in (b'{"error":"oops"}', b'{}', b'[]'):
+            with self.subTest(body=body):
+                fake = unittest.mock.Mock(side_effect=self._raise(400, body))
+                kw.reset_run_health()
+                self.assertIsNone(self._chat_with(fake))
+                self.assertEqual(fake.call_count, 1)
+                self.assertEqual(kw._run_health["backend_failures"], 0)
+
     def test_retry_after_fractional_over_cap_raises_dailycap(self):
         # a fractional Retry-After over the 300s cap must parse (int("301.5")
         # would ValueError) and be treated as the daily quota being gone (N1)
