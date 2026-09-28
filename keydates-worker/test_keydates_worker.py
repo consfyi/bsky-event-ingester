@@ -2127,6 +2127,60 @@ class ChatErrorTest(unittest.TestCase):
              unittest.mock.patch.object(kw.urllib.request, "urlopen", self._raise(400)):
             self.assertIsNone(kw.chat("m", "s", "u", kw.EXTRACT_SCHEMA, "keydates"))
 
+    def _groq_400(self, req):
+        return kw.urllib.error.HTTPError(
+            req.full_url, 400, "err", {}, io.BytesIO(json.dumps({"error": {
+                "message": "Generated JSON does not match the expected schema.",
+                "type": "invalid_request_error",
+                "code": "json_validate_failed"}}).encode()))
+
+    def _chat_with(self, fake):
+        with unittest.mock.patch.object(kw, "MODEL_API_KEY", "k"), \
+             unittest.mock.patch.object(kw, "token_pace", lambda *a, **k: 0.0), \
+             unittest.mock.patch.object(kw.urllib.request, "urlopen", fake):
+            return kw.chat("m", "s", "u", kw.VERIFY_SCHEMA, "verdicts")
+
+    def test_json_validate_failed_400_retries_and_succeeds(self):
+        # PR #117: one strict-schema miss on gpt-oss-20b held a good proposal;
+        # the retry must return the second attempt's verdicts
+        calls = {"n": 0}
+        good = {"verdicts": [{"index": 0, "verdict": "confirm", "reason": "r"}]}
+
+        def fake(req, timeout=None):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                raise self._groq_400(req)
+            return io.BytesIO(json.dumps(
+                {"choices": [{"message": {"content": json.dumps(good)}}]}).encode())
+
+        kw.reset_run_health()
+        self.assertEqual(self._chat_with(fake), good)
+        self.assertEqual(calls["n"], 2)
+        self.assertEqual(kw._run_health["backend_failures"], 0)
+
+    def test_persistent_json_validate_failed_gives_up_after_one_retry(self):
+        calls = {"n": 0}
+
+        def fake(req, timeout=None):
+            calls["n"] += 1
+            raise self._groq_400(req)
+
+        kw.reset_run_health()
+        self.assertIsNone(self._chat_with(fake))
+        self.assertEqual(calls["n"], 2)
+        self.assertEqual(kw._run_health["backend_failures"], 0)
+
+    def test_other_400_is_not_retried(self):
+        calls = {"n": 0}
+
+        def fake(req, timeout=None):
+            calls["n"] += 1
+            raise kw.urllib.error.HTTPError(
+                req.full_url, 400, "err", {}, io.BytesIO(b'{"error":{"code":"invalid_request"}}'))
+
+        self.assertIsNone(self._chat_with(fake))
+        self.assertEqual(calls["n"], 1)
+
     def test_retry_after_fractional_over_cap_raises_dailycap(self):
         # a fractional Retry-After over the 300s cap must parse (int("301.5")
         # would ValueError) and be treated as the daily quota being gone (N1)

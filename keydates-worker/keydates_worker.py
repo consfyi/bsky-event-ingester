@@ -488,7 +488,13 @@ def chat(model: str, system: str, user: str, schema: dict, schema_name: str):
                 # a 400 is a request the backend rejects, not a backend outage —
                 # treat it as "no result" on ANY attempt, so a persistent 400 after
                 # a transient first attempt isn't misclassified as BackendUnavailable.
-                log(f"  400 on {model}: {e.read()[:200]!r}")
+                err = e.read()
+                log(f"  400 on {model}: {err[:200]!r}")
+                # except Groq's json_validate_failed: the model's output missed the
+                # strict schema, an intermittent sampling failure (gpt-oss-20b hits
+                # it) — malformed output, not a bad request, so retry once like it
+                if b"json_validate_failed" in err and attempt < 1:
+                    continue
                 return None
             if attempt == 3:
                 # a 5xx (or any other status) that survived every retry is a
