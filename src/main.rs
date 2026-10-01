@@ -88,12 +88,7 @@ fn id_to_label(s: &str) -> String {
 }
 
 async fn list_all_records(
-    agent: &atrium_api::agent::Agent<
-        atrium_api::agent::atp_agent::CredentialSession<
-            atrium_api::agent::atp_agent::store::MemorySessionStore,
-            atrium_xrpc_client::reqwest::ReqwestClient,
-        >,
-    >,
+    agent: &bsky_session::BskyAgent,
     did: &atrium_api::types::string::Did,
 ) -> Result<
     Vec<atrium_api::com::atproto::repo::list_records::Record>,
@@ -229,12 +224,7 @@ const EXPIRY_DATE_GRACE_PERIOD: chrono::Days = chrono::Days::new(7);
 
 async fn fetch_old_events(
     did: &atrium_api::types::string::Did,
-    agent: &atrium_api::agent::Agent<
-        atrium_api::agent::atp_agent::CredentialSession<
-            atrium_api::agent::atp_agent::store::MemorySessionStore,
-            atrium_xrpc_client::reqwest::ReqwestClient,
-        >,
-    >,
+    agent: &bsky_session::BskyAgent,
 ) -> Result<Option<std::collections::HashMap<String, OldEvent>>, anyhow::Error> {
     let Some(record) = match agent
         .api
@@ -310,12 +300,7 @@ async fn sync_labels(
     events_url: &str,
     ui_endpoint: &str,
     did: &atrium_api::types::string::Did,
-    agent: &atrium_api::agent::Agent<
-        atrium_api::agent::atp_agent::CredentialSession<
-            atrium_api::agent::atp_agent::store::MemorySessionStore,
-            atrium_xrpc_client::reqwest::ReqwestClient,
-        >,
-    >,
+    agent: &bsky_session::BskyAgent,
     events_state: std::sync::Arc<tokio::sync::Mutex<EventsState>>,
     watchlist: con_posts::Watchlist,
     announcer: Option<&keydates_announce::Announcer>,
@@ -1002,16 +987,15 @@ async fn main() -> Result<(), anyhow::Error> {
 
     let reqwest_client = reqwest::Client::new();
 
-    let session = atrium_api::agent::atp_agent::CredentialSession::new(
+    let agent = std::sync::Arc::new(bsky_session::BskyAgent::new(
         atrium_xrpc_client::reqwest::ReqwestClientBuilder::new(&config.bsky_endpoint)
             .client(reqwest_client.clone())
             .build(),
         atrium_api::agent::atp_agent::store::MemorySessionStore::default(),
-    );
-    session
+    ));
+    agent
         .login(&config.bsky_username, &config.bsky_password)
         .await?;
-    let agent = std::sync::Arc::new(atrium_api::agent::Agent::new(session));
 
     let did = agent.did().await.unwrap();
 
@@ -1032,16 +1016,18 @@ async fn main() -> Result<(), anyhow::Error> {
 
     log::info!("syncing initial labels");
 
-    sync_labels(
-        &reqwest_client,
-        &config.events_url,
-        &config.ui_endpoint,
-        &did,
-        &agent,
-        events_state.clone(),
-        watchlist.clone(),
-        Some(&announcer),
-    )
+    bsky_session::with_session(&agent, &config.bsky_username, &config.bsky_password, || {
+        sync_labels(
+            &reqwest_client,
+            &config.events_url,
+            &config.ui_endpoint,
+            &did,
+            &agent,
+            events_state.clone(),
+            watchlist.clone(),
+            Some(&announcer),
+        )
+    })
     .await?;
 
     let listener = tokio::net::TcpListener::bind(&config.ingester_bind).await?;
@@ -1060,15 +1046,22 @@ async fn main() -> Result<(), anyhow::Error> {
                         .into_response();
                 };
 
-                match sync_labels(
-                    &reqwest_client,
-                    &config.events_url,
-                    &config.ui_endpoint,
-                    &did,
+                match bsky_session::with_session(
                     &agent,
-                    events_state,
-                    watchlist,
-                    Some(&announcer),
+                    &config.bsky_username,
+                    &config.bsky_password,
+                    || {
+                        sync_labels(
+                            &reqwest_client,
+                            &config.events_url,
+                            &config.ui_endpoint,
+                            &did,
+                            &agent,
+                            events_state.clone(),
+                            watchlist.clone(),
+                            Some(&announcer),
+                        )
+                    },
                 )
                 .await
                 {
