@@ -187,6 +187,7 @@ mod tests {
         let err = authed_call(&agent, &runs).await.unwrap_err();
         assert!(err.to_string().contains("AuthMissing"), "{err}");
         assert!(agent.get_session().await.is_none());
+        *runs.lock().unwrap() = 0;
 
         with_session(&agent, "user", "pw", || authed_call(&agent, &runs))
             .await
@@ -194,7 +195,7 @@ mod tests {
         assert_eq!(pds.calls(create_session::NSID), 2);
         assert!(agent.get_session().await.is_some());
         // Logged in before running, so the operation ran once, not fail-then-retry.
-        assert_eq!(*runs.lock().unwrap(), 2);
+        assert_eq!(*runs.lock().unwrap(), 1);
     }
 
     #[tokio::test]
