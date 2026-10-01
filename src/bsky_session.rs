@@ -4,7 +4,7 @@
 //! comes back `ExpiredToken`. If that refresh fails for any reason, it clears
 //! the session store and drops the error, so every later request goes out
 //! without auth (401 `AuthMissing`) until the process restarts. `with_session`
-//! logs in again whenever it finds the store empty.
+//! logs in again before each call that finds the store empty.
 
 use atrium_api::agent::atp_agent::{store::MemorySessionStore, AtpAgent};
 use atrium_api::xrpc::XrpcClient;
@@ -23,18 +23,20 @@ where
     Ok(())
 }
 
-/// Runs `op` with a live session. Logs in first if the session is gone, and if
-/// `op` fails because a refresh cleared the session partway through, logs in
-/// again and retries `op` once.
+/// Runs `op` with a live session, logging in first if the session is gone.
+///
+/// A sync that loses its session partway through is not retried here: some of
+/// its writes may already have landed, and a re-run would post them again
+/// under new record keys. It fails, and the next call logs in first.
 pub async fn with_session<T, R, F, Fut>(
     agent: &BskyAgent<T>,
     identifier: &str,
     password: &str,
-    mut op: F,
+    op: F,
 ) -> anyhow::Result<R>
 where
     T: XrpcClient + Send + Sync,
-    F: FnMut() -> Fut,
+    F: FnOnce() -> Fut,
     Fut: std::future::Future<Output = anyhow::Result<R>>,
 {
     if agent.get_session().await.is_none() {
@@ -42,14 +44,11 @@ where
         login(agent, identifier, password).await?;
     }
 
-    match op().await {
-        Err(e) if agent.get_session().await.is_none() => {
-            log::warn!("Bluesky session lost during the operation ({e}); logging in again and retrying once");
-            login(agent, identifier, password).await?;
-            op().await
-        }
-        result => result,
+    let result = op().await;
+    if result.is_err() && agent.get_session().await.is_none() {
+        log::warn!("Bluesky session lost during the operation; the next call logs in again");
     }
+    result
 }
 
 #[cfg(test)]
@@ -199,11 +198,19 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn retries_once_when_the_session_is_cleared_mid_operation() {
+    async fn a_session_lost_mid_operation_fails_once_then_the_next_call_logs_in() {
+        // Not retried: the operation may already have written part of its work.
         let pds = FakePds::new(&["expired", "access"]);
         let agent = BskyAgent::new(pds.clone(), MemorySessionStore::default());
         agent.login("user", "pw").await.unwrap();
         let runs = Mutex::new(0);
+
+        let err = with_session(&agent, "user", "pw", || authed_call(&agent, &runs))
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("AuthMissing"), "{err}");
+        assert_eq!(*runs.lock().unwrap(), 1);
+        assert_eq!(pds.calls(create_session::NSID), 1);
 
         with_session(&agent, "user", "pw", || authed_call(&agent, &runs))
             .await
@@ -243,33 +250,5 @@ mod tests {
             .unwrap_err();
         assert!(err.to_string().contains("login failed"), "{err}");
         assert_eq!(*runs.lock().unwrap(), 0);
-    }
-
-    #[tokio::test]
-    async fn a_failed_relogin_mid_operation_errors_without_retrying() {
-        let pds = FakePds::new(&["expired", "FAIL"]);
-        let agent = BskyAgent::new(pds.clone(), MemorySessionStore::default());
-        agent.login("user", "pw").await.unwrap();
-        let runs = Mutex::new(0);
-
-        let err = with_session(&agent, "user", "pw", || authed_call(&agent, &runs))
-            .await
-            .unwrap_err();
-        assert!(err.to_string().contains("login failed"), "{err}");
-        assert_eq!(*runs.lock().unwrap(), 1);
-        assert_eq!(pds.calls(create_session::NSID), 2);
-    }
-
-    #[tokio::test]
-    async fn stops_after_one_retry_when_the_session_keeps_dying() {
-        let pds = FakePds::new(&["expired", "expired", "expired"]);
-        let agent = BskyAgent::new(pds.clone(), MemorySessionStore::default());
-        agent.login("user", "pw").await.unwrap();
-        let runs = Mutex::new(0);
-
-        let result = with_session(&agent, "user", "pw", || authed_call(&agent, &runs)).await;
-        assert!(result.is_err());
-        assert_eq!(*runs.lock().unwrap(), 2);
-        assert_eq!(pds.calls(create_session::NSID), 2);
     }
 }
