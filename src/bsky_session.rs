@@ -245,6 +245,21 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn a_failed_relogin_mid_operation_errors_without_retrying() {
+        let pds = FakePds::new(&["expired", "FAIL"]);
+        let agent = BskyAgent::new(pds.clone(), MemorySessionStore::default());
+        agent.login("user", "pw").await.unwrap();
+        let runs = Mutex::new(0);
+
+        let err = with_session(&agent, "user", "pw", || authed_call(&agent, &runs))
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("login failed"), "{err}");
+        assert_eq!(*runs.lock().unwrap(), 1);
+        assert_eq!(pds.calls(create_session::NSID), 2);
+    }
+
+    #[tokio::test]
     async fn stops_after_one_retry_when_the_session_keeps_dying() {
         let pds = FakePds::new(&["expired", "expired", "expired"]);
         let agent = BskyAgent::new(pds.clone(), MemorySessionStore::default());
