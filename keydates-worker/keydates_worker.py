@@ -1208,7 +1208,8 @@ def reapply_outstanding(run_changes, rejections, dropped=None, held=None):
     for c in run_changes:
         key = outstanding_key(c)
         prev = ledger.get(key)
-        if prev and (prev.get("asOf") or "") > (c.get("asOf") or ""):
+        # a _held entry was never applied, so it can't outrank a change that was
+        if prev and not prev.get("_held") and (prev.get("asOf") or "") > (c.get("asOf") or ""):
             # extraction is non-deterministic and may re-propose an older post
             # for a slot the ledger already holds from a newer one; keep the
             # newer entry. Note this only fixes the ledger: process_con already
@@ -2023,8 +2024,7 @@ def main():
                    "see the run summary.")
     # same for a ledger entry the same-day close guard holds (CON-60), paged
     # only on its first hold: it stays in the ledger and is re-held every run
-    first_holds = [d for d in ledger_held
-                   if d.get("_first_hold") and slot_date(d) not in applied]
+    first_holds = [d for d in ledger_held if d.get("_first_hold")]
     if first_holds and not (all_changes or removals or pins):
         ops_notify(f"⚠️ keydates: {len(first_holds)} outstanding entr(ies) held "
                    f"on re-apply (close dated on its post's own day): {ops_slots(first_holds)} — "

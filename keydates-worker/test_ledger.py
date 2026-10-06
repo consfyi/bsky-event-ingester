@@ -295,6 +295,18 @@ check("run17d: earlier-moving close applies", held == [] and len(carried) == 1)
 check("run17d: _held mark cleared on apply",
       "_held" not in kw.load_outstanding()[kw.outstanding_key(same_day)])
 
+# Run 17e: a held entry was never applied, so a run change for the same slot
+# from an OLDER post must still replace it in the ledger (the newer-asOf fold
+# guard must not let the held entry win).
+kw.save_outstanding({kw.outstanding_key(same_day): {**same_day, "_held": True}})
+write_main_state()
+older_run = change("con-a-2026", "con-a.json", "2026-07-31", "2026-06-20T00:00:00Z", kind="closes")
+held = []
+kw.reapply_outstanding([older_run], [], held=held)
+e17e = kw.load_outstanding()[kw.outstanding_key(same_day)]
+check("run17e: older run change replaces a held entry in the ledger",
+      e17e["date"] == "2026-07-31" and "_held" not in e17e)
+
 # Run 18: an old ledger entry with no _post_date falls back to the UTC day —
 # the same post is NOT held then (UTC 07-02 != close 07-01), and is carried.
 write_main_state()
