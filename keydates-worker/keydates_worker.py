@@ -2023,12 +2023,15 @@ def main():
                    f"on re-apply (endDate moved earlier upstream): {ops_slots(ledger_drops)} — "
                    "see the run summary.")
     # same for a ledger entry the same-day close guard holds (CON-60), paged
-    # only on its first hold: it stays in the ledger and is re-held every run
+    # only on its first hold: it stays in the ledger and is re-held every run.
+    # Nothing publishes this run, so an open bot PR from an earlier run still
+    # carries the date as applied — say so, or merging it lands the date
     first_holds = [d for d in ledger_held if d.get("_first_hold")]
     if first_holds and not (all_changes or removals or pins):
         ops_notify(f"⚠️ keydates: {len(first_holds)} outstanding entr(ies) held "
                    f"on re-apply (close dated on its post's own day): {ops_slots(first_holds)} — "
-                   "see the run summary.")
+                   "the open bot PR still shows them as applied until the next publish; "
+                   "/reject them there before merging.")
 
     save_cache(cache)
 

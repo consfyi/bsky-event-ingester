@@ -1159,6 +1159,10 @@ class MainSmokeTest(unittest.TestCase):
                  if "held" in str(c.args[0]) and "re-apply" in str(c.args[0])]
         self.assertTrue(pages, f"no ledger-hold ops page in {notify.call_args_list}")
         self.assertIn("testcon-2999 registration.closes 2998-12-01", pages[0])
+        # nothing published, so the open PR still shows the date as applied;
+        # the page must tell the reviewer not to merge it as-is
+        self.assertIn("still shows them as applied", pages[0])
+        self.assertIn("/reject", pages[0])
         # r2-01: the next quiet run re-holds it (publish() rewrites the PR
         # body, so the Held line must re-render) but does not page again
         body, _, notify = self._run_main(([], [], [], [], True))
