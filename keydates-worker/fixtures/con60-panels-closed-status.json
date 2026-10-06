@@ -1,0 +1,37 @@
+{
+  "issue": "CON-60",
+  "requires_merge": true,
+  "description": "A retrospective \"Panel submissions are closed!\" post with no date in its text. Both verifiers confirmed panels.closes = the post's own date at 1.0 (consfyi/data#106, rejected in a449efb), replacing an explicit 07-01 deadline. The prompts already forbid this and still produce it, so only merge()'s same-day close hold removes it. Captured post text; dates are TODAY-relative tokens so the edition stays upcoming (the real post is 2026-07-06T18:12:23Z, edition 2026-09-04..06).",
+  "con": {
+    "name": "Tails and Tornadoes Fur Con",
+    "bluesky": {
+      "did": "did:plc:dum5xzdrx7qkj3jtlrc3yaje"
+    },
+    "events": [
+      {
+        "id": "tails-and-tornadoes-fur-con-2026",
+        "name": "Tails and Tornadoes Fur Con 2026",
+        "startDate": "TODAY+60",
+        "endDate": "TODAY+62"
+      }
+    ]
+  },
+  "timezone": "America/Chicago",
+  "posts": [
+    {
+      "url": "https://bsky.app/profile/did:plc:dum5xzdrx7qkj3jtlrc3yaje/post/3mpyovotb6f2v",
+      "createdAt": "TODAY+0T18:12:23.364Z",
+      "text": "Alright! Panel submissions are closed! We are now in the process of selecting panelists and will be assembling the schedule this month. Panelists will receive further information once we have locked in the selections. See you in September! #ttfc2026"
+    }
+  ],
+  "expect": [],
+  "expect_absent": [
+    {
+      "event_id": "tails-and-tornadoes-fur-con-2026",
+      "category": "panels",
+      "kind": "closes",
+      "date": "TODAY+0",
+      "reason": "\"submissions are closed!\" reports a status on the post's own day; it names no deadline"
+    }
+  ]
+}

@@ -1923,6 +1923,140 @@ class OpensRecencyTest(unittest.TestCase):
         self.assertEqual(self._date(con, "registration", "closes"), "2999-07-24")
 
 
+class SameDayCloseHoldTest(unittest.TestCase):
+    """CON-60: a closes dated on the source post's own local day is a status
+    post ("registration is closed!"), not an announced deadline — held, add or
+    amendment, unless it moves an existing deadline earlier."""
+
+    SLOT = ("testcon-2999", "registration", "closes")
+
+    def _post(self, date, asof="2999-06-01T15:00:00.000Z", post_date=None, slot=SLOT):
+        p = {**proposal(date, "3bbb", asof=asof, slot=slot),
+             "_file": "testcon.json", "_post_text": "registration is closed!"}
+        if post_date:
+            p["_post_date"] = post_date
+        return p
+
+    def _con(self, closes=None):
+        kd = {"registration": {"closes": entry("3aaa", date=closes)}} if closes else {}
+        return make_con(kd, end_date="2999-12-31")
+
+    def _closes(self, con):
+        return ((con["events"][0].get("keyDates") or {}).get("registration") or {}).get("closes")
+
+    def test_same_day_add_held(self):
+        # hits 4-7 (pawtucky, WPAFW, confuzzled, ACFI): no prior closes at all
+        con, held = self._con(), []
+        changes = kw.merge(con, [self._post("2999-06-01")], held=held)
+        self.assertEqual(changes, [])
+        self.assertIsNone(self._closes(con))
+        self.assertNotIn("keyDates", con["events"][0])  # no empty stub left behind
+        self.assertEqual([h["date"] for h in held], ["2999-06-01"])
+        self.assertEqual(held[0]["_verdicts"][-1]["model"], "mechanical")
+        self.assertEqual(held[0]["_verdicts"][-1]["verdict"], "hold")
+
+    def test_same_day_amendment_later_held(self):
+        # T&T: explicit 07-31 deadline, then an at-con "closing today" post
+        con, held = self._con(closes="2999-05-31"), []
+        changes = kw.merge(con, [self._post("2999-06-01")], held=held)
+        self.assertEqual(changes, [])
+        self.assertEqual(self._closes(con)["date"], "2999-05-31")
+        self.assertEqual(len(held), 1)
+
+    def test_same_day_amendment_earlier_applies(self):
+        # "we're closing registration early, today" moves the deadline up: real
+        con, held = self._con(closes="2999-07-31"), []
+        changes = kw.merge(con, [self._post("2999-06-01")], held=held)
+        self.assertEqual(len(changes), 1)
+        self.assertEqual(self._closes(con)["date"], "2999-06-01")
+        self.assertEqual(held, [])
+
+    def test_different_day_close_applies(self):
+        con, held = self._con(), []
+        changes = kw.merge(con, [self._post("2999-06-15")], held=held)
+        self.assertEqual(len(changes), 1)
+        self.assertEqual(held, [])
+
+    def test_same_day_opens_applies(self):
+        con, held = self._con(), []
+        changes = kw.merge(con, [self._post("2999-06-01", slot=("testcon-2999", "registration", "opens"))],
+                           held=held)
+        self.assertEqual(len(changes), 1)
+        self.assertEqual(held, [])
+
+    def test_local_post_date_beats_utc(self):
+        # the T&T post: 2026-09-05T00:26Z is 09-04 in Chicago, and its close
+        # is 09-04 — the UTC day would let it through
+        con, held = self._con(), []
+        kw.merge(con, [self._post("2999-06-01", asof="2999-06-02T00:26:00.000Z",
+                                  post_date="2999-06-01")], held=held)
+        self.assertEqual(len(held), 1)
+        # furpocalypse: 08-31T01:00Z is 08-30 local, closes 08-31 is a real
+        # extension the UTC day would wrongly hold
+        con, held = self._con(closes="2999-05-30"), []
+        changes = kw.merge(con, [self._post("2999-06-02", asof="2999-06-02T01:00:00.000Z",
+                                            post_date="2999-06-01")], held=held)
+        self.assertEqual(len(changes), 1)
+        self.assertEqual(held, [])
+
+    def test_no_post_date_falls_back_to_utc_day(self):
+        # ledger entries written before CON-60 carry no _post_date
+        con, held = self._con(), []
+        kw.merge(con, [self._post("2999-06-01", asof="2999-06-01T23:00:00.000Z")], held=held)
+        self.assertEqual(len(held), 1)
+
+    def test_curated_and_recency_losers_not_held(self):
+        # the hold only catches what would otherwise apply
+        con = make_con({"registration": {"closes": {"date": "2999-05-31"}}}, end_date="2999-12-31")
+        held = []
+        kw.merge(con, [self._post("2999-06-01")], held=held)
+        self.assertEqual(held, [])
+        con, held = self._con(closes="2999-05-31"), []
+        kw.merge(con, [self._post("2999-06-01", asof="2998-01-01T00:00:00.000Z",
+                                  post_date="2998-01-01")], held=held)
+        self.assertEqual(held, [])
+
+    def test_cached_verdicts_list_not_mutated(self):
+        p = self._post("2999-06-01")
+        cached = p["_verdicts"]
+        kw.merge(self._con(), [p], held=[])
+        self.assertEqual(len(cached), 1)
+
+    def test_held_renders_in_held_section(self):
+        held = []
+        kw.merge(self._con(), [self._post("2999-06-01")], held=held)
+        body = kw.render_summary([], [], held, [], "")
+        self.assertIn("same-day close", body)
+        self.assertIn("[post](https://bsky.app/profile/testcon.example/post/3bbb)", body)
+
+    def test_process_con_holds_by_venue_local_day(self):
+        # end to end: process_con stamps the venue-local day, merge holds,
+        # the hold comes back in `held`, and the file is not written
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        fn = os.path.join(tmp.name, "testcon.json")
+        with open(fn, "w") as f:
+            json.dump(self._con(closes="2999-05-31"), f)
+        post = {"url": did_entry("3ccc")["source"], "asOf": "2999-06-02T00:26:00.000Z",
+                "text": "Registration will be closing today @ 9PM"}
+
+        def fake_extract(con_, events, posts, tz="UTC"):
+            return [{"event_id": "testcon-2999", "category": "registration", "kind": "closes",
+                     "date": "2999-06-01", "source": posts[0]["url"], "confidence": 1.0}]
+
+        with unittest.mock.patch.object(kw, "extract_for_con", side_effect=fake_extract), \
+             unittest.mock.patch.object(kw, "load_event_timezones",
+                                        return_value={"testcon-2999": "America/Chicago"}), \
+             unittest.mock.patch.object(kw, "verify_proposals",
+                                        side_effect=lambda proposals, cache: (
+                                            [{**p, "_verdicts": []} for p in proposals], [], [])):
+            changes, refuted, held, _, _ = kw.process_con(fn, {}, [], provided_posts=[post])
+        self.assertEqual(changes, [])
+        self.assertEqual([(h["date"], h["_post_date"]) for h in held], [("2999-06-01", "2999-06-01")])
+        with open(fn) as f:
+            self.assertEqual(self._closes(json.load(f))["date"], "2999-05-31")
+
+
 class ChatClientTest(unittest.TestCase):
     """CON-34: chat() posts to the configured (swappable) provider endpoint with
     the API key as a Bearer token and a real User-Agent."""
@@ -2877,15 +3011,17 @@ class VenueLocalDateTest(unittest.TestCase):
              unittest.mock.patch.object(kw, "DRY_RUN", True), \
              unittest.mock.patch.object(kw, "load_event_timezones",
                                         return_value={"testcon-2999": "America/New_York"}):
-            changes, *_ = kw.process_con(fn, {}, [], provided_posts=[post])
+            changes, _, held, *_ = kw.process_con(fn, {}, [], provided_posts=[post])
         self.assertEqual(sent["keydates"]["timezone"], "America/New_York")
         self.assertEqual(sent["keydates"]["posts"][0]["asOf"], "2026-08-02T21:33:00-04:00")
         item = sent["verdicts"]["items"][0]
         self.assertEqual(item["post_timestamp"], "2026-08-02T21:33:00-04:00")
         self.assertEqual(item["post_timezone"], "America/New_York")
-        # the stored asOf stays the raw UTC createdAt (schema unchanged)
-        self.assertEqual(changes[0]["asOf"], "2026-08-03T01:33:00.000Z")
-        self.assertEqual(changes[0]["date"], "2026-08-02")
+        # a close on the post's own local day is held for a human (CON-60);
+        # the proposal keeps the raw UTC createdAt as asOf (schema unchanged)
+        self.assertEqual(changes, [])
+        self.assertEqual(held[0]["asOf"], "2026-08-03T01:33:00.000Z")
+        self.assertEqual(held[0]["date"], "2026-08-02")
 
         # unknown feed zone: both payloads say UTC and the stamp is left as-is
         sent.clear()

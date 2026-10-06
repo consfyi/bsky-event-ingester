@@ -743,11 +743,12 @@ def mechanical_refute(reason):
     return [{"model": "mechanical", "verdict": "refute", "reason": reason}]
 
 
-def merge(con, dates, dropped=None):
+def merge(con, dates, dropped=None, held=None):
     """Apply confirmed dates. Returns list of change descriptions. Entries the
     after-end backstop drops are appended to `dropped` (when given) with a
     mechanical refute verdict, so the ledger re-apply path can surface them in
-    the PR body instead of losing them to stderr."""
+    the PR body instead of losing them to stderr. Same-day closes (CON-60) are
+    appended to `held` (when given) with a mechanical hold verdict."""
     by_id = {e["id"]: e for e in con.get("events", [])}
     changes = []
     for d in dates:
@@ -792,6 +793,26 @@ def merge(con, dates, dropped=None):
         # not a real re-opening. closes keeps full recency-wins, since genuine
         # deadline extensions/move-ups must still apply.
         if existing is not None and d["kind"] == "opens" and existing.get("date") and d["date"] > existing["date"]:
+            continue
+        # a closes dated on the source post's own local day is the signature of
+        # a status post ("registration is closed!", "closing today @ 9PM at the
+        # desk"), not an announced deadline: with no date in the text the model
+        # falls back to the post date. Hold it for a human, add or amendment
+        # (CON-60). A same-day close that moves an existing deadline earlier
+        # (or keeps it) still applies. _post_date is the venue-local day
+        # process_con stamps; older ledger entries fall back to the UTC day.
+        post_day = d.get("_post_date") or str(d["asOf"])[:10]
+        if (d["kind"] == "closes" and d["date"] == post_day
+                and not (existing and existing.get("date") and d["date"] <= existing["date"])):
+            log(f"  same-day close held: {d['event_id']} {d['category']}.closes {d['date']}")
+            if held is not None:
+                # rebind, never append: _verdicts is the verify cache's list
+                # object (ledger entries carry none)
+                held.append({**d, "_verdicts": d.get("_verdicts", []) + [{
+                    "model": "mechanical", "verdict": "hold",
+                    "reason": "closes on the source post's own day: a status post "
+                              "(\"closed!\", \"closing today\") rather than an announced "
+                              "deadline? Hand-apply if real, else /reject"}]})
             continue
         new_val = {
             "date": d["date"], "source": d["source"], "asOf": d["asOf"],
@@ -1174,12 +1195,13 @@ def save_outstanding(entries):
     os.replace(tmp, OUTSTANDING_FILE)
 
 
-def reapply_outstanding(run_changes, rejections, dropped=None):
+def reapply_outstanding(run_changes, rejections, dropped=None, held=None):
     """Fold this run's changes into the ledger, re-apply every other
     outstanding entry to the fresh checkout, and prune what is no longer
     outstanding. Returns the re-applied changes (for the summary/PR).
-    Entries merge()'s after-end backstop drops are appended to `dropped`
-    (when given) so the run summary can show them."""
+    Entries merge()'s after-end backstop drops are appended to `dropped`,
+    and entries its same-day close guard holds to `held` (when given), so
+    the run summary can show them."""
     ledger = load_outstanding()
     for c in run_changes:
         key = outstanding_key(c)
@@ -1194,7 +1216,7 @@ def reapply_outstanding(run_changes, rejections, dropped=None):
             continue
         ledger[key] = {k: c.get(k) for k in
                        ("event_id", "category", "kind", "date", "source",
-                        "asOf", "confidence", "_file", "_post_text")}
+                        "asOf", "confidence", "_file", "_post_text", "_post_date")}
     run_keys = {outstanding_key(c) for c in run_changes}
     kept, carried = {}, []
     for key, entry in ledger.items():
@@ -1224,7 +1246,7 @@ def reapply_outstanding(run_changes, rejections, dropped=None):
         # same grace so we don't drop one process_con would still re-propose
         if (event.get("endDate") or "") < (TODAY - datetime.timedelta(days=2)).isoformat():
             continue
-        changes = merge(con, [entry], dropped=dropped)
+        changes = merge(con, [entry], dropped=dropped, held=held)
         if not changes:
             continue  # main already has it, or a newer/curated value won
         tmp = fn + ".tmp"
@@ -1539,6 +1561,7 @@ def process_con(fn, cache, rejections, provided_posts=None, extra_post=None):
             continue
         d["_con_name"] = con["name"]
         d["_tz"] = tz
+        d["_post_date"] = localize_timestamp(d["asOf"], tz)[1]  # merge()'s same-day close hold
         d["_post_text"] = (post or {}).get("text", "")
         d["_ev_dates"] = ev_meta.get(d["event_id"], ("?", "?"))
         d["_siblings"] = [
@@ -1555,16 +1578,16 @@ def process_con(fn, cache, rejections, provided_posts=None, extra_post=None):
     held = conflicted + held
     refuted = stale_drops + refuted
 
-    changes = []
+    changes, same_day = [], []
     if confirmed:
-        changes = merge(con, confirmed)
+        changes = merge(con, confirmed, held=same_day)
         if changes and not DRY_RUN:
             tmp = fn + ".tmp"
             with open(tmp, "w") as f:
                 json.dump(con, f, ensure_ascii=False, indent=2)
                 f.write("\n")
             os.replace(tmp, fn)  # atomic: a killed run can't truncate a con file
-    return changes, refuted, held, rejected_skips, True
+    return changes, refuted, held + same_day, rejected_skips, True
 
 
 def md_inline(text, cap):
@@ -1640,7 +1663,7 @@ def render_summary(all_changes, all_refuted, all_held, all_rejected, skipped_not
                              f"({md_link('previous post', prev.get('source'))}, asOf {md_post(prev.get('asOf'), 40)}) — "
                              f"a different sign-up rather than a correction? `/reject` this date and hand-restore the old one.")
     if all_held:
-        lines.append("\n### Held — verifier disagreement or same-run conflict, needs a human (`/reject` or hand-apply)")
+        lines.append("\n### Held — verifier disagreement, same-run conflict, or same-day close; needs a human (`/reject` or hand-apply)")
         for p in all_held:
             lines.append(f"- {md_id(p['event_id'], p['category'], p['kind'], p['date'])} — {md_link('post', p.get('source'))} — " +
                          "; ".join(f"{v['model'].split('/')[-1]}: {md_reason(v['verdict'], 20)} ({md_reason(v['reason'], 120)})" for v in p["_verdicts"]))
@@ -1876,9 +1899,10 @@ def main():
         if changes or refuted or held:
             log(f"{base}: +{len(changes)} applied, {len(refuted)} refuted, {len(held)} held")
 
-    ledger_drops = []
+    ledger_drops, ledger_held = [], []
     if PUSH and not DRY_RUN:
-        all_changes += reapply_outstanding(all_changes, rejections, dropped=ledger_drops)
+        all_changes += reapply_outstanding(all_changes, rejections, dropped=ledger_drops,
+                                           held=ledger_held)
         # a backstop drop on the re-apply path prunes the ledger entry; without
         # this it would vanish from the rolling PR with no body-visible trace.
         # A slot process_con already refuted pre-verify this run would show up
@@ -1891,6 +1915,13 @@ def main():
                         if (d["event_id"], d["category"], d["kind"], d.get("date"))
                         not in seen_refuted]
         all_refuted += ledger_drops
+        # same for a ledger entry the same-day close guard holds (CON-60): it
+        # is pruned from the ledger, so the Held section is its only trace
+        seen_held = {(p["event_id"], p["category"], p["kind"], p.get("date"))
+                     for p in all_held}
+        all_held += [d for d in ledger_held
+                     if (d["event_id"], d["category"], d["kind"], d.get("date"))
+                     not in seen_held]
 
     removals, account_flags, bulk_flags, pending, pins = [], [], [], [], []
     if args.sweep:

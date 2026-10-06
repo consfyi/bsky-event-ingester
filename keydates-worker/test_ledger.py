@@ -230,5 +230,41 @@ check("run15: valid sibling still applied",
       kd15.get("hotel", {}).get("opens", {}).get("date") == "2026-08-01")
 check("run15: bogus category never written", "bogus" not in kd15)
 
+# Run 16: the ledger keeps a change's venue-local _post_date (CON-60) so a
+# re-apply judges same-day closes by the local day, not the UTC one.
+write_main_state()
+C = {**change("con-a-2026", "con-a.json", "2026-08-01", "2026-07-02T00:26:00Z", kind="closes"),
+     "_post_date": "2026-07-01"}
+kw.reapply_outstanding([C], [])
+check("run16: ledger persists _post_date",
+      kw.load_outstanding()[kw.outstanding_key(C)].get("_post_date") == "2026-07-01")
+
+# Run 17: an outstanding closes dated on its post's local day (one applied
+# before CON-60 deployed) is held on re-apply: not carried, not written,
+# pruned from the ledger, and surfaced via the collector for the Held section.
+write_main_state()
+same_day = {**change("con-a-2026", "con-a.json", "2026-07-01", "2026-07-02T00:26:00Z",
+                     kind="closes"), "_post_date": "2026-07-01"}
+kw.save_outstanding({kw.outstanding_key(same_day): same_day})
+held = []
+carried = kw.reapply_outstanding([], [], held=held)
+check("run17: same-day close not carried", carried == [])
+check("run17: same-day close not written to file", "keyDates" not in read("con-a.json")["events"][0])
+check("run17: same-day close pruned from ledger", kw.load_outstanding() == {})
+check("run17: hold surfaced with a mechanical hold verdict",
+      len(held) == 1 and len(held[0]["_verdicts"]) == 1
+      and held[0]["_verdicts"][0]["verdict"] == "hold")
+check("run17: held entry renders in the Held section",
+      "same-day close" in kw.render_summary([], [], held, [], ""))
+
+# Run 18: an old ledger entry with no _post_date falls back to the UTC day —
+# the same post is NOT held then (UTC 07-02 != close 07-01), and is carried.
+write_main_state()
+old_entry = {k: v for k, v in same_day.items() if k != "_post_date"}
+kw.save_outstanding({kw.outstanding_key(old_entry): old_entry})
+held = []
+carried = kw.reapply_outstanding([], [], held=held)
+check("run18: no _post_date falls back to the UTC day", held == [] and len(carried) == 1)
+
 print()
 sys.exit(1 if fails else 0)

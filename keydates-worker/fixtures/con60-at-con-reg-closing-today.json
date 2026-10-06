@@ -1,0 +1,38 @@
+{
+  "issue": "CON-60",
+  "requires_merge": true,
+  "description": "An at-con \"Registration will be closing today @ 9PM\" post on day 1 of the con. Confirmed at 1.0 as registration.closes = the post's local day (consfyi/data#108), replacing the explicit 07-31 pre-reg deadline. It is the at-the-desk cutoff, not the registration window. Pins the venue-local day: the real post is 2026-09-05T00:26:20Z, which is 09-04 in Chicago; a UTC-day rule misses it. Captured post text; dates are TODAY-relative tokens so the con is always running.",
+  "con": {
+    "name": "Tails and Tornadoes Fur Con",
+    "bluesky": {
+      "did": "did:plc:dum5xzdrx7qkj3jtlrc3yaje"
+    },
+    "events": [
+      {
+        "id": "tails-and-tornadoes-fur-con-2026",
+        "name": "Tails and Tornadoes Fur Con 2026",
+        "startDate": "TODAY+0",
+        "endDate": "TODAY+2"
+      }
+    ]
+  },
+  "timezone": "America/Chicago",
+  "posts": [
+    {
+      "url": "https://bsky.app/profile/did:plc:dum5xzdrx7qkj3jtlrc3yaje/post/3muq7rmih2d2t",
+      "createdAt": "TODAY+1T00:26:20.800Z",
+      "text": "Hello fluffy fluffs!! Hope everyone is having a RWRING good Drive.\n\nPlease note that Registration will be closing today @ 9PM please pick up your badge before then, or else you won't be able to attend the evening events without one"
+    }
+  ],
+  "expect": [],
+  "expect_absent": [
+    {
+      "event_id": "tails-and-tornadoes-fur-con-2026",
+      "category": "registration",
+      "kind": "closes",
+      "date": "TODAY+0",
+      "reason": "an at-con desk cutoff on the post's own local day, not the registration deadline"
+    }
+  ],
+  "_comment": "The post's UTC day is TODAY+1; only the venue-local day (TODAY+0) matches the close."
+}

@@ -8,7 +8,7 @@ Pipeline: gpt-oss-20b extract (hardened exclusion prompt) → gpt-oss-120b AND
 gpt-oss-20b adversarial verify, **unanimity required** → validated merge guardrails
 (confidence ≥ 0.8, never overwrite curated values, recency-wins, same-date
 re-announcements skipped pre-verify, rejections file, previous-edition
-timestamp gate) → rolling PR on `bot/bsky-keydates`.
+timestamp gate, closes dated on the post's own local day held) → rolling PR on `bot/bsky-keydates`.
 
 Calibration: the 2026-07-01 baseline showed small-model extraction alone has
 ~30% false positives; this verify stage refuted 19/19 of them. Live testing
@@ -115,4 +115,6 @@ Reviewing the bot PR and something's wrong? Comment on it:
 The `keydates_reject` workflow appends it to `.github/keydates_rejections.json` on
 main; the worker never proposes that exact date again (a *different* date for
 the same slot from a newer post is still allowed). Held items (verifier
-disagreement) are listed in the PR body — apply by hand or `/reject`.
+disagreement, same-run conflicts, and closes dated on the source post's own
+local day, which are usually "registration is closed!" status posts) are
+listed in the PR body — apply by hand or `/reject`.
