@@ -18,6 +18,9 @@ spec = importlib.util.spec_from_file_location(
     "kw", os.path.join(os.path.dirname(os.path.abspath(__file__)), "keydates_worker.py"))
 kw = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(kw)
+# no venue zones unless a run sets them: the ledger path must never fetch the
+# live events feed from a test
+kw._event_tz_cache = {}
 
 # edition dates derive from TODAY: reapply_outstanding prunes any entry whose
 # event ended more than 2 days ago, so hardcoded dates would silently stop
@@ -307,14 +310,27 @@ e17e = kw.load_outstanding()[kw.outstanding_key(same_day)]
 check("run17e: older run change replaces a held entry in the ledger",
       e17e["date"] == "2026-07-31" and "_held" not in e17e)
 
-# Run 18: an old ledger entry with no _post_date falls back to the UTC day —
-# the same post is NOT held then (UTC 07-02 != close 07-01), and is carried.
+# Run 18: an old ledger entry with no _post_date (written before CON-60) is
+# judged by the venue-local day: the 07-02T00:26Z post is 07-01 in Chicago,
+# its close is 07-01, so it is held — and the computed day is persisted.
 write_main_state()
 old_entry = {k: v for k, v in same_day.items() if k != "_post_date"}
 kw.save_outstanding({kw.outstanding_key(old_entry): old_entry})
+kw._event_tz_cache = {"con-a-2026": "America/Chicago"}
 held = []
 carried = kw.reapply_outstanding([], [], held=held)
-check("run18: no _post_date falls back to the UTC day", held == [] and len(carried) == 1)
+check("run18: no _post_date uses the venue-local day", len(held) == 1 and carried == [])
+check("run18: computed _post_date persisted in the ledger",
+      kw.load_outstanding()[kw.outstanding_key(old_entry)].get("_post_date") == "2026-07-01")
+
+# Run 18b: with no venue zone (feed down) the same entry falls back to the
+# UTC day (07-02 != close 07-01): not held, carried.
+write_main_state()
+kw.save_outstanding({kw.outstanding_key(old_entry): old_entry})
+kw._event_tz_cache = {}
+held = []
+carried = kw.reapply_outstanding([], [], held=held)
+check("run18b: no venue zone falls back to the UTC day", held == [] and len(carried) == 1)
 
 # Run 19: a tampered ledger entry with planted _verdicts must not carry them
 # into the held entry (render_summary prints verdict models unescaped).

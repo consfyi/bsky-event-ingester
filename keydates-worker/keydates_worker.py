@@ -800,7 +800,8 @@ def merge(con, dates, dropped=None, held=None):
         # falls back to the post date. Hold it for a human, add or amendment
         # (CON-60). A same-day close that moves an existing deadline earlier
         # (or keeps it) still applies. _post_date is the venue-local day
-        # process_con stamps; older ledger entries fall back to the UTC day.
+        # process_con stamps (reapply_outstanding fills it in for older ledger
+        # entries); the UTC day is the last resort.
         post_day = d.get("_post_date") or str(d["asOf"])[:10]
         if (d["kind"] == "closes" and d["date"] == post_day
                 and not (existing and isinstance(existing.get("date"), str)
@@ -1252,6 +1253,12 @@ def reapply_outstanding(run_changes, rejections, dropped=None, held=None):
         # a ledger entry never legitimately carries _verdicts; a planted one
         # would reach the PR body through merge()'s hold path unescaped
         clean = {k: v for k, v in entry.items() if k not in ("_verdicts", "_held")}
+        if (clean.get("kind") == "closes" and not clean.get("_post_date")
+                and isinstance(clean.get("asOf"), str)):
+            # entries written before CON-60 carry no _post_date: judge them by
+            # the venue-local day like process_con does, not the UTC day
+            tz = venue_timezone([event], load_event_timezones())
+            clean["_post_date"] = entry["_post_date"] = localize_timestamp(clean["asOf"], tz)[1]
         entry_held = []
         changes = merge(con, [clean], dropped=dropped, held=entry_held)
         if entry_held:
