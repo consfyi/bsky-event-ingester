@@ -331,6 +331,16 @@ kw._event_tz_cache = {}
 held = []
 carried = kw.reapply_outstanding([], [], held=held)
 check("run18b: no venue zone falls back to the UTC day", held == [] and len(carried) == 1)
+check("run18b: UTC fallback day not persisted",
+      "_post_date" not in kw.load_outstanding()[kw.outstanding_key(old_entry)])
+
+# Run 18c: once the feed is back, the next run finds the venue day and holds it.
+write_main_state()
+kw._event_tz_cache = {"con-a-2026": "America/Chicago"}
+held = []
+carried = kw.reapply_outstanding([], [], held=held)
+check("run18c: venue day recomputed after the feed recovers", len(held) == 1 and carried == [])
+kw._event_tz_cache = {}
 
 # Run 19: a tampered ledger entry with planted _verdicts must not carry them
 # into the held entry (render_summary prints verdict models unescaped).

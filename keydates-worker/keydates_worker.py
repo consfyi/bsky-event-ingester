@@ -1253,14 +1253,19 @@ def reapply_outstanding(run_changes, rejections, dropped=None, held=None):
         # a ledger entry never legitimately carries _verdicts; a planted one
         # would reach the PR body through merge()'s hold path unescaped
         clean = {k: v for k, v in entry.items() if k not in ("_verdicts", "_held")}
+        judged = clean
         if (clean.get("kind") == "closes" and not clean.get("_post_date")
                 and isinstance(clean.get("asOf"), str)):
             # entries written before CON-60 carry no _post_date: judge them by
             # the venue-local day like process_con does, not the UTC day
             tz = venue_timezone([event], load_event_timezones())
-            clean["_post_date"] = entry["_post_date"] = localize_timestamp(clean["asOf"], tz)[1]
+            judged = {**clean, "_post_date": localize_timestamp(clean["asOf"], tz)[1]}
+            if tz != "UTC":
+                # persist only a real venue day: a UTC fallback (events feed
+                # down) saved here would stop later runs from recomputing it
+                clean["_post_date"] = entry["_post_date"] = judged["_post_date"]
         entry_held = []
-        changes = merge(con, [clean], dropped=dropped, held=entry_held)
+        changes = merge(con, [judged], dropped=dropped, held=entry_held)
         if entry_held:
             # same-day close hold (CON-60): keep the entry so every run re-holds
             # it — publish() rewrites the whole PR body, so pruning it would
