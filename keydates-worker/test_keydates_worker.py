@@ -678,6 +678,21 @@ class SummaryTest(unittest.TestCase):
                 self.assertNotIn("](http://e.co", bare)
                 self.assertNotIn("<a ", bare)
 
+    def test_held_verdict_model_renders_inert(self):
+        # r2-05: a verdict model name (cache/ledger text) must render inside a
+        # code span; the slash-free payloads survive the split('/') unchanged
+        held = {"event_id": "testcon-2999", "category": "panels", "kind": "opens",
+                "date": "2999-01-01",
+                "_verdicts": [{"model": m, "verdict": "hold", "reason": "why"}
+                              for m in ("[x](https://evil.example)", "[go](http:e.co)",
+                                        "<a href=http:e.co>x")]}
+        body = kw.render_summary([], [], [held], [], "")
+        self.assertIn("go", body)
+        for line in body.splitlines():
+            for bare in line.split("`")[0::2]:
+                self.assertNotIn("](", bare)
+                self.assertNotIn("<a ", bare)
+
     def test_skipped_and_liveness_ids_render_inert(self):
         # r1-02: the Skipped _reason (from keydates_rejections.json) and the
         # liveness sections (removals/pending) print con-file/ledger text with
@@ -1123,26 +1138,50 @@ class MainSmokeTest(unittest.TestCase):
         return body, publish, notify
 
     def _held_lines(self, body):
-        return [line for line in body.split("### Held", 1)[-1].splitlines()
+        return [line for line in body.split("### Held", 1)[-1].split("\n###", 1)[0].splitlines()
                 if line.startswith("- ")] if "### Held" in body else []
 
     def test_ledger_same_day_hold_lands_in_held_summary_and_pages_ops(self):
         # CON-60: an outstanding close dated on its post's own day (applied
-        # before the guard shipped) is held on re-apply and pruned from the
+        # before the guard shipped) is held on re-apply and kept in the
         # ledger; main() must fold it into the Held section AND page ops,
         # since a held-only run publishes nothing
-        self._seed_ledger(self._ledger_close("2998-12-01", "2998-12-01"))
+        close = self._ledger_close("2998-12-01", "2998-12-01")
+        self._seed_ledger(close)
         body, publish, notify = self._run_main(([], [], [], [], True))
         held = self._held_lines(body)
         self.assertEqual(len(held), 1, body)
         self.assertIn("testcon-2999 registration.closes 2998-12-01", held[0])
         self.assertIn("same-day close", body)
-        self.assertEqual(kw.load_outstanding(), {})
+        self.assertEqual(list(kw.load_outstanding()), [kw.outstanding_key(close)])
         publish.assert_not_called()
         pages = [str(c.args[0]) for c in notify.call_args_list
                  if "held" in str(c.args[0]) and "re-apply" in str(c.args[0])]
         self.assertTrue(pages, f"no ledger-hold ops page in {notify.call_args_list}")
         self.assertIn("testcon-2999 registration.closes 2998-12-01", pages[0])
+        # r2-01: the next quiet run re-holds it (publish() rewrites the PR
+        # body, so the Held line must re-render) but does not page again
+        body, _, notify = self._run_main(([], [], [], [], True))
+        self.assertEqual(len(self._held_lines(body)), 1, body)
+        self.assertFalse(any("held" in str(c.args[0]) and "re-apply" in str(c.args[0])
+                             for c in notify.call_args_list),
+                         f"repeat ledger-hold ops page in {notify.call_args_list}")
+
+    def test_ledger_hold_no_ops_page_when_run_publishes(self):
+        # r2-03: a held ledger entry alongside a re-applied one: the run
+        # publishes, the PR body carries the hold, so no ledger-hold page
+        self._seed_ledger(self._ledger_close("2998-12-01", "2998-12-01"),
+                          {**self._ledger_close("2999-01-03", "2998-12-01", rkey="3bbb"),
+                           "category": "dealers"})
+        body, publish, notify = self._run_main(([], [], [], [], True))
+        publish.assert_called_once()
+        self.assertIn("### Applied", body)
+        held = self._held_lines(body)
+        self.assertEqual(len(held), 1, body)
+        self.assertIn("testcon-2999 registration.closes 2998-12-01", held[0])
+        self.assertFalse(any("held" in str(c.args[0]) and "re-apply" in str(c.args[0])
+                             for c in notify.call_args_list),
+                         f"unexpected ledger-hold ops page in {notify.call_args_list}")
 
     def test_ledger_same_day_hold_deduped_against_process_con_hold(self):
         # the same slot+date held by both process_con and the ledger re-apply
@@ -1169,6 +1208,30 @@ class MainSmokeTest(unittest.TestCase):
         self.assertEqual(len(held), 1, body)
         self.assertIn("2999-01-04", held[0])
         self.assertFalse(any("re-apply" in str(c.args[0]) for c in notify.call_args_list))
+
+    def test_hold_survives_when_liveness_removes_the_matching_applied_value(self):
+        # r2-04: the applied-date filter runs after liveness, so a hold whose
+        # slot+date matched a value liveness then removed still shows
+        self._seed_ledger()
+        hold = {"_verdicts": [{"model": "mechanical", "verdict": "hold", "reason": "same day"}]}
+        applied = {**self._ledger_close("2999-01-03", "2998-12-01"), "verb": "add"}
+        same = {**self._ledger_close("2999-01-03", "2999-01-03", rkey="3bbb"), **hold}
+        removal = {k: applied[k] for k in ("event_id", "category", "kind", "date",
+                                           "source", "asOf", "_file")}
+        ok = unittest.mock.Mock(returncode=0, stdout="")
+        with unittest.mock.patch.object(
+                 kw, "process_con", return_value=([dict(applied)], [], [same], [], True)), \
+             unittest.mock.patch.object(
+                 kw, "check_source_liveness", return_value=([removal], [], [], [], [])), \
+             unittest.mock.patch.object(kw, "publish"), \
+             unittest.mock.patch.object(kw.subprocess, "run", return_value=ok):
+            kw.main()
+        with open(self.summary_file) as f:
+            body = f.read()
+        self.assertNotIn("### Applied", body)
+        held = self._held_lines(body)
+        self.assertEqual(len(held), 1, body)
+        self.assertIn("2999-01-03", held[0])
 
     def test_pins_only_sweep_still_formats_and_publishes(self):
         # CON-26 backfill case: a sweep whose only outcome is DID-pinning must
@@ -2047,6 +2110,18 @@ class SameDayCloseHoldTest(unittest.TestCase):
         self.assertEqual(len(changes), 1)
         self.assertEqual(self._closes(con)["date"], "2999-06-01")
         self.assertEqual(held, [])
+
+    def test_same_day_close_keeping_existing_date_applies(self):
+        # r2-02: the "or keeps it" half of the exemption — a newer same-day
+        # post restating the existing deadline is a source refresh, not a hold
+        con, held = self._con(closes="2999-06-01"), []
+        changes = kw.merge(con, [self._post("2999-06-01", post_date="2999-06-01")], held=held)
+        self.assertEqual(held, [])
+        self.assertEqual(len(changes), 1)
+        self.assertEqual(changes[0]["verb"], "update")
+        self.assertEqual(self._closes(con)["date"], "2999-06-01")
+        self.assertEqual(self._closes(con)["source"],
+                         "https://bsky.app/profile/testcon.example/post/3bbb")
 
     def test_different_day_close_applies(self):
         con, held = self._con(), []

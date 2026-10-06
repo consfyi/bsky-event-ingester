@@ -241,7 +241,9 @@ check("run16: ledger persists _post_date",
 
 # Run 17: an outstanding closes dated on its post's local day (one applied
 # before CON-60 deployed) is held on re-apply: not carried, not written,
-# pruned from the ledger, and surfaced via the collector for the Held section.
+# kept in the ledger (publish() rewrites the PR body every run, so the entry
+# must be re-held each run), and surfaced via the collector for the Held
+# section, flagged as a first hold so main() pages ops once.
 write_main_state()
 same_day = {**change("con-a-2026", "con-a.json", "2026-07-01", "2026-07-02T00:26:00Z",
                      kind="closes"), "_post_date": "2026-07-01"}
@@ -250,12 +252,48 @@ held = []
 carried = kw.reapply_outstanding([], [], held=held)
 check("run17: same-day close not carried", carried == [])
 check("run17: same-day close not written to file", "keyDates" not in read("con-a.json")["events"][0])
-check("run17: same-day close pruned from ledger", kw.load_outstanding() == {})
+check("run17: same-day close kept in the ledger",
+      list(kw.load_outstanding()) == [kw.outstanding_key(same_day)])
 check("run17: hold surfaced with a mechanical hold verdict",
       len(held) == 1 and len(held[0]["_verdicts"]) == 1
       and held[0]["_verdicts"][0]["verdict"] == "hold")
+check("run17: first hold flagged", held[0].get("_first_hold") is True)
 check("run17: held entry renders in the Held section",
       "same-day close" in kw.render_summary([], [], held, [], ""))
+
+# Run 17b: the next run re-holds the same entry (so the rewritten PR body
+# still shows it), but it is no longer a first hold: no second ops page.
+write_main_state()
+held = []
+carried = kw.reapply_outstanding([], [], held=held)
+check("run17b: re-held on the next run", carried == [] and len(held) == 1)
+check("run17b: not flagged as a first hold again", not held[0].get("_first_hold"))
+check("run17b: still in the ledger",
+      list(kw.load_outstanding()) == [kw.outstanding_key(same_day)])
+
+# Run 17c: /reject prunes the held entry; a hand-applied curated value does too.
+write_main_state()
+held = []
+kw.reapply_outstanding([], [{k: same_day[k] for k in ("event_id", "category", "kind", "date")}],
+                       held=held)
+check("run17c: /reject prunes a held entry", held == [] and kw.load_outstanding() == {})
+kw.save_outstanding({kw.outstanding_key(same_day): {**same_day, "_held": True}})
+write_main_state(extra_a={"registration": {"closes": {"date": "2026-07-01"}}})
+held = []
+kw.reapply_outstanding([], [], held=held)
+check("run17c: curated value prunes a held entry", held == [] and kw.load_outstanding() == {})
+
+# Run 17d: a held entry that applies again (e.g. now an earlier-moving close)
+# loses its _held mark, so a later re-hold counts as a first hold again.
+kw.save_outstanding({kw.outstanding_key(same_day): {**same_day, "_held": True}})
+write_main_state(extra_a={"registration": {"closes": {
+    "date": "2026-07-31", "source": "https://bsky.app/profile/x/post/old", "asOf": "2026-06-01T00:00:00Z",
+    "confidence": 0.9}}})
+held = []
+carried = kw.reapply_outstanding([], [], held=held)
+check("run17d: earlier-moving close applies", held == [] and len(carried) == 1)
+check("run17d: _held mark cleared on apply",
+      "_held" not in kw.load_outstanding()[kw.outstanding_key(same_day)])
 
 # Run 18: an old ledger entry with no _post_date falls back to the UTC day —
 # the same post is NOT held then (UTC 07-02 != close 07-01), and is carried.
@@ -276,6 +314,8 @@ held = []
 kw.reapply_outstanding([], [], held=held)
 check("run19: planted _verdicts dropped from the held entry",
       len(held) == 1 and [v["model"] for v in held[0]["_verdicts"]] == ["mechanical"])
+check("run19: planted _verdicts not persisted in the kept ledger entry",
+      all("_verdicts" not in e for e in kw.load_outstanding().values()))
 
 print()
 sys.exit(1 if fails else 0)

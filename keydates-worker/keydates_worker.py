@@ -1202,7 +1202,8 @@ def reapply_outstanding(run_changes, rejections, dropped=None, held=None):
     outstanding. Returns the re-applied changes (for the summary/PR).
     Entries merge()'s after-end backstop drops are appended to `dropped`,
     and entries its same-day close guard holds to `held` (when given), so
-    the run summary can show them."""
+    the run summary can show them. Held entries stay in the ledger; a held
+    item is flagged `_first_hold` only on the run that first holds it."""
     ledger = load_outstanding()
     for c in run_changes:
         key = outstanding_key(c)
@@ -1249,10 +1250,24 @@ def reapply_outstanding(run_changes, rejections, dropped=None, held=None):
             continue
         # a ledger entry never legitimately carries _verdicts; a planted one
         # would reach the PR body through merge()'s hold path unescaped
-        changes = merge(con, [{k: v for k, v in entry.items() if k != "_verdicts"}],
-                        dropped=dropped, held=held)
+        clean = {k: v for k, v in entry.items() if k not in ("_verdicts", "_held")}
+        entry_held = []
+        changes = merge(con, [clean], dropped=dropped, held=entry_held)
+        if entry_held:
+            # same-day close hold (CON-60): keep the entry so every run re-holds
+            # it — publish() rewrites the whole PR body, so pruning it would
+            # erase its only trace on the next run. It still leaves via
+            # /reject, a curated value (merge skips before the hold), or aging
+            # out. _first_hold lets main() page ops once, not every run.
+            if not entry.get("_held"):
+                entry_held[0]["_first_hold"] = True
+            if held is not None:
+                held += entry_held
+            kept[key] = {**clean, "_held": True}
+            continue
         if not changes:
             continue  # main already has it, or a newer/curated value won
+        entry.pop("_held", None)  # applies again: a later re-hold pages afresh
         tmp = fn + ".tmp"
         with open(tmp, "w") as f:
             json.dump(con, f, ensure_ascii=False, indent=2)
@@ -1606,6 +1621,14 @@ def md_inline(text, cap):
     return " ".join(str(text).split())[:cap].replace("`", "'")
 
 
+def ops_slots(entries):
+    """Slot+date list for an ops page; every field md_inline'd."""
+    return "; ".join(
+        f"{md_inline(d['event_id'], 60)} {md_inline(d['category'], 20)}."
+        f"{md_inline(d['kind'], 10)} {md_inline(d['date'], 20)}"
+        for d in entries)
+
+
 def md_link(label, url):
     """Render a markdown link only when the target is a verified bsky post URL;
     anything else (a tampered ledger/con file value) is rendered inside a code
@@ -1675,7 +1698,7 @@ def render_summary(all_changes, all_refuted, all_held, all_rejected, skipped_not
         lines.append("\n### Held — verifier disagreement, same-run conflict, or same-day close; needs a human (`/reject` or hand-apply)")
         for p in all_held:
             lines.append(f"- {md_id(p['event_id'], p['category'], p['kind'], p['date'])} — {md_link('post', p.get('source'))} — " +
-                         "; ".join(f"{v['model'].split('/')[-1]}: {md_reason(v['verdict'], 20)} ({md_reason(v['reason'], 120)})" for v in p["_verdicts"]))
+                         "; ".join(f"{md_reason(v['model'].split('/')[-1], 40)}: {md_reason(v['verdict'], 20)} ({md_reason(v['reason'], 120)})" for v in p["_verdicts"]))
     if all_refuted:
         lines.append("\n### Refuted by verification (not applied)")
         for p in all_refuted:
@@ -1921,15 +1944,10 @@ def main():
         seen_refuted = {slot_date(p) for p in all_refuted}
         ledger_drops = [d for d in ledger_drops if slot_date(d) not in seen_refuted]
         all_refuted += ledger_drops
-        # same for a ledger entry the same-day close guard holds (CON-60): it
-        # is pruned from the ledger, so the Held section is its only trace
+        # same for a ledger entry the same-day close guard holds (CON-60): the
+        # Held section is its trace in the PR body, re-rendered every run
         seen_held = {slot_date(p) for p in all_held}
         all_held += [d for d in ledger_held if slot_date(d) not in seen_held]
-    # a hold whose exact slot+date this run also applies (e.g. a re-applied
-    # ledger entry from an earlier post) would tell the reviewer to /reject a
-    # date the PR carries, and a rejection would kill the applied one too
-    applied = {slot_date(c) for c in all_changes}
-    all_held = [p for p in all_held if slot_date(p) not in applied]
 
     removals, account_flags, bulk_flags, pending, pins = [], [], [], [], []
     if args.sweep:
@@ -1987,27 +2005,29 @@ def main():
                          "https://github.com/consfyi/data/pulls?q=is%3Apr+is%3Aopen+head%3Abot%2Fbsky-keydates")
             ops_notify("\n".join(alert))
 
+    # a hold whose exact slot+date this run also applies (e.g. a re-applied
+    # ledger entry from an earlier post) would tell the reviewer to /reject a
+    # date the PR carries, and a rejection would kill the applied one too.
+    # Runs after liveness so a value it just removed doesn't suppress a hold.
+    applied = {slot_date(c) for c in all_changes}
+    all_held = [p for p in all_held if slot_date(p) not in applied]
+
     if ledger_drops and not (all_changes or removals or pins):
         # a run whose ONLY outcome is a ledger backstop drop publishes nothing
         # (format/publish gate on all_changes/removals/pins below), so the PR
         # body never shows it — page ops so the drop still reaches a human,
         # naming the slots (ops_notify length-caps at 4096). When the run
         # publishes anything, the PR body already carries the drop.
-        slots = "; ".join(
-            f"{md_inline(d['event_id'], 60)} {md_inline(d['category'], 20)}."
-            f"{md_inline(d['kind'], 10)} {md_inline(d['date'], 20)}"
-            for d in ledger_drops)
         ops_notify(f"⚠️ keydates: {len(ledger_drops)} outstanding entr(ies) dropped "
-                   f"on re-apply (endDate moved earlier upstream): {slots} — "
+                   f"on re-apply (endDate moved earlier upstream): {ops_slots(ledger_drops)} — "
                    "see the run summary.")
-    if ledger_held and not (all_changes or removals or pins):
-        # same for a ledger entry the same-day close guard holds (CON-60)
-        slots = "; ".join(
-            f"{md_inline(d['event_id'], 60)} {md_inline(d['category'], 20)}."
-            f"{md_inline(d['kind'], 10)} {md_inline(d['date'], 20)}"
-            for d in ledger_held)
-        ops_notify(f"⚠️ keydates: {len(ledger_held)} outstanding entr(ies) held "
-                   f"on re-apply (close dated on its post's own day): {slots} — "
+    # same for a ledger entry the same-day close guard holds (CON-60), paged
+    # only on its first hold: it stays in the ledger and is re-held every run
+    first_holds = [d for d in ledger_held
+                   if d.get("_first_hold") and slot_date(d) not in applied]
+    if first_holds and not (all_changes or removals or pins):
+        ops_notify(f"⚠️ keydates: {len(first_holds)} outstanding entr(ies) held "
+                   f"on re-apply (close dated on its post's own day): {ops_slots(first_holds)} — "
                    "see the run summary.")
 
     save_cache(cache)
