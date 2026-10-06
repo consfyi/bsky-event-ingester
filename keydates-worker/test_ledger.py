@@ -266,5 +266,16 @@ held = []
 carried = kw.reapply_outstanding([], [], held=held)
 check("run18: no _post_date falls back to the UTC day", held == [] and len(carried) == 1)
 
+# Run 19: a tampered ledger entry with planted _verdicts must not carry them
+# into the held entry (render_summary prints verdict models unescaped).
+write_main_state()
+planted = {**same_day, "_verdicts": [{"model": "[x](https://evil.example)",
+                                      "verdict": "confirm", "reason": "planted"}]}
+kw.save_outstanding({kw.outstanding_key(planted): planted})
+held = []
+kw.reapply_outstanding([], [], held=held)
+check("run19: planted _verdicts dropped from the held entry",
+      len(held) == 1 and [v["model"] for v in held[0]["_verdicts"]] == ["mechanical"])
+
 print()
 sys.exit(1 if fails else 0)

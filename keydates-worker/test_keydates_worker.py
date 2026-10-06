@@ -1093,6 +1093,83 @@ class MainSmokeTest(unittest.TestCase):
                              for c in notify.call_args_list),
                          f"unexpected ledger-drop ops page in {notify.call_args_list}")
 
+    def _seed_ledger(self, *entries):
+        with open(os.path.join(self.data_dir, "con-a.json"), "w") as f:
+            json.dump({"events": [{"id": "testcon-2999", "name": "Testcon 2999",
+                                   "startDate": "2999-01-01", "endDate": "2999-01-05"}]}, f)
+        os.makedirs(os.path.dirname(kw.OUTSTANDING_FILE), exist_ok=True)
+        with open(kw.OUTSTANDING_FILE, "w") as f:
+            json.dump({kw.outstanding_key(e): e for e in entries}, f)
+
+    def _ledger_close(self, date, post_date, rkey="3aaa"):
+        return {"event_id": "testcon-2999", "category": "registration", "kind": "closes",
+                "date": date, "source": did_entry(rkey)["source"],
+                "asOf": f"{post_date}T15:00:00.000Z", "confidence": 0.9,
+                "_file": "con-a.json", "_post_text": "registration is closed!",
+                "_post_date": post_date}
+
+    def _run_main(self, process_con_result):
+        ok = unittest.mock.Mock(returncode=0, stdout="")
+        with unittest.mock.patch.object(
+                 kw, "process_con", return_value=process_con_result), \
+             unittest.mock.patch.object(
+                 kw, "check_source_liveness", return_value=([], [], [], [], [])), \
+             unittest.mock.patch.object(kw, "publish") as publish, \
+             unittest.mock.patch.object(kw, "ops_notify") as notify, \
+             unittest.mock.patch.object(kw.subprocess, "run", return_value=ok):
+            kw.main()
+        with open(self.summary_file) as f:
+            body = f.read()
+        return body, publish, notify
+
+    def _held_lines(self, body):
+        return [line for line in body.split("### Held", 1)[-1].splitlines()
+                if line.startswith("- ")] if "### Held" in body else []
+
+    def test_ledger_same_day_hold_lands_in_held_summary_and_pages_ops(self):
+        # CON-60: an outstanding close dated on its post's own day (applied
+        # before the guard shipped) is held on re-apply and pruned from the
+        # ledger; main() must fold it into the Held section AND page ops,
+        # since a held-only run publishes nothing
+        self._seed_ledger(self._ledger_close("2998-12-01", "2998-12-01"))
+        body, publish, notify = self._run_main(([], [], [], [], True))
+        held = self._held_lines(body)
+        self.assertEqual(len(held), 1, body)
+        self.assertIn("testcon-2999 registration.closes 2998-12-01", held[0])
+        self.assertIn("same-day close", body)
+        self.assertEqual(kw.load_outstanding(), {})
+        publish.assert_not_called()
+        pages = [str(c.args[0]) for c in notify.call_args_list
+                 if "held" in str(c.args[0]) and "re-apply" in str(c.args[0])]
+        self.assertTrue(pages, f"no ledger-hold ops page in {notify.call_args_list}")
+        self.assertIn("testcon-2999 registration.closes 2998-12-01", pages[0])
+
+    def test_ledger_same_day_hold_deduped_against_process_con_hold(self):
+        # the same slot+date held by both process_con and the ledger re-apply
+        # gets one Held line, not two
+        self._seed_ledger(self._ledger_close("2998-12-01", "2998-12-01"))
+        dup = {**self._ledger_close("2998-12-01", "2998-12-01", rkey="3bbb"),
+               "_verdicts": [{"model": "mechanical", "verdict": "hold", "reason": "same day"}]}
+        body, _, _ = self._run_main(([], [], [dup], [], True))
+        self.assertEqual(len(self._held_lines(body)), 1, body)
+
+    def test_hold_matching_an_applied_slot_date_is_dropped(self):
+        # r1-01: P1 "closes 2999-01-03" (posted 12-01) is outstanding and
+        # re-applied; P2 posted 01-03 says "closing tonight" and is held. The
+        # PR must not show 01-03 as applied AND held-with-/reject, since a
+        # rejection stores no source and would kill P1's real deadline. A
+        # hold for a DIFFERENT date on the same slot still shows.
+        self._seed_ledger(self._ledger_close("2999-01-03", "2998-12-01"))
+        hold = {"_verdicts": [{"model": "mechanical", "verdict": "hold", "reason": "same day"}]}
+        same = {**self._ledger_close("2999-01-03", "2999-01-03", rkey="3bbb"), **hold}
+        other = {**self._ledger_close("2999-01-04", "2999-01-04", rkey="3ccc"), **hold}
+        body, _, notify = self._run_main(([], [], [same, other], [], True))
+        self.assertIn("### Applied", body)
+        held = self._held_lines(body)
+        self.assertEqual(len(held), 1, body)
+        self.assertIn("2999-01-04", held[0])
+        self.assertFalse(any("re-apply" in str(c.args[0]) for c in notify.call_args_list))
+
     def test_pins_only_sweep_still_formats_and_publishes(self):
         # CON-26 backfill case: a sweep whose only outcome is DID-pinning must
         # still format the touched files and publish — otherwise the rewritten
@@ -2028,6 +2105,47 @@ class SameDayCloseHoldTest(unittest.TestCase):
         body = kw.render_summary([], [], held, [], "")
         self.assertIn("same-day close", body)
         self.assertIn("[post](https://bsky.app/profile/testcon.example/post/3bbb)", body)
+        # the reason is capped at 120 chars; the instruction must survive it
+        held_line = next(line for line in body.splitlines() if "registration.closes" in line)
+        self.assertIn("/reject", held_line)
+
+    def test_non_string_existing_date_does_not_crash(self):
+        # a hand-edited file with a non-string date must not TypeError the
+        # exemption's comparison
+        con = make_con({"registration": {"closes": entry("3aaa", date=29990101)}},
+                       end_date="2999-12-31")
+        held = []
+        kw.merge(con, [self._post("2999-06-01")], held=held)
+        self.assertEqual(len(held), 1)
+
+    def test_requires_merge_fixtures_held_by_merge(self):
+        # fixtures flagged requires_merge are cases the prompts still get
+        # wrong; the confirmed forbidden proposal must be held by merge()
+        fx_dir = FixtureSmokeTest.FIXTURES_DIR
+        names = []
+        for name in sorted(os.listdir(fx_dir)):
+            if not name.endswith(".json"):
+                continue
+            with open(os.path.join(fx_dir, name)) as f:
+                fx, _ = FixtureSmokeTest._resolve_today(json.load(f))
+            if not fx.get("requires_merge"):
+                continue
+            names.append(name)
+            post = fx["posts"][0]
+            for item in fx["expect_absent"]:
+                con = json.loads(json.dumps(fx["con"]))
+                p = {"event_id": item["event_id"], "category": item["category"],
+                     "kind": item["kind"], "date": item["date"], "source": post["url"],
+                     "asOf": post["createdAt"], "confidence": 1.0,
+                     "_post_date": kw.localize_timestamp(post["createdAt"], fx["timezone"])[1],
+                     "_verdicts": [{"model": "m1", "verdict": "confirm", "reason": "ok"}]}
+                held = []
+                kw.merge(con, [p], held=held)
+                ev = next(e for e in con["events"] if e["id"] == item["event_id"])
+                slot = ((ev.get("keyDates") or {}).get(item["category"]) or {}).get(item["kind"])
+                self.assertNotEqual((slot or {}).get("date"), item["date"], name)
+                self.assertEqual([h["date"] for h in held], [item["date"]], name)
+        self.assertTrue(names)  # the flag must not silently go unused
 
     def test_process_con_holds_by_venue_local_day(self):
         # end to end: process_con stamps the venue-local day, merge holds,
