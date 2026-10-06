@@ -18,6 +18,9 @@ spec = importlib.util.spec_from_file_location(
     "kw", os.path.join(os.path.dirname(os.path.abspath(__file__)), "keydates_worker.py"))
 kw = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(kw)
+# no venue zones unless a run sets them: the ledger path must never fetch the
+# live events feed from a test
+kw._event_tz_cache = {}
 
 # edition dates derive from TODAY: reapply_outstanding prunes any entry whose
 # event ended more than 2 days ago, so hardcoded dates would silently stop
@@ -229,6 +232,128 @@ kd15 = read("con-a.json")["events"][0].get("keyDates", {})
 check("run15: valid sibling still applied",
       kd15.get("hotel", {}).get("opens", {}).get("date") == "2026-08-01")
 check("run15: bogus category never written", "bogus" not in kd15)
+
+# Run 16: the ledger keeps a change's venue-local _post_date (CON-60) so a
+# re-apply judges same-day closes by the local day, not the UTC one.
+write_main_state()
+C = {**change("con-a-2026", "con-a.json", "2026-08-01", "2026-07-02T00:26:00Z", kind="closes"),
+     "_post_date": "2026-07-01"}
+kw.reapply_outstanding([C], [])
+check("run16: ledger persists _post_date",
+      kw.load_outstanding()[kw.outstanding_key(C)].get("_post_date") == "2026-07-01")
+
+# Run 17: an outstanding closes dated on its post's local day (one applied
+# before CON-60 deployed) is held on re-apply: not carried, not written,
+# kept in the ledger (publish() rewrites the PR body every run, so the entry
+# must be re-held each run), and surfaced via the collector for the Held
+# section, flagged as a first hold so main() pages ops once.
+write_main_state()
+same_day = {**change("con-a-2026", "con-a.json", "2026-07-01", "2026-07-02T00:26:00Z",
+                     kind="closes"), "_post_date": "2026-07-01"}
+kw.save_outstanding({kw.outstanding_key(same_day): same_day})
+held = []
+carried = kw.reapply_outstanding([], [], held=held)
+check("run17: same-day close not carried", carried == [])
+check("run17: same-day close not written to file", "keyDates" not in read("con-a.json")["events"][0])
+check("run17: same-day close kept in the ledger",
+      list(kw.load_outstanding()) == [kw.outstanding_key(same_day)])
+check("run17: hold surfaced with a mechanical hold verdict",
+      len(held) == 1 and len(held[0]["_verdicts"]) == 1
+      and held[0]["_verdicts"][0]["verdict"] == "hold")
+check("run17: first hold flagged", held[0].get("_first_hold") is True)
+check("run17: held entry renders in the Held section",
+      "same-day close" in kw.render_summary([], [], held, [], ""))
+
+# Run 17b: the next run re-holds the same entry (so the rewritten PR body
+# still shows it), but it is no longer a first hold: no second ops page.
+write_main_state()
+held = []
+carried = kw.reapply_outstanding([], [], held=held)
+check("run17b: re-held on the next run", carried == [] and len(held) == 1)
+check("run17b: not flagged as a first hold again", not held[0].get("_first_hold"))
+check("run17b: still in the ledger",
+      list(kw.load_outstanding()) == [kw.outstanding_key(same_day)])
+
+# Run 17c: /reject prunes the held entry; a hand-applied curated value does too.
+write_main_state()
+held = []
+kw.reapply_outstanding([], [{k: same_day[k] for k in ("event_id", "category", "kind", "date")}],
+                       held=held)
+check("run17c: /reject prunes a held entry", held == [] and kw.load_outstanding() == {})
+kw.save_outstanding({kw.outstanding_key(same_day): {**same_day, "_held": True}})
+write_main_state(extra_a={"registration": {"closes": {"date": "2026-07-01"}}})
+held = []
+kw.reapply_outstanding([], [], held=held)
+check("run17c: curated value prunes a held entry", held == [] and kw.load_outstanding() == {})
+
+# Run 17d: a held entry that applies again (e.g. now an earlier-moving close)
+# loses its _held mark, so a later re-hold counts as a first hold again.
+kw.save_outstanding({kw.outstanding_key(same_day): {**same_day, "_held": True}})
+write_main_state(extra_a={"registration": {"closes": {
+    "date": "2026-07-31", "source": "https://bsky.app/profile/x/post/old", "asOf": "2026-06-01T00:00:00Z",
+    "confidence": 0.9}}})
+held = []
+carried = kw.reapply_outstanding([], [], held=held)
+check("run17d: earlier-moving close applies", held == [] and len(carried) == 1)
+check("run17d: _held mark cleared on apply",
+      "_held" not in kw.load_outstanding()[kw.outstanding_key(same_day)])
+
+# Run 17e: a held entry was never applied, so a run change for the same slot
+# from an OLDER post must still replace it in the ledger (the newer-asOf fold
+# guard must not let the held entry win).
+kw.save_outstanding({kw.outstanding_key(same_day): {**same_day, "_held": True}})
+write_main_state()
+older_run = change("con-a-2026", "con-a.json", "2026-07-31", "2026-06-20T00:00:00Z", kind="closes")
+held = []
+kw.reapply_outstanding([older_run], [], held=held)
+e17e = kw.load_outstanding()[kw.outstanding_key(same_day)]
+check("run17e: older run change replaces a held entry in the ledger",
+      e17e["date"] == "2026-07-31" and "_held" not in e17e)
+
+# Run 18: an old ledger entry with no _post_date (written before CON-60) is
+# judged by the venue-local day: the 07-02T00:26Z post is 07-01 in Chicago,
+# its close is 07-01, so it is held — and the computed day is persisted.
+write_main_state()
+old_entry = {k: v for k, v in same_day.items() if k != "_post_date"}
+kw.save_outstanding({kw.outstanding_key(old_entry): old_entry})
+kw._event_tz_cache = {"con-a-2026": "America/Chicago"}
+held = []
+carried = kw.reapply_outstanding([], [], held=held)
+check("run18: no _post_date uses the venue-local day", len(held) == 1 and carried == [])
+check("run18: computed _post_date persisted in the ledger",
+      kw.load_outstanding()[kw.outstanding_key(old_entry)].get("_post_date") == "2026-07-01")
+
+# Run 18b: with no venue zone (feed down) the same entry falls back to the
+# UTC day (07-02 != close 07-01): not held, carried.
+write_main_state()
+kw.save_outstanding({kw.outstanding_key(old_entry): old_entry})
+kw._event_tz_cache = {}
+held = []
+carried = kw.reapply_outstanding([], [], held=held)
+check("run18b: no venue zone falls back to the UTC day", held == [] and len(carried) == 1)
+check("run18b: UTC fallback day not persisted",
+      "_post_date" not in kw.load_outstanding()[kw.outstanding_key(old_entry)])
+
+# Run 18c: once the feed is back, the next run finds the venue day and holds it.
+write_main_state()
+kw._event_tz_cache = {"con-a-2026": "America/Chicago"}
+held = []
+carried = kw.reapply_outstanding([], [], held=held)
+check("run18c: venue day recomputed after the feed recovers", len(held) == 1 and carried == [])
+kw._event_tz_cache = {}
+
+# Run 19: a tampered ledger entry with planted _verdicts must not carry them
+# into the held entry (render_summary prints verdict models unescaped).
+write_main_state()
+planted = {**same_day, "_verdicts": [{"model": "[x](https://evil.example)",
+                                      "verdict": "confirm", "reason": "planted"}]}
+kw.save_outstanding({kw.outstanding_key(planted): planted})
+held = []
+kw.reapply_outstanding([], [], held=held)
+check("run19: planted _verdicts dropped from the held entry",
+      len(held) == 1 and [v["model"] for v in held[0]["_verdicts"]] == ["mechanical"])
+check("run19: planted _verdicts not persisted in the kept ledger entry",
+      all("_verdicts" not in e for e in kw.load_outstanding().values()))
 
 print()
 sys.exit(1 if fails else 0)

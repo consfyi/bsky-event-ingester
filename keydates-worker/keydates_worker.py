@@ -743,11 +743,12 @@ def mechanical_refute(reason):
     return [{"model": "mechanical", "verdict": "refute", "reason": reason}]
 
 
-def merge(con, dates, dropped=None):
+def merge(con, dates, dropped=None, held=None):
     """Apply confirmed dates. Returns list of change descriptions. Entries the
     after-end backstop drops are appended to `dropped` (when given) with a
     mechanical refute verdict, so the ledger re-apply path can surface them in
-    the PR body instead of losing them to stderr."""
+    the PR body instead of losing them to stderr. Same-day closes (CON-60) are
+    appended to `held` (when given) with a mechanical hold verdict."""
     by_id = {e["id"]: e for e in con.get("events", [])}
     changes = []
     for d in dates:
@@ -792,6 +793,28 @@ def merge(con, dates, dropped=None):
         # not a real re-opening. closes keeps full recency-wins, since genuine
         # deadline extensions/move-ups must still apply.
         if existing is not None and d["kind"] == "opens" and existing.get("date") and d["date"] > existing["date"]:
+            continue
+        # a closes dated on the source post's own local day is the signature of
+        # a status post ("registration is closed!", "closing today @ 9PM at the
+        # desk"), not an announced deadline: with no date in the text the model
+        # falls back to the post date. Hold it for a human, add or amendment
+        # (CON-60). A same-day close that moves an existing deadline earlier
+        # (or keeps it) still applies. _post_date is the venue-local day
+        # process_con stamps (reapply_outstanding fills it in for older ledger
+        # entries); the UTC day is the last resort.
+        post_day = d.get("_post_date") or str(d["asOf"])[:10]
+        if (d["kind"] == "closes" and d["date"] == post_day
+                and not (existing and isinstance(existing.get("date"), str)
+                         and d["date"] <= existing["date"])):
+            log(f"  same-day close held: {d['event_id']} {d['category']}.closes {d['date']}")
+            if held is not None:
+                # rebind, never append: _verdicts is the verify cache's list
+                # object (ledger entries carry none)
+                held.append({**d, "_verdicts": d.get("_verdicts", []) + [{
+                    "model": "mechanical", "verdict": "hold",
+                    "reason": "closes on the post's own day: likely a status post "
+                              "(\"closed!\", \"closing today\"); hand-apply if real, "
+                              "else /reject"}]})
             continue
         new_val = {
             "date": d["date"], "source": d["source"], "asOf": d["asOf"],
@@ -1174,17 +1197,20 @@ def save_outstanding(entries):
     os.replace(tmp, OUTSTANDING_FILE)
 
 
-def reapply_outstanding(run_changes, rejections, dropped=None):
+def reapply_outstanding(run_changes, rejections, dropped=None, held=None):
     """Fold this run's changes into the ledger, re-apply every other
     outstanding entry to the fresh checkout, and prune what is no longer
     outstanding. Returns the re-applied changes (for the summary/PR).
-    Entries merge()'s after-end backstop drops are appended to `dropped`
-    (when given) so the run summary can show them."""
+    Entries merge()'s after-end backstop drops are appended to `dropped`,
+    and entries its same-day close guard holds to `held` (when given), so
+    the run summary can show them. Held entries stay in the ledger; a held
+    item is flagged `_first_hold` only on the run that first holds it."""
     ledger = load_outstanding()
     for c in run_changes:
         key = outstanding_key(c)
         prev = ledger.get(key)
-        if prev and (prev.get("asOf") or "") > (c.get("asOf") or ""):
+        # a _held entry was never applied, so it can't outrank a change that was
+        if prev and not prev.get("_held") and (prev.get("asOf") or "") > (c.get("asOf") or ""):
             # extraction is non-deterministic and may re-propose an older post
             # for a slot the ledger already holds from a newer one; keep the
             # newer entry. Note this only fixes the ledger: process_con already
@@ -1194,7 +1220,7 @@ def reapply_outstanding(run_changes, rejections, dropped=None):
             continue
         ledger[key] = {k: c.get(k) for k in
                        ("event_id", "category", "kind", "date", "source",
-                        "asOf", "confidence", "_file", "_post_text")}
+                        "asOf", "confidence", "_file", "_post_text", "_post_date")}
     run_keys = {outstanding_key(c) for c in run_changes}
     kept, carried = {}, []
     for key, entry in ledger.items():
@@ -1224,9 +1250,37 @@ def reapply_outstanding(run_changes, rejections, dropped=None):
         # same grace so we don't drop one process_con would still re-propose
         if (event.get("endDate") or "") < (TODAY - datetime.timedelta(days=2)).isoformat():
             continue
-        changes = merge(con, [entry], dropped=dropped)
+        # a ledger entry never legitimately carries _verdicts; a planted one
+        # would reach the PR body through merge()'s hold path unescaped
+        clean = {k: v for k, v in entry.items() if k not in ("_verdicts", "_held")}
+        judged = clean
+        if (clean.get("kind") == "closes" and not clean.get("_post_date")
+                and isinstance(clean.get("asOf"), str)):
+            # entries written before CON-60 carry no _post_date: judge them by
+            # the venue-local day like process_con does, not the UTC day
+            tz = venue_timezone([event], load_event_timezones())
+            judged = {**clean, "_post_date": localize_timestamp(clean["asOf"], tz)[1]}
+            if tz != "UTC":
+                # persist only a real venue day: a UTC fallback (events feed
+                # down) saved here would stop later runs from recomputing it
+                clean["_post_date"] = entry["_post_date"] = judged["_post_date"]
+        entry_held = []
+        changes = merge(con, [judged], dropped=dropped, held=entry_held)
+        if entry_held:
+            # same-day close hold (CON-60): keep the entry so every run re-holds
+            # it — publish() rewrites the whole PR body, so pruning it would
+            # erase its only trace on the next run. It still leaves via
+            # /reject, a curated value (merge skips before the hold), or aging
+            # out. _first_hold lets main() page ops once, not every run.
+            if not entry.get("_held"):
+                entry_held[0]["_first_hold"] = True
+            if held is not None:
+                held += entry_held
+            kept[key] = {**clean, "_held": True}
+            continue
         if not changes:
             continue  # main already has it, or a newer/curated value won
+        entry.pop("_held", None)  # applies again: a later re-hold pages afresh
         tmp = fn + ".tmp"
         with open(tmp, "w") as f:
             json.dump(con, f, ensure_ascii=False, indent=2)
@@ -1246,6 +1300,11 @@ def slot_key(d):
     a removal of a DID-pinned entry still prunes a ledger entry recorded under
     the old handle-form URL."""
     return (d.get("event_id"), d.get("category"), d.get("kind"), source_ident(d.get("source")))
+
+
+def slot_date(d):
+    """A proposal's slot plus date, for deduping summary sections."""
+    return (d.get("event_id"), d.get("category"), d.get("kind"), d.get("date"))
 
 
 def prune_outstanding_removals(removals):
@@ -1539,6 +1598,7 @@ def process_con(fn, cache, rejections, provided_posts=None, extra_post=None):
             continue
         d["_con_name"] = con["name"]
         d["_tz"] = tz
+        d["_post_date"] = localize_timestamp(d["asOf"], tz)[1]  # merge()'s same-day close hold
         d["_post_text"] = (post or {}).get("text", "")
         d["_ev_dates"] = ev_meta.get(d["event_id"], ("?", "?"))
         d["_siblings"] = [
@@ -1555,16 +1615,16 @@ def process_con(fn, cache, rejections, provided_posts=None, extra_post=None):
     held = conflicted + held
     refuted = stale_drops + refuted
 
-    changes = []
+    changes, same_day = [], []
     if confirmed:
-        changes = merge(con, confirmed)
+        changes = merge(con, confirmed, held=same_day)
         if changes and not DRY_RUN:
             tmp = fn + ".tmp"
             with open(tmp, "w") as f:
                 json.dump(con, f, ensure_ascii=False, indent=2)
                 f.write("\n")
             os.replace(tmp, fn)  # atomic: a killed run can't truncate a con file
-    return changes, refuted, held, rejected_skips, True
+    return changes, refuted, held + same_day, rejected_skips, True
 
 
 def md_inline(text, cap):
@@ -1572,6 +1632,14 @@ def md_inline(text, cap):
     text (post bodies, model reasons) cannot break out of its blockquote/list
     line in the PR markdown or close a code span it is rendered inside."""
     return " ".join(str(text).split())[:cap].replace("`", "'")
+
+
+def ops_slots(entries):
+    """Slot+date list for an ops page; every field md_inline'd."""
+    return "; ".join(
+        f"{md_inline(d['event_id'], 60)} {md_inline(d['category'], 20)}."
+        f"{md_inline(d['kind'], 10)} {md_inline(d['date'], 20)}"
+        for d in entries)
 
 
 def md_link(label, url):
@@ -1640,10 +1708,10 @@ def render_summary(all_changes, all_refuted, all_held, all_rejected, skipped_not
                              f"({md_link('previous post', prev.get('source'))}, asOf {md_post(prev.get('asOf'), 40)}) — "
                              f"a different sign-up rather than a correction? `/reject` this date and hand-restore the old one.")
     if all_held:
-        lines.append("\n### Held — verifier disagreement or same-run conflict, needs a human (`/reject` or hand-apply)")
+        lines.append("\n### Held — verifier disagreement, same-run conflict, or same-day close; needs a human (`/reject` or hand-apply)")
         for p in all_held:
             lines.append(f"- {md_id(p['event_id'], p['category'], p['kind'], p['date'])} — {md_link('post', p.get('source'))} — " +
-                         "; ".join(f"{v['model'].split('/')[-1]}: {md_reason(v['verdict'], 20)} ({md_reason(v['reason'], 120)})" for v in p["_verdicts"]))
+                         "; ".join(f"{md_reason(v['model'].split('/')[-1], 40)}: {md_reason(v['verdict'], 20)} ({md_reason(v['reason'], 120)})" for v in p["_verdicts"]))
     if all_refuted:
         lines.append("\n### Refuted by verification (not applied)")
         for p in all_refuted:
@@ -1876,21 +1944,23 @@ def main():
         if changes or refuted or held:
             log(f"{base}: +{len(changes)} applied, {len(refuted)} refuted, {len(held)} held")
 
-    ledger_drops = []
+    ledger_drops, ledger_held = [], []
     if PUSH and not DRY_RUN:
-        all_changes += reapply_outstanding(all_changes, rejections, dropped=ledger_drops)
+        all_changes += reapply_outstanding(all_changes, rejections, dropped=ledger_drops,
+                                           held=ledger_held)
         # a backstop drop on the re-apply path prunes the ledger entry; without
         # this it would vanish from the rolling PR with no body-visible trace.
         # A slot process_con already refuted pre-verify this run would show up
         # twice — skip drops whose (slot, date) is already in the Refuted
         # section; a drop for a DIFFERENT date than the refuted one still
         # surfaces.
-        seen_refuted = {(p["event_id"], p["category"], p["kind"], p.get("date"))
-                        for p in all_refuted}
-        ledger_drops = [d for d in ledger_drops
-                        if (d["event_id"], d["category"], d["kind"], d.get("date"))
-                        not in seen_refuted]
+        seen_refuted = {slot_date(p) for p in all_refuted}
+        ledger_drops = [d for d in ledger_drops if slot_date(d) not in seen_refuted]
         all_refuted += ledger_drops
+        # same for a ledger entry the same-day close guard holds (CON-60): the
+        # Held section is its trace in the PR body, re-rendered every run
+        seen_held = {slot_date(p) for p in all_held}
+        all_held += [d for d in ledger_held if slot_date(d) not in seen_held]
 
     removals, account_flags, bulk_flags, pending, pins = [], [], [], [], []
     if args.sweep:
@@ -1948,19 +2018,32 @@ def main():
                          "https://github.com/consfyi/data/pulls?q=is%3Apr+is%3Aopen+head%3Abot%2Fbsky-keydates")
             ops_notify("\n".join(alert))
 
+    # a hold whose exact slot+date this run also applies (e.g. a re-applied
+    # ledger entry from an earlier post) would tell the reviewer to /reject a
+    # date the PR carries, and a rejection would kill the applied one too.
+    # Runs after liveness so a value it just removed doesn't suppress a hold.
+    applied = {slot_date(c) for c in all_changes}
+    all_held = [p for p in all_held if slot_date(p) not in applied]
+
     if ledger_drops and not (all_changes or removals or pins):
         # a run whose ONLY outcome is a ledger backstop drop publishes nothing
         # (format/publish gate on all_changes/removals/pins below), so the PR
         # body never shows it — page ops so the drop still reaches a human,
         # naming the slots (ops_notify length-caps at 4096). When the run
         # publishes anything, the PR body already carries the drop.
-        slots = "; ".join(
-            f"{md_inline(d['event_id'], 60)} {md_inline(d['category'], 20)}."
-            f"{md_inline(d['kind'], 10)} {md_inline(d['date'], 20)}"
-            for d in ledger_drops)
         ops_notify(f"⚠️ keydates: {len(ledger_drops)} outstanding entr(ies) dropped "
-                   f"on re-apply (endDate moved earlier upstream): {slots} — "
+                   f"on re-apply (endDate moved earlier upstream): {ops_slots(ledger_drops)} — "
                    "see the run summary.")
+    # same for a ledger entry the same-day close guard holds (CON-60), paged
+    # only on its first hold: it stays in the ledger and is re-held every run.
+    # Nothing publishes this run, so an open bot PR from an earlier run still
+    # carries the date as applied — say so, or merging it lands the date
+    first_holds = [d for d in ledger_held if d.get("_first_hold")]
+    if first_holds and not (all_changes or removals or pins):
+        ops_notify(f"⚠️ keydates: {len(first_holds)} outstanding entr(ies) held "
+                   f"on re-apply (close dated on its post's own day): {ops_slots(first_holds)} — "
+                   "the open bot PR still shows them as applied until the next publish; "
+                   "/reject them there before merging.")
 
     save_cache(cache)
 

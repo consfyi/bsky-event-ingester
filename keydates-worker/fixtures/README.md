@@ -25,6 +25,10 @@ Each `*.json` fixture carries:
   `category`, `kind`, and a human `reason`. **With a `date`**, that slot must
   not carry that specific date (other dates are fine); **without a `date`**,
   the slot must be absent entirely.
+- `requires_merge` — optional; `true` when the prompts are known to produce
+  the forbidden proposal and only `merge()`'s mechanical guards remove it
+  (CON-60). The harness must run `merge()` on the confirmed proposals before
+  checking `expect_absent`.
 - `_comment` — optional fixture-specific notes.
 
 ## TODAY-relative dates
