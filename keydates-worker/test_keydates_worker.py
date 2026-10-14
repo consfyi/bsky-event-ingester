@@ -2250,6 +2250,22 @@ class ChatErrorTest(unittest.TestCase):
         self.assertIn("/properties/verdicts/items/required", logged[-1])
         self.assertNotIn("MODEL_OUTPUT_MARKER", "".join(logged))
 
+    def test_400_json_without_error_object_does_not_log_body(self):
+        # a JSON body with no {"error": {...}} object is logged by shape only:
+        # echoing its raw bytes could leak a failed_generation (model output)
+        for body in ({"error": "oops", "failed_generation": "MODEL_OUTPUT_MARKER"},
+                     {"error": {}, "failed_generation": "MODEL_OUTPUT_MARKER"},
+                     ["MODEL_OUTPUT_MARKER"]):
+            with self.subTest(body=body):
+                logged = []
+                fake = unittest.mock.Mock(
+                    side_effect=self._raise(400, json.dumps(body).encode()))
+                with unittest.mock.patch.object(kw, "log", logged.append):
+                    self.assertIsNone(self._chat_with(fake))
+                self.assertEqual(fake.call_count, 1)
+                self.assertTrue(logged[-1].startswith("  400 on m:"), logged)
+                self.assertNotIn("MODEL_OUTPUT_MARKER", "".join(logged))
+
     def test_non_json_400_logs_raw_body(self):
         logged = []
         fake = unittest.mock.Mock(side_effect=self._raise(400, b"<html>bad gateway</html>"))

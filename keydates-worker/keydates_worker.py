@@ -491,9 +491,10 @@ def chat(model: str, system: str, user: str, schema: dict, schema_name: str):
                 # a transient first attempt isn't misclassified as BackendUnavailable.
                 err = e.read()
                 try:
-                    error = json.loads(err)["error"]
-                except (ValueError, KeyError, TypeError, RecursionError):
-                    error = None
+                    body = json.loads(err)
+                except (ValueError, RecursionError):
+                    body = None
+                error = body.get("error") if isinstance(body, dict) else None
                 if not isinstance(error, dict):
                     error = {}
                 code = error.get("code")
@@ -516,6 +517,11 @@ def chat(model: str, system: str, user: str, schema: dict, schema_name: str):
                     # fragment of model output, so it is repr-escaped and capped
                     log(f"  400 on {model}: code={code!r} "
                         f"message={str(error.get('message'))[:1000]!r}")
+                elif body is not None:
+                    # JSON without an error object: name its shape, never echo it,
+                    # since it can still carry failed_generation
+                    shape = sorted(body) if isinstance(body, dict) else type(body).__name__
+                    log(f"  400 on {model}: unexpected JSON body {str(shape)[:200]!r}")
                 else:
                     log(f"  400 on {model}: {err[:200]!r}")
                 return None
