@@ -430,6 +430,7 @@ def chat(model: str, system: str, user: str, schema: dict, schema_name: str):
     }).encode()
     # pace on the real TPM cost Groq bills: input estimate + the output allowance
     est_tokens = estimate_tokens(system, user) + MODEL_MAX_OUTPUT_TOKENS
+    schema_retry_used = False  # one strict-schema-miss retry per call, on any attempt
     for attempt in range(4):
         token_pace(model, est_tokens)
         req = urllib.request.Request(
@@ -488,7 +489,41 @@ def chat(model: str, system: str, user: str, schema: dict, schema_name: str):
                 # a 400 is a request the backend rejects, not a backend outage —
                 # treat it as "no result" on ANY attempt, so a persistent 400 after
                 # a transient first attempt isn't misclassified as BackendUnavailable.
-                log(f"  400 on {model}: {e.read()[:200]!r}")
+                err = e.read()
+                try:
+                    parsed = json.loads(err)
+                except (ValueError, RecursionError):
+                    parsed = None
+                error = parsed.get("error") if isinstance(parsed, dict) else None
+                if not isinstance(error, dict):
+                    error = {}
+                code = error.get("code")
+                code = code if code is None else str(code)[:100]  # capped for the log
+                # except Groq's strict-schema miss: the model's output missed the
+                # schema, an intermittent sampling failure (gpt-oss-20b sends code
+                # json_validate_failed; gpt-oss-120b's code is unconfirmed, CON-66,
+                # but both carry failed_generation). That is malformed output, not a
+                # bad request, so retry it once (its own budget, on any attempt but
+                # the last). Match parsed fields, not the raw body: failed_generation
+                # echoes model output into it.
+                schema_miss = (error.get("code") == "json_validate_failed"
+                               or "failed_generation" in error)
+                if schema_miss and not schema_retry_used and attempt < 3:
+                    schema_retry_used = True
+                    log(f"  schema miss on {model} (code={code!r}), retrying")
+                    continue
+                if error:
+                    # never log failed_generation (model output); message may quote a
+                    # fragment of model output, so it is repr-escaped and capped
+                    log(f"  400 on {model}: code={code!r} "
+                        f"message={str(error.get('message'))[:1000]!r}")
+                elif parsed is not None:
+                    # JSON without an error object: name its shape, never echo it,
+                    # since it can still carry failed_generation
+                    shape = sorted(parsed) if isinstance(parsed, dict) else type(parsed).__name__
+                    log(f"  400 on {model}: unexpected JSON body {str(shape)[:200]!r}")
+                else:
+                    log(f"  400 on {model}: {err[:200]!r}")
                 return None
             if attempt == 3:
                 # a 5xx (or any other status) that survived every retry is a
