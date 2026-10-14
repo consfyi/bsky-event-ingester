@@ -98,26 +98,57 @@ fn human_date(iso: &str) -> String {
         .unwrap_or_else(|_| iso.to_string())
 }
 
+/// Escape text for Telegram's HTML parse mode, which rejects the whole message
+/// on a stray `<`, `>` or `&`. Also escapes `"` so it's safe in an href.
+fn html_escape(s: &str) -> String {
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+}
+
+/// Rendered as HTML (sent with `parse_mode: HTML`) so each source shows as a
+/// short "link" instead of a long Bluesky URL (CON-67).
 fn render_message(ui_endpoint: &str, ev: &EventKeyDates, changes: &[Change]) -> String {
-    let mut lines = vec![format!("📅 {} — key date update:", ev.name)];
+    let mut lines = vec![format!("📅 {} — key date update:", html_escape(&ev.name))];
     for c in changes {
         let label = CATEGORY_LABELS
             .iter()
             .find(|(k, _)| *k == c.category)
             .map(|(_, l)| *l)
             .unwrap_or(c.category);
-        let mut line = format!("• {} {} {}", label, c.kind, human_date(&c.date));
+        let mut line = format!(
+            "• {} {} {}",
+            html_escape(label),
+            c.kind,
+            html_escape(&human_date(&c.date))
+        );
         if let Some(source) = &c.source {
-            line.push_str(&format!(" ({source})"));
+            if source.starts_with("https://") || source.starts_with("http://") {
+                line.push_str(&format!(" (<a href=\"{}\">link</a>)", html_escape(source)));
+            } else {
+                line.push_str(&format!(" ({})", html_escape(source)));
+            }
         }
         lines.push(line);
     }
     lines.push(format!(
         "{}/{} — always confirm on the official site",
-        ui_endpoint, ev.event_id
+        html_escape(ui_endpoint),
+        html_escape(&ev.event_id)
     ));
     lines.push(CON_UPDATE_HASHTAG.to_string());
     lines.join("\n")
+}
+
+/// `render_message` output is HTML, so it only renders right with `parse_mode`.
+fn send_message_body(chat_id: &str, text: &str) -> serde_json::Value {
+    serde_json::json!({
+        "chat_id": chat_id,
+        "text": text,
+        "parse_mode": "HTML",
+        "disable_web_page_preview": true,
+    })
 }
 
 impl Announcer {
@@ -135,11 +166,7 @@ impl Announcer {
         // failed send can't leak the token into the logs.
         self.reqwest_client
             .post(format!("https://api.telegram.org/bot{token}/sendMessage"))
-            .json(&serde_json::json!({
-                "chat_id": chat_id,
-                "text": text,
-                "disable_web_page_preview": true,
-            }))
+            .json(&send_message_body(chat_id, text))
             .send()
             .await
             .map_err(reqwest::Error::without_url)?
@@ -261,9 +288,56 @@ mod tests {
         assert_eq!(msg.lines().last(), Some("#ConUpdate"));
         // Presence checks (not exact header formatting, which copy may tweak).
         assert!(msg.contains("ExampleCon 2026"));
-        assert!(msg.contains("• Registration opens Aug 1, 2026 (https://example.com/post)"));
+        assert!(msg.contains(
+            "• Registration opens Aug 1, 2026 (<a href=\"https://example.com/post\">link</a>)"
+        ));
         assert!(
             msg.contains("https://cons.fyi/examplecon-2026 — always confirm on the official site")
         );
+    }
+
+    #[test]
+    fn test_render_message_escapes_html_in_name_and_source() {
+        let ev = EventKeyDates {
+            event_id: "fur-and-loathing-2026".to_string(),
+            name: "Fur & Loathing <2026>".to_string(),
+            key_dates: None,
+        };
+        let changes = vec![Change {
+            category: "hotel",
+            kind: "opens",
+            date: "2026-10-06".to_string(),
+            source: Some("https://example.com/p?a=1&b=\"2\"".to_string()),
+        }];
+        let msg = render_message("https://cons.fyi", &ev, &changes);
+        assert!(msg.contains("📅 Fur &amp; Loathing &lt;2026&gt; — key date update:"));
+        assert!(
+            msg.contains("(<a href=\"https://example.com/p?a=1&amp;b=&quot;2&quot;\">link</a>)")
+        );
+    }
+
+    #[test]
+    fn test_render_message_leaves_non_url_source_as_text() {
+        let ev = EventKeyDates {
+            event_id: "examplecon-2026".to_string(),
+            name: "ExampleCon 2026".to_string(),
+            key_dates: None,
+        };
+        let changes = vec![Change {
+            category: "registration",
+            kind: "opens",
+            date: "2026-08-01".to_string(),
+            source: Some("javascript:alert(1)".to_string()),
+        }];
+        let msg = render_message("https://cons.fyi", &ev, &changes);
+        assert!(!msg.contains("<a "));
+        assert!(msg.contains("(javascript:alert(1))"));
+    }
+
+    #[test]
+    fn test_send_message_body_requests_html_parsing() {
+        let body = send_message_body("-100123", "<a href=\"https://x\">link</a>");
+        assert_eq!(body["parse_mode"], "HTML");
+        assert_eq!(body["text"], "<a href=\"https://x\">link</a>");
     }
 }
