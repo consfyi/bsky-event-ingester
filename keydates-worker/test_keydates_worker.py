@@ -2129,12 +2129,24 @@ class ChatErrorTest(unittest.TestCase):
              unittest.mock.patch.object(kw.urllib.request, "urlopen", self._raise(400)):
             self.assertIsNone(kw.chat("m", "s", "u", kw.EXTRACT_SCHEMA, "keydates"))
 
-    def _groq_400(self, req):
+    def _groq_400(self, **error):
+        # defaults to gpt-oss-20b's strict-schema miss; keyword args override
+        # or add fields, and a None value drops that field
+        error = {"message": "Generated JSON does not match the expected schema.",
+                 "type": "invalid_request_error",
+                 "code": "json_validate_failed", **error}
+        error = {k: v for k, v in error.items() if v is not None}
         return kw.urllib.error.HTTPError(
-            req.full_url, 400, "err", {}, io.BytesIO(json.dumps({"error": {
-                "message": "Generated JSON does not match the expected schema.",
-                "type": "invalid_request_error",
-                "code": "json_validate_failed"}}).encode()))
+            kw.MODEL_CHAT_URL, 400, "err", {},
+            io.BytesIO(json.dumps({"error": error}).encode()))
+
+    def _429(self):
+        return kw.urllib.error.HTTPError(
+            kw.MODEL_CHAT_URL, 429, "err", {"Retry-After": "0"}, io.BytesIO(b""))
+
+    def _ok_response(self, content):
+        return io.BytesIO(json.dumps(
+            {"choices": [{"message": {"content": json.dumps(content)}}]}).encode())
 
     def _chat_with(self, fake):
         with unittest.mock.patch.object(kw, "MODEL_API_KEY", "k"), \
@@ -2145,31 +2157,18 @@ class ChatErrorTest(unittest.TestCase):
     def test_json_validate_failed_400_retries_and_succeeds(self):
         # PR #117: one strict-schema miss on gpt-oss-20b held a good proposal;
         # the retry must return the second attempt's verdicts
-        calls = {"n": 0}
         good = {"verdicts": [{"index": 0, "verdict": "confirm", "reason": "r"}]}
-
-        def fake(req, timeout=None):
-            calls["n"] += 1
-            if calls["n"] == 1:
-                raise self._groq_400(req)
-            return io.BytesIO(json.dumps(
-                {"choices": [{"message": {"content": json.dumps(good)}}]}).encode())
-
+        fake = unittest.mock.Mock(side_effect=[self._groq_400(), self._ok_response(good)])
         kw.reset_run_health()
         self.assertEqual(self._chat_with(fake), good)
-        self.assertEqual(calls["n"], 2)
+        self.assertEqual(fake.call_count, 2)
         self.assertEqual(kw._run_health["backend_failures"], 0)
 
     def test_persistent_json_validate_failed_gives_up_after_one_retry(self):
-        calls = {"n": 0}
-
-        def fake(req, timeout=None):
-            calls["n"] += 1
-            raise self._groq_400(req)
-
+        fake = unittest.mock.Mock(side_effect=[self._groq_400() for _ in range(4)])
         kw.reset_run_health()
         self.assertIsNone(self._chat_with(fake))
-        self.assertEqual(calls["n"], 2)
+        self.assertEqual(fake.call_count, 2)
         self.assertEqual(kw._run_health["backend_failures"], 0)
 
     def test_other_400_is_not_retried(self):
@@ -2181,11 +2180,22 @@ class ChatErrorTest(unittest.TestCase):
     def test_json_validate_failed_only_in_body_text_is_not_retried(self):
         # the retry keys on parsed fields (error.code, a failed_generation key),
         # never on the phrase appearing somewhere in the body text
-        body = json.dumps({"error": {"code": "invalid_request",
-                                     "message": "json_validate_failed"}}).encode()
-        fake = unittest.mock.Mock(side_effect=self._raise(400, body))
+        for phrase in ("json_validate_failed", "failed_generation"):
+            with self.subTest(phrase=phrase):
+                body = json.dumps({"error": {"code": "invalid_request",
+                                             "message": phrase}}).encode()
+                fake = unittest.mock.Mock(side_effect=self._raise(400, body))
+                self.assertIsNone(self._chat_with(fake))
+                self.assertEqual(fake.call_count, 1)
+
+    def test_schema_miss_message_without_code_or_failed_generation_is_not_retried(self):
+        # the retry keys on code json_validate_failed or a failed_generation key,
+        # not on the schema-miss message text alone
+        fake = unittest.mock.Mock(side_effect=[self._groq_400(code=None)])
+        kw.reset_run_health()
         self.assertIsNone(self._chat_with(fake))
         self.assertEqual(fake.call_count, 1)
+        self.assertEqual(kw._run_health["backend_failures"], 0)
 
     def test_schema_miss_with_failed_generation_retries_whatever_the_code(self):
         # CON-66: gpt-oss-120b's "Generated JSON does not match the expected
@@ -2195,25 +2205,32 @@ class ChatErrorTest(unittest.TestCase):
         good = {"verdicts": [{"index": 0, "verdict": "confirm", "reason": "r"}]}
         for code in (None, "some_other_code"):
             with self.subTest(code=code):
-                error = {"message": "Generated JSON does not match the expected schema.",
-                         "type": "invalid_request_error", "failed_generation": ""}
-                if code:
-                    error["code"] = code
-                calls = {"n": 0}
-
-                def fake(req, timeout=None):
-                    calls["n"] += 1
-                    if calls["n"] == 1:
-                        raise kw.urllib.error.HTTPError(
-                            req.full_url, 400, "err", {},
-                            io.BytesIO(json.dumps({"error": error}).encode()))
-                    return io.BytesIO(json.dumps(
-                        {"choices": [{"message": {"content": json.dumps(good)}}]}).encode())
-
+                fake = unittest.mock.Mock(side_effect=[
+                    self._groq_400(code=code, failed_generation=""),
+                    self._ok_response(good)])
                 kw.reset_run_health()
                 self.assertEqual(self._chat_with(fake), good)
-                self.assertEqual(calls["n"], 2)
+                self.assertEqual(fake.call_count, 2)
                 self.assertEqual(kw._run_health["backend_failures"], 0)
+
+    def test_400_log_caps_a_long_code(self):
+        # error.code is server-supplied: cap it in the log like the message
+        logged = []
+        fake = unittest.mock.Mock(side_effect=[self._groq_400(code="x" * 500)])
+        with unittest.mock.patch.object(kw, "log", logged.append):
+            self.assertIsNone(self._chat_with(fake))
+        self.assertIn("x" * 100, logged[-1])
+        self.assertNotIn("x" * 101, logged[-1])
+
+    def test_deeply_nested_400_body_returns_none(self):
+        # json.loads raises RecursionError on deep nesting; it must not escape
+        # chat() — the body is an ordinary non-retried 400
+        fake = unittest.mock.Mock(side_effect=self._raise(400, b"[" * 2_000_000))
+        kw.reset_run_health()
+        with unittest.mock.patch.object(kw, "log", lambda line: None):
+            self.assertIsNone(self._chat_with(fake))
+        self.assertEqual(fake.call_count, 1)
+        self.assertEqual(kw._run_health["backend_failures"], 0)
 
     def test_400_log_has_code_and_full_message_not_model_output(self):
         # CON-66: the old 200-byte raw-body log cut the 120b error before its
@@ -2243,43 +2260,26 @@ class ChatErrorTest(unittest.TestCase):
 
     def test_json_validate_failed_after_429_still_retries(self):
         # the schema retry is its own budget: a 429 on attempt 0 must not use it up
-        calls = {"n": 0}
         good = {"verdicts": [{"index": 0, "verdict": "confirm", "reason": "r"}]}
-
-        def fake(req, timeout=None):
-            calls["n"] += 1
-            if calls["n"] == 1:
-                raise kw.urllib.error.HTTPError(
-                    req.full_url, 429, "err", {"Retry-After": "0"}, io.BytesIO(b""))
-            if calls["n"] == 2:
-                raise self._groq_400(req)
-            return io.BytesIO(json.dumps(
-                {"choices": [{"message": {"content": json.dumps(good)}}]}).encode())
-
+        fake = unittest.mock.Mock(side_effect=[
+            self._429(), self._groq_400(), self._ok_response(good)])
         kw.reset_run_health()
         with unittest.mock.patch.object(kw.time, "sleep", lambda s: None):
             self.assertEqual(self._chat_with(fake), good)
-        self.assertEqual(calls["n"], 3)
+        self.assertEqual(fake.call_count, 3)
         self.assertEqual(kw._run_health["backend_failures"], 0)
 
     def test_json_validate_failed_on_last_attempt_logs_400_not_retry(self):
         # after three 429s the schema miss lands on the final attempt: there is
         # no attempt left to retry into, so it must log the 400 body and give up
-        calls = {"n": 0}
         logged = []
-
-        def fake(req, timeout=None):
-            calls["n"] += 1
-            if calls["n"] <= 3:
-                raise kw.urllib.error.HTTPError(
-                    req.full_url, 429, "err", {"Retry-After": "0"}, io.BytesIO(b""))
-            raise self._groq_400(req)
-
+        fake = unittest.mock.Mock(side_effect=[
+            self._429(), self._429(), self._429(), self._groq_400()])
         kw.reset_run_health()
         with unittest.mock.patch.object(kw.time, "sleep", lambda s: None), \
              unittest.mock.patch.object(kw, "log", logged.append):
             self.assertIsNone(self._chat_with(fake))
-        self.assertEqual(calls["n"], 4)
+        self.assertEqual(fake.call_count, 4)
         self.assertFalse(any("retrying" in line for line in logged), logged)
         self.assertTrue(logged[-1].startswith("  400 on m:"), logged)
         self.assertIn("json_validate_failed", logged[-1])

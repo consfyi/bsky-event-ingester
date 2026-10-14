@@ -430,7 +430,7 @@ def chat(model: str, system: str, user: str, schema: dict, schema_name: str):
     }).encode()
     # pace on the real TPM cost Groq bills: input estimate + the output allowance
     est_tokens = estimate_tokens(system, user) + MODEL_MAX_OUTPUT_TOKENS
-    schema_retry_used = False  # one json_validate_failed retry per call, on any attempt
+    schema_retry_used = False  # one strict-schema-miss retry per call, on any attempt
     for attempt in range(4):
         token_pace(model, est_tokens)
         req = urllib.request.Request(
@@ -492,10 +492,12 @@ def chat(model: str, system: str, user: str, schema: dict, schema_name: str):
                 err = e.read()
                 try:
                     error = json.loads(err)["error"]
-                except (ValueError, KeyError, TypeError):
+                except (ValueError, KeyError, TypeError, RecursionError):
                     error = None
                 if not isinstance(error, dict):
                     error = {}
+                code = error.get("code")
+                code = code if code is None else str(code)[:100]  # capped for the log
                 # except Groq's strict-schema miss: the model's output missed the
                 # schema, an intermittent sampling failure (gpt-oss-20b sends code
                 # json_validate_failed; gpt-oss-120b's code is unconfirmed, CON-66,
@@ -507,11 +509,12 @@ def chat(model: str, system: str, user: str, schema: dict, schema_name: str):
                                or "failed_generation" in error)
                 if schema_miss and not schema_retry_used and attempt < 3:
                     schema_retry_used = True
-                    log(f"  schema miss on {model} (code={error.get('code')!r}), retrying")
+                    log(f"  schema miss on {model} (code={code!r}), retrying")
                     continue
                 if error:
-                    # code + message, never failed_generation (model output)
-                    log(f"  400 on {model}: code={error.get('code')!r} "
+                    # never log failed_generation (model output); message may quote a
+                    # fragment of model output, so it is repr-escaped and capped
+                    log(f"  400 on {model}: code={code!r} "
                         f"message={str(error.get('message'))[:1000]!r}")
                 else:
                     log(f"  400 on {model}: {err[:200]!r}")
