@@ -2164,6 +2164,24 @@ class ChatErrorTest(unittest.TestCase):
         self.assertEqual(fake.call_count, 2)
         self.assertEqual(kw._run_health["backend_failures"], 0)
 
+    def test_schema_miss_retry_resends_the_same_request_payload(self):
+        # the retry must send the original JSON request, not the parsed 400 body
+        good = {"verdicts": [{"index": 0, "verdict": "confirm", "reason": "r"}]}
+        sent = []
+        responses = [self._groq_400(), self._ok_response(good)]
+
+        def fake(req, timeout=None):
+            sent.append(req.data)
+            r = responses.pop(0)
+            if isinstance(r, Exception):
+                raise r
+            return r
+        self.assertEqual(self._chat_with(fake), good)
+        self.assertEqual(len(sent), 2)
+        self.assertIsInstance(sent[1], bytes)
+        self.assertEqual(sent[1], sent[0])
+        self.assertEqual(json.loads(sent[1])["model"], "m")
+
     def test_persistent_json_validate_failed_gives_up_after_one_retry(self):
         fake = unittest.mock.Mock(side_effect=[self._groq_400() for _ in range(4)])
         kw.reset_run_health()
