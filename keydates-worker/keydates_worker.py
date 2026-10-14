@@ -490,20 +490,31 @@ def chat(model: str, system: str, user: str, schema: dict, schema_name: str):
                 # treat it as "no result" on ANY attempt, so a persistent 400 after
                 # a transient first attempt isn't misclassified as BackendUnavailable.
                 err = e.read()
-                # except Groq's json_validate_failed: the model's output missed the
-                # strict schema, an intermittent sampling failure (gpt-oss-20b hits
-                # it). That is malformed output, not a bad request, so retry it once
-                # (its own budget, on any attempt but the last). Match the parsed error.code, not
-                # the raw body: failed_generation echoes model output into it.
                 try:
-                    code = json.loads(err)["error"].get("code")
-                except (ValueError, KeyError, TypeError, AttributeError):
-                    code = None
-                if code == "json_validate_failed" and not schema_retry_used and attempt < 3:
+                    error = json.loads(err)["error"]
+                except (ValueError, KeyError, TypeError):
+                    error = None
+                if not isinstance(error, dict):
+                    error = {}
+                # except Groq's strict-schema miss: the model's output missed the
+                # schema, an intermittent sampling failure (gpt-oss-20b sends code
+                # json_validate_failed; gpt-oss-120b's code is unconfirmed, CON-66,
+                # but both carry failed_generation). That is malformed output, not a
+                # bad request, so retry it once (its own budget, on any attempt but
+                # the last). Match parsed fields, not the raw body: failed_generation
+                # echoes model output into it.
+                schema_miss = (error.get("code") == "json_validate_failed"
+                               or "failed_generation" in error)
+                if schema_miss and not schema_retry_used and attempt < 3:
                     schema_retry_used = True
-                    log(f"  json_validate_failed on {model}, retrying")
+                    log(f"  schema miss on {model} (code={error.get('code')!r}), retrying")
                     continue
-                log(f"  400 on {model}: {err[:200]!r}")
+                if error:
+                    # code + message, never failed_generation (model output)
+                    log(f"  400 on {model}: code={error.get('code')!r} "
+                        f"message={str(error.get('message'))[:1000]!r}")
+                else:
+                    log(f"  400 on {model}: {err[:200]!r}")
                 return None
             if attempt == 3:
                 # a 5xx (or any other status) that survived every retry is a

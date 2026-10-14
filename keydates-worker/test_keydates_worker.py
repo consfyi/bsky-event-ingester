@@ -2108,7 +2108,8 @@ class TokenPaceTest(unittest.TestCase):
 class ChatErrorTest(unittest.TestCase):
     """CON-34: chat()'s HTTPError branches — 413 (request too large) and a
     first-attempt 400 both return None rather than raising or retrying forever.
-    The exception is Groq's json_validate_failed 400, which is retried once."""
+    The exception is Groq's strict-schema 400 (code json_validate_failed, or any
+    error carrying failed_generation), which is retried once."""
 
     def _raise(self, code, body=b"error body"):
         def fake(req, timeout=None):
@@ -2177,14 +2178,68 @@ class ChatErrorTest(unittest.TestCase):
         self.assertIsNone(self._chat_with(fake))
         self.assertEqual(fake.call_count, 1)
 
-    def test_json_validate_failed_only_in_model_output_is_not_retried(self):
-        # failed_generation echoes model output; the phrase appearing there must
-        # not trigger the retry when error.code is something else
+    def test_json_validate_failed_only_in_body_text_is_not_retried(self):
+        # the retry keys on parsed fields (error.code, a failed_generation key),
+        # never on the phrase appearing somewhere in the body text
         body = json.dumps({"error": {"code": "invalid_request",
-                                     "failed_generation": "json_validate_failed"}}).encode()
+                                     "message": "json_validate_failed"}}).encode()
         fake = unittest.mock.Mock(side_effect=self._raise(400, body))
         self.assertIsNone(self._chat_with(fake))
         self.assertEqual(fake.call_count, 1)
+
+    def test_schema_miss_with_failed_generation_retries_whatever_the_code(self):
+        # CON-66: gpt-oss-120b's "Generated JSON does not match the expected
+        # schema" 400 was truncated in the journal before its code; it carries
+        # failed_generation, so it must retry even when code is not
+        # json_validate_failed (or absent)
+        good = {"verdicts": [{"index": 0, "verdict": "confirm", "reason": "r"}]}
+        for code in (None, "some_other_code"):
+            with self.subTest(code=code):
+                error = {"message": "Generated JSON does not match the expected schema.",
+                         "type": "invalid_request_error", "failed_generation": ""}
+                if code:
+                    error["code"] = code
+                calls = {"n": 0}
+
+                def fake(req, timeout=None):
+                    calls["n"] += 1
+                    if calls["n"] == 1:
+                        raise kw.urllib.error.HTTPError(
+                            req.full_url, 400, "err", {},
+                            io.BytesIO(json.dumps({"error": error}).encode()))
+                    return io.BytesIO(json.dumps(
+                        {"choices": [{"message": {"content": json.dumps(good)}}]}).encode())
+
+                kw.reset_run_health()
+                self.assertEqual(self._chat_with(fake), good)
+                self.assertEqual(calls["n"], 2)
+                self.assertEqual(kw._run_health["backend_failures"], 0)
+
+    def test_400_log_has_code_and_full_message_not_model_output(self):
+        # CON-66: the old 200-byte raw-body log cut the 120b error before its
+        # code and the failing schema path. Log the parsed code and the whole
+        # message, but not failed_generation (the model's own output).
+        message = ("Generated JSON does not match the expected schema. " * 6
+                   + "Error: jsonschema: '/verdicts/0' does not validate with "
+                     "/properties/verdicts/items/required")
+        body = json.dumps({"error": {"message": message, "code": "schema_x",
+                                     "failed_generation": "MODEL_OUTPUT_MARKER"}}).encode()
+        logged = []
+        fake = unittest.mock.Mock(side_effect=self._raise(400, body))
+        with unittest.mock.patch.object(kw, "log", logged.append):
+            self.assertIsNone(self._chat_with(fake))
+        self.assertEqual(fake.call_count, 2)
+        self.assertIn("schema_x", logged[-1])
+        self.assertIn("/properties/verdicts/items/required", logged[-1])
+        self.assertNotIn("MODEL_OUTPUT_MARKER", "".join(logged))
+
+    def test_non_json_400_logs_raw_body(self):
+        logged = []
+        fake = unittest.mock.Mock(side_effect=self._raise(400, b"<html>bad gateway</html>"))
+        with unittest.mock.patch.object(kw, "log", logged.append):
+            self.assertIsNone(self._chat_with(fake))
+        self.assertEqual(fake.call_count, 1)
+        self.assertIn("bad gateway", logged[-1])
 
     def test_json_validate_failed_after_429_still_retries(self):
         # the schema retry is its own budget: a 429 on attempt 0 must not use it up
