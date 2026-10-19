@@ -3542,6 +3542,21 @@ class LaterClosesPairCheckTest(unittest.TestCase):
         self.assertEqual(self.getposts_calls, [])  # ledger carried the text
         self.assertEqual(self.chat_calls[0]["items"][0]["existing"]["post_text"], self.OLD_TEXT)
 
+    def test_proposal_older_than_ledger_is_checked_against_main(self):
+        # main 03-01, ledger 03-15 from a newer post; a proposal posted between
+        # them that moves main's close later must still be pair-checked
+        self._write(self._old())
+        ledger_entry = {**did_entry("3led", date="2999-03-15"), "asOf": "2999-03-01T00:00:00.000Z",
+                        "event_id": "testcon-2999", "category": "registration",
+                        "kind": "closes", "_post_text": self.EXTENDED}
+        ledger = {kw.outstanding_key(ledger_entry): ledger_entry}
+        changes, refuted, _, _, _ = self._run("2999-04-01", self.FASHION, same_signup=False,
+                                              ledger=ledger)
+        self.assertEqual(changes, [])
+        self.assertEqual([r["date"] for r in refuted], ["2999-04-01"])
+        self.assertEqual(self._stored()["date"], "2999-03-01")
+        self.assertEqual(self.chat_calls[0]["items"][0]["existing"]["date"], "2999-03-01")
+
     def test_held_ledger_value_is_not_the_comparison_base(self):
         self._write(None)
         ledger_entry = {**self._old(), "event_id": "testcon-2999", "category": "registration",

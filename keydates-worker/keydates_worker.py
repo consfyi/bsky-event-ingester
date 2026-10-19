@@ -1592,17 +1592,19 @@ def hold_same_run_conflicts(confirmed):
     return kept, conflicted
 
 
-def effective_existing(main_val, ledger_entry):
-    """The value a proposal would replace in the rolling PR: the outstanding
-    ledger entry when it is applied (not held) and not older than main, else
-    main's. None when main's value is human-curated, since merge() never
-    replaces those."""
+def pair_check_base(d, main_val, ledger_entry):
+    """The stored value a proposal must be pair-checked against, or None.
+    The rolling PR holds the applied (not held) ledger entry, and merge()
+    compares against main, so either can be replaced: check the ledger entry
+    first, then main. None when main's value is human-curated, since merge()
+    never replaces those."""
     if main_val is not None and not importer_owned(main_val):
         return None
-    if ledger_entry and not ledger_entry.get("_held") and \
-            (ledger_entry.get("asOf") or "") >= ((main_val or {}).get("asOf") or ""):
-        return ledger_entry
-    return main_val
+    applied = ledger_entry if ledger_entry and not ledger_entry.get("_held") else None
+    for existing in (applied, main_val):
+        if needs_pair_check(d, existing):
+            return existing
+    return None
 
 
 def needs_pair_check(d, existing):
@@ -1831,8 +1833,7 @@ def process_con(fn, cache, rejections, provided_posts=None, extra_post=None, led
         d["_con_name"] = con["name"]
         d["_tz"] = tz
         d["_post_date"] = localize_timestamp(d["asOf"], tz)[1]  # merge()'s same-day close hold
-        existing = effective_existing(already, ledger.get(outstanding_key(d)))
-        d["_existing"] = existing if needs_pair_check(d, existing) else None
+        d["_existing"] = pair_check_base(d, already, ledger.get(outstanding_key(d)))
         d["_post_text"] = (post or {}).get("text", "")
         d["_ev_dates"] = ev_meta.get(d["event_id"], ("?", "?"))
         d["_siblings"] = [
