@@ -1701,8 +1701,23 @@ def check_later_closes(confirmed, cache, did):
                 "existing": {"date": p["_existing"]["date"], "post_text": p["_existing_text"]},
                 "new": {"date": p["date"], "post_text": p["_post_text"]}}
 
-    for lo in range(0, len(ready), VERIFY_BATCH):
-        batch = ready[lo:lo + VERIFY_BATCH]
+    # same packing as verify_proposals: bound each request by item count AND
+    # the per-request token budget, so a big pair batch can't 413 into holds
+    batches, cur = [], []
+    for p in ready:
+        trial = cur + [p]
+        user = json.dumps({"items": [pair_item(q, i) for i, q in enumerate(trial)]},
+                          ensure_ascii=False)
+        if cur and (len(trial) > VERIFY_BATCH
+                    or estimate_tokens(PAIR_SYSTEM, user) > MODEL_MAX_REQUEST_TOKENS):
+            batches.append(cur)
+            cur = [p]
+        else:
+            cur = trial
+    if cur:
+        batches.append(cur)
+
+    for batch in batches:
         user = json.dumps({"items": [pair_item(p, i) for i, p in enumerate(batch)]},
                           ensure_ascii=False)
         by_model = {}

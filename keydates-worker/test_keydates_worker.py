@@ -3627,3 +3627,43 @@ class LaterClosesPairCheckTest(unittest.TestCase):
         self.assertEqual(refuted, [])
         self.assertIn("own day", held[0]["_verdicts"][-1]["reason"])
         self.assertEqual((self.chat_calls, self.getposts_calls), ([], []))
+
+    def test_pair_batches_respect_request_token_budget(self):
+        # two pair checks whose combined payload exceeds the request budget go
+        # out as two requests, not one oversized batch
+        posts = [{"url": did_entry(f"3new{i}")["source"], "asOf": "2999-02-01T12:00:00.000Z",
+                  "text": self.FASHION} for i in range(2)]
+        con = make_con({"registration": {"closes": self._old()},
+                        "dealers": {"closes": did_entry("3old2", date="2999-03-01")}})
+        with open(self.fn, "w") as f:
+            json.dump(con, f)
+
+        def fake_extract(con_, events, posts_, tz="UTC"):
+            return [{"event_id": "testcon-2999", "category": c, "kind": "closes",
+                     "date": "2999-04-01", "source": posts_[i]["url"], "confidence": 1.0}
+                    for i, c in enumerate(("registration", "dealers"))]
+
+        def fake_chat(model, system, user, schema, name):
+            items = json.loads(user)["items"]
+            self.chat_calls.append(items)
+            return {"verdicts": [{"index": it["index"], "same_signup": False, "reason": "t"}
+                                 for it in items]}
+
+        one = len(json.dumps({"items": [{"index": 0, "category": "registration",
+                                         "existing": {"date": "2999-03-01", "post_text": self.OLD_TEXT},
+                                         "new": {"date": "2999-04-01", "post_text": self.FASHION}}]}))
+        budget = kw.estimate_tokens(kw.PAIR_SYSTEM, "x" * (one + 40))
+        with unittest.mock.patch.object(kw, "extract_for_con", side_effect=fake_extract), \
+             unittest.mock.patch.object(kw, "load_event_timezones", return_value={}), \
+             unittest.mock.patch.object(kw, "verify_proposals",
+                                        side_effect=lambda proposals, cache: (
+                                            [{**p, "_verdicts": []} for p in proposals], [], [])), \
+             unittest.mock.patch.object(kw, "chat", side_effect=fake_chat), \
+             unittest.mock.patch.object(kw, "appget", side_effect=lambda m, p: {
+                 "posts": [{"uri": u, "record": {"text": self.OLD_TEXT}} for u in p["uris"]]}), \
+             unittest.mock.patch.object(kw, "MODEL_MAX_REQUEST_TOKENS", budget), \
+             unittest.mock.patch.object(kw, "VERIFY_MODELS", ["m"]):
+            _, refuted, held, _, _ = kw.process_con(self.fn, {}, [], provided_posts=posts)
+        self.assertEqual([len(items) for items in self.chat_calls], [1, 1])
+        self.assertEqual(sorted(r["category"] for r in refuted), ["dealers", "registration"])
+        self.assertEqual(held, [])
