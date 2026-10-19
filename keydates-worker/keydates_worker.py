@@ -1848,7 +1848,12 @@ def process_con(fn, cache, rejections, provided_posts=None, extra_post=None, led
         d["_con_name"] = con["name"]
         d["_tz"] = tz
         d["_post_date"] = localize_timestamp(d["asOf"], tz)[1]  # merge()'s same-day close hold
-        d["_existing"] = pair_check_base(d, already, ledger.get(outstanding_key(d)))
+        # a /rejected ledger entry is pruned by reapply_outstanding later in
+        # the run; it must not refute a newer close before then
+        ledger_entry = ledger.get(outstanding_key(d))
+        if ledger_entry and is_rejected(rejections, ledger_entry):
+            ledger_entry = None
+        d["_existing"] = pair_check_base(d, already, ledger_entry)
         d["_post_text"] = (post or {}).get("text", "")
         d["_ev_dates"] = ev_meta.get(d["event_id"], ("?", "?"))
         d["_siblings"] = [

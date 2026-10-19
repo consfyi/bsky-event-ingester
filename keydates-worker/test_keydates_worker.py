@@ -3467,7 +3467,8 @@ class LaterClosesPairCheckTest(unittest.TestCase):
         return did_entry("3old", date=date)
 
     def _run(self, new_date, text, same_signup=None, alive=True, getposts_ok=True,
-             chat_result="answer", ledger=None, cache=None, post_asof="2999-02-01T12:00:00.000Z"):
+             chat_result="answer", ledger=None, cache=None, post_asof="2999-02-01T12:00:00.000Z",
+             rejections=()):
         post = {"url": did_entry("3new")["source"], "asOf": post_asof, "text": text}
 
         def fake_extract(con_, events, posts, tz="UTC"):
@@ -3497,7 +3498,7 @@ class LaterClosesPairCheckTest(unittest.TestCase):
                                             [{**p, "_verdicts": []} for p in proposals], [], [])), \
              unittest.mock.patch.object(kw, "chat", side_effect=fake_chat), \
              unittest.mock.patch.object(kw, "appget", side_effect=fake_appget):
-            return kw.process_con(self.fn, {} if cache is None else cache, [],
+            return kw.process_con(self.fn, {} if cache is None else cache, list(rejections),
                                   provided_posts=[post], ledger=ledger)
 
     def test_different_signup_later_close_keeps_earlier_date(self):
@@ -3564,6 +3565,20 @@ class LaterClosesPairCheckTest(unittest.TestCase):
         ledger = {kw.outstanding_key(ledger_entry): ledger_entry}
         changes, _, _, _, _ = self._run("2999-04-01", self.FASHION, ledger=ledger)
         self.assertEqual([c["verb"] for c in changes], ["add"])
+        self.assertEqual(self.chat_calls, [])
+
+    def test_rejected_ledger_value_is_not_the_comparison_base(self):
+        # a /rejected ledger entry is pruned later in the run, so it must not
+        # refute a newer close first
+        self._write(None)
+        ledger_entry = {**self._old(), "event_id": "testcon-2999", "category": "registration",
+                        "kind": "closes", "_post_text": self.OLD_TEXT}
+        ledger = {kw.outstanding_key(ledger_entry): ledger_entry}
+        rejection = {k: ledger_entry[k] for k in ("event_id", "category", "kind", "date")}
+        changes, refuted, _, _, _ = self._run("2999-04-01", self.FASHION, same_signup=False,
+                                              ledger=ledger, rejections=[rejection])
+        self.assertEqual([c["verb"] for c in changes], ["add"])
+        self.assertEqual(refuted, [])
         self.assertEqual(self.chat_calls, [])
 
     def test_deleted_existing_post_keeps_earlier_date(self):
