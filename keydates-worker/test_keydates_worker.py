@@ -3435,3 +3435,180 @@ class VenueLocalDateTest(unittest.TestCase):
         self.assertEqual(sent["keydates"]["posts"][0]["asOf"], "2026-08-03T01:33:00+00:00")
         self.assertEqual(sent["verdicts"]["items"][0]["post_timezone"], "UTC")
         self.assertEqual(sent["verdicts"]["items"][0]["post_timestamp"], "2026-08-03T01:33:00+00:00")
+
+
+class LaterClosesPairCheckTest(unittest.TestCase):
+    """A newer post that moves a stored closes LATER applies only when both
+    posts cover the same sign-up (an extension). A different sign-up in the
+    same category keeps the earlier deadline. Post texts are from real
+    rejects: Furry Blacklight's Fashion Show, NFC's Furovision."""
+
+    OLD_TEXT = "Registration now closes on October 11th at midnight (CEST)!"
+    FASHION = "THE FASHION SHOW: Registration closes on Wednesday, October 21st: 10 PM"
+    EXTENDED = "Good news, the deadline is extended to October 21st!"
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.fn = os.path.join(self.tmp.name, "testcon.json")
+        self.chat_calls, self.getposts_calls = [], []
+
+    def _write(self, closes=None):
+        kd = {"registration": {"closes": closes}} if closes else {}
+        with open(self.fn, "w") as f:
+            json.dump(make_con(kd), f)
+
+    def _stored(self):
+        with open(self.fn) as f:
+            return ((json.load(f)["events"][0].get("keyDates") or {})
+                    .get("registration") or {}).get("closes")
+
+    def _old(self, date="2999-03-01"):
+        return did_entry("3old", date=date)
+
+    def _run(self, new_date, text, same_signup=None, alive=True, getposts_ok=True,
+             chat_result="answer", ledger=None, cache=None, post_asof="2999-02-01T12:00:00.000Z"):
+        post = {"url": did_entry("3new")["source"], "asOf": post_asof, "text": text}
+
+        def fake_extract(con_, events, posts, tz="UTC"):
+            return [{"event_id": "testcon-2999", "category": "registration", "kind": "closes",
+                     "date": new_date, "source": posts[0]["url"], "confidence": 1.0}]
+
+        def fake_chat(model, system, user, schema, name):
+            self.assertIs(system, kw.PAIR_SYSTEM)
+            self.chat_calls.append(json.loads(user))
+            if chat_result is None:
+                return None
+            return {"verdicts": [{"index": it["index"], "same_signup": same_signup,
+                                  "reason": "test"} for it in json.loads(user)["items"]]}
+
+        def fake_appget(method, params):
+            self.assertEqual(method, "app.bsky.feed.getPosts")
+            self.getposts_calls.append(params["uris"])
+            if not getposts_ok:
+                return {}
+            return {"posts": [{"uri": u, "record": {"text": self.OLD_TEXT}}
+                              for u in params["uris"]] if alive else []}
+
+        with unittest.mock.patch.object(kw, "extract_for_con", side_effect=fake_extract), \
+             unittest.mock.patch.object(kw, "load_event_timezones", return_value={}), \
+             unittest.mock.patch.object(kw, "verify_proposals",
+                                        side_effect=lambda proposals, cache: (
+                                            [{**p, "_verdicts": []} for p in proposals], [], [])), \
+             unittest.mock.patch.object(kw, "chat", side_effect=fake_chat), \
+             unittest.mock.patch.object(kw, "appget", side_effect=fake_appget):
+            return kw.process_con(self.fn, {} if cache is None else cache, [],
+                                  provided_posts=[post], ledger=ledger)
+
+    def test_different_signup_later_close_keeps_earlier_date(self):
+        self._write(self._old())
+        changes, refuted, held, _, _ = self._run("2999-04-01", self.FASHION, same_signup=False)
+        self.assertEqual(changes, [])
+        self.assertEqual([r["date"] for r in refuted], ["2999-04-01"])
+        self.assertEqual(held, [])
+        self.assertEqual(self._stored()["date"], "2999-03-01")
+        # the model saw both posts, the existing one fetched from the appview
+        item = self.chat_calls[0]["items"][0]
+        self.assertEqual(item["existing"], {"date": "2999-03-01", "post_text": self.OLD_TEXT})
+        self.assertEqual(item["new"]["post_text"], self.FASHION)
+        body = kw.render_summary([], refuted, [], [], "")
+        self.assertIn("### Refuted by verification (not applied)", body)
+        self.assertIn("different sign-up", body)
+
+    def test_extension_of_same_signup_applies(self):
+        self._write(self._old())
+        changes, refuted, held, _, _ = self._run("2999-04-01", self.EXTENDED, same_signup=True)
+        self.assertEqual([c["verb"] for c in changes], ["amend 2999-03-01 -> 2999-04-01"])
+        self.assertEqual((refuted, held), ([], []))
+        self.assertEqual(self._stored()["date"], "2999-04-01")
+
+    def test_earlier_close_applies_without_pair_check(self):
+        self._write(self._old())
+        changes, refuted, _, _, _ = self._run("2999-02-20", self.FASHION)
+        self.assertEqual(self._stored()["date"], "2999-02-20")
+        self.assertEqual((self.chat_calls, self.getposts_calls), ([], []))
+
+    def test_unmerged_ledger_value_is_compared(self):
+        # main has no value; the rolling PR holds 03-01 from the ledger
+        self._write(None)
+        ledger_entry = {**self._old(), "event_id": "testcon-2999", "category": "registration",
+                        "kind": "closes", "_post_text": self.OLD_TEXT}
+        ledger = {kw.outstanding_key(ledger_entry): ledger_entry}
+        changes, refuted, _, _, _ = self._run("2999-04-01", self.FASHION, same_signup=False,
+                                              ledger=ledger)
+        self.assertEqual(changes, [])
+        self.assertEqual([r["date"] for r in refuted], ["2999-04-01"])
+        self.assertIsNone(self._stored())
+        self.assertEqual(self.getposts_calls, [])  # ledger carried the text
+        self.assertEqual(self.chat_calls[0]["items"][0]["existing"]["post_text"], self.OLD_TEXT)
+
+    def test_held_ledger_value_is_not_the_comparison_base(self):
+        self._write(None)
+        ledger_entry = {**self._old(), "event_id": "testcon-2999", "category": "registration",
+                        "kind": "closes", "_post_text": self.OLD_TEXT, "_held": True}
+        ledger = {kw.outstanding_key(ledger_entry): ledger_entry}
+        changes, _, _, _, _ = self._run("2999-04-01", self.FASHION, ledger=ledger)
+        self.assertEqual([c["verb"] for c in changes], ["add"])
+        self.assertEqual(self.chat_calls, [])
+
+    def test_deleted_existing_post_keeps_earlier_date(self):
+        self._write(self._old())
+        changes, refuted, held, _, _ = self._run("2999-04-01", self.EXTENDED, alive=False)
+        self.assertEqual((changes, held), ([], []))
+        self.assertEqual(refuted[0]["_verdicts"][-1]["model"], "mechanical")
+        self.assertIn("can't be read", refuted[0]["_verdicts"][-1]["reason"])
+        self.assertEqual(self.chat_calls, [])
+        self.assertEqual(self._stored()["date"], "2999-03-01")
+
+    def test_getposts_failure_holds(self):
+        self._write(self._old())
+        changes, refuted, held, _, _ = self._run("2999-04-01", self.EXTENDED, getposts_ok=False)
+        self.assertEqual((changes, refuted), ([], []))
+        self.assertEqual([h["date"] for h in held], ["2999-04-01"])
+        self.assertEqual(self._stored()["date"], "2999-03-01")
+
+    def test_no_model_verdict_holds_and_is_not_cached(self):
+        self._write(self._old())
+        cache = {}
+        changes, refuted, held, _, _ = self._run("2999-04-01", self.EXTENDED,
+                                                 chat_result=None, cache=cache)
+        self.assertEqual((changes, refuted), ([], []))
+        self.assertEqual(len(held), 1)
+        self.assertEqual(cache, {})
+
+    def test_pair_verdict_is_cached_and_reused(self):
+        self._write(self._old())
+        cache = {}
+        self._run("2999-04-01", self.FASHION, same_signup=False, cache=cache)
+        calls = len(self.chat_calls)
+        self.assertGreater(calls, 0)
+        cached_lists = [v["verdicts"] for v in cache.values()]
+        snapshot = copy.deepcopy(cached_lists)
+        _, refuted, _, _, _ = self._run("2999-04-01", self.FASHION, same_signup=True, cache=cache)
+        self.assertEqual(len(self.chat_calls), calls)  # no new model call
+        self.assertEqual([r["date"] for r in refuted], ["2999-04-01"])
+        self.assertEqual([v["verdicts"] for v in cache.values()], snapshot)  # not mutated
+
+    def test_pair_cache_key_depends_on_existing_value(self):
+        d = {"event_id": "testcon-2999", "category": "registration", "kind": "closes",
+             "date": "2999-04-01", "source": did_entry("3new")["source"],
+             "asOf": "2999-02-01T12:00:00.000Z"}
+        a = kw.pair_cache_key({**d, "_existing": self._old()})
+        self.assertNotEqual(a, kw.pair_cache_key({**d, "_existing": self._old("2999-03-02")}))
+        self.assertNotEqual(a, kw.pair_cache_key({**d, "_existing": did_entry("3other", "2999-03-01")}))
+        # a plain verify verdict for the same proposal can't stand in for it
+        self.assertNotEqual(a, kw.cache_key(d))
+
+    def test_human_curated_value_skips_pair_check(self):
+        self._write({"date": "2999-03-01", "source": "https://testcon.example/register"})
+        changes, refuted, held, _, _ = self._run("2999-04-01", self.FASHION)
+        self.assertEqual((changes, refuted, held), ([], [], []))
+        self.assertEqual(self.chat_calls, [])
+
+    def test_same_day_later_close_goes_to_con60_hold_not_pair_check(self):
+        self._write(self._old())
+        _, refuted, held, _, _ = self._run("2999-04-01", "Registration closes today!",
+                                           post_asof="2999-04-01T12:00:00.000Z")
+        self.assertEqual(refuted, [])
+        self.assertIn("own day", held[0]["_verdicts"][-1]["reason"])
+        self.assertEqual((self.chat_calls, self.getposts_calls), ([], []))
