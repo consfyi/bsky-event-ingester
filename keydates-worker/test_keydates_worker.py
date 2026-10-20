@@ -2344,11 +2344,23 @@ class TonightSlipHoldTest(unittest.TestCase):
         self.assertEqual(self._closes(con)["date"], "2999-06-02")
 
     def test_explicit_midnight_date_applies(self):
-        con = self._con()
-        changes, held = self._merge(con, self._post(
-            "2999-06-02", text="Registration closes June 2nd at midnight!"))
-        self.assertEqual(held, [])
-        self.assertEqual(self._closes(con)["date"], "2999-06-02")
+        # including next to an unrelated "today" call to action
+        for text in ("Registration closes June 2nd at midnight!",
+                     "Register today! Registration closes June 2 at midnight",
+                     "Register today, reg closes June 2 at midnight",
+                     "Last call today. Pre-reg closes tomorrow at midnight"):
+            with self.subTest(text=text):
+                con = self._con()
+                _, held = self._merge(con, self._post("2999-06-02", text=text))
+                self.assertEqual(held, [])
+                self.assertEqual(self._closes(con)["date"], "2999-06-02")
+
+    def test_tonight_wording_variants_held(self):
+        for text in ("Reg closes today at midnight", "closing at midnight tonight!",
+                     "Registration closes at 12AM tonight", "Ends TONIGHT, 12 a.m. sharp"):
+            with self.subTest(text=text):
+                _, held = self._merge(self._con(), self._post("2999-06-02", text=text))
+                self.assertEqual(len(held), 1)
 
     def test_two_days_later_applies(self):
         con = self._con()

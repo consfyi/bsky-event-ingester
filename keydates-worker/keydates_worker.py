@@ -831,10 +831,14 @@ def mechanical_refute(reason):
 
 
 # a post that says "closes TONIGHT at 12AM" can come back dated the next day:
-# 12AM read as 00:00 of the following date (CON-71). Both signals are needed —
-# "today" alone is a common call to action next to a real next-day deadline
-TONIGHT_RE = re.compile(r"\b(?:today|tonight)\b", re.I)
-MIDNIGHT_RE = re.compile(r"\bmidnight\b|\b12(?::00)?\s*a\.?m\b|\b00:00\b", re.I)
+# 12AM read as 00:00 of the following date (CON-71). "today"/"tonight" must
+# describe the midnight itself — same clause, a few words apart, no digits
+# between — since "Register today!" is a common call to action next to a real
+# next-day deadline, and "today… June 2 at midnight" names the date explicitly
+_MIDNIGHT = r"(?:\bmidnight\b|\b12(?::00)?\s*a\.?m\b|\b00:00\b)"
+_GAP = r"[^.!?\n\d]{0,15}"
+TONIGHT_MIDNIGHT_RE = re.compile(
+    rf"\b(?:today|tonight)\b{_GAP}{_MIDNIGHT}|{_MIDNIGHT}{_GAP}\b(?:today|tonight)\b", re.I)
 
 
 def tonight_slip(d):
@@ -843,8 +847,7 @@ def tonight_slip(d):
     day. A malformed post date or a missing post text is never a slip."""
     if d.get("kind") != "closes" or not isinstance(d.get("date"), str):
         return False
-    text = d.get("_post_text") or ""
-    if not (TONIGHT_RE.search(text) and MIDNIGHT_RE.search(text)):
+    if not TONIGHT_MIDNIGHT_RE.search(d.get("_post_text") or ""):
         return False
     post_day = d.get("_post_date") or str(d.get("asOf") or "")[:10]
     try:
