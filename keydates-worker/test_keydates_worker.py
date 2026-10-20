@@ -1171,6 +1171,27 @@ class MainSmokeTest(unittest.TestCase):
                              for c in notify.call_args_list),
                          f"repeat ledger-hold ops page in {notify.call_args_list}")
 
+    def test_ledger_tonight_slip_held_kept_and_paged_once(self):
+        # CON-71: an outstanding "TONIGHT at 12AM" close applied as the next
+        # day is held on re-apply, stays in the ledger, and pages once
+        close = {**self._ledger_close("2998-12-02", "2998-12-01"),
+                 "_post_text": "Pre-reg closes today! Closing TONIGHT at 12AM!"}
+        self._seed_ledger(close)
+        body, publish, notify = self._run_main(([], [], [], [], True))
+        held = self._held_lines(body)
+        self.assertEqual(len(held), 1, body)
+        self.assertIn("testcon-2999 registration.closes 2998-12-02", held[0])
+        self.assertEqual(list(kw.load_outstanding()), [kw.outstanding_key(close)])
+        publish.assert_not_called()
+        pages = [str(c.args[0]) for c in notify.call_args_list
+                 if "held" in str(c.args[0]) and "re-apply" in str(c.args[0])]
+        self.assertEqual(len(pages), 1, notify.call_args_list)
+        self.assertIn("just after its post's own day", pages[0])
+        body, _, notify = self._run_main(([], [], [], [], True))
+        self.assertEqual(len(self._held_lines(body)), 1, body)
+        self.assertFalse(any("held" in str(c.args[0]) and "re-apply" in str(c.args[0])
+                             for c in notify.call_args_list))
+
     def test_ledger_hold_no_ops_page_when_run_publishes(self):
         # r2-03: a held ledger entry alongside a re-applied one: the run
         # publishes, the PR body carries the hold, so no ledger-hold page
@@ -2217,6 +2238,7 @@ class SameDayCloseHoldTest(unittest.TestCase):
                      "kind": item["kind"], "date": item["date"], "source": post["url"],
                      "asOf": post["createdAt"], "confidence": 1.0,
                      "_post_date": kw.localize_timestamp(post["createdAt"], fx["timezone"])[1],
+                     "_post_text": post["text"],
                      "_verdicts": [{"model": "m1", "verdict": "confirm", "reason": "ok"}]}
                 held = []
                 kw.merge(con, [p], held=held)
@@ -2252,6 +2274,134 @@ class SameDayCloseHoldTest(unittest.TestCase):
         self.assertEqual([(h["date"], h["_post_date"]) for h in held], [("2999-06-01", "2999-06-01")])
         with open(fn) as f:
             self.assertEqual(self._closes(json.load(f))["date"], "2999-05-31")
+
+
+class TonightSlipHoldTest(unittest.TestCase):
+    """CON-71: "closes TONIGHT at 12AM" dated the day AFTER the post's local
+    day is 12AM read as the next date — held for a human, add or amendment,
+    unless it only restates the stored date."""
+
+    SLOT = ("testcon-2999", "registration", "closes")
+    CONFUROR = ("Pre-Registration for #Confuror2026 closes today! Last chance to get a "
+                "General Pass. Closing TONIGHT at 12AM!")
+
+    def _post(self, date, text=CONFUROR, post_date="2999-06-01", slot=SLOT):
+        p = {**proposal(date, "3bbb", asof="2999-06-02T00:32:00.000Z", slot=slot),
+             "_file": "testcon.json", "_post_text": text}
+        if post_date is not None:
+            p["_post_date"] = post_date
+        return p
+
+    def _con(self, closes=None):
+        kd = {"registration": {"closes": entry("3aaa", date=closes)}} if closes else {}
+        return make_con(kd, end_date="2999-12-31")
+
+    def _closes(self, con):
+        return ((con["events"][0].get("keyDates") or {}).get("registration") or {}).get("closes")
+
+    def _merge(self, con, p):
+        held = []
+        return kw.merge(con, [p], held=held), held
+
+    def test_next_day_add_held(self):
+        con = self._con()
+        changes, held = self._merge(con, self._post("2999-06-02"))
+        self.assertEqual(changes, [])
+        self.assertIsNone(self._closes(con))
+        self.assertEqual([h["date"] for h in held], ["2999-06-02"])
+        self.assertEqual(held[0]["_verdicts"][-1]["verdict"], "hold")
+        self.assertIn("tonight at midnight", held[0]["_verdicts"][-1]["reason"])
+
+    def test_confuror_amendment_later_held(self):
+        # data#130: stored 09-29, the 09-29 post came back as 09-30
+        con = self._con(closes="2999-06-01")
+        changes, held = self._merge(con, self._post("2999-06-02"))
+        self.assertEqual(changes, [])
+        self.assertEqual(self._closes(con)["date"], "2999-06-01")
+        self.assertEqual(len(held), 1)
+
+    def test_amendment_earlier_still_held(self):
+        # unlike a same-day close, moving a stored deadline earlier is no
+        # exemption: 10-15 -> 06-02 from a "tonight" post is the same slip
+        con = self._con(closes="2999-10-15")
+        changes, held = self._merge(con, self._post("2999-06-02"))
+        self.assertEqual(changes, [])
+        self.assertEqual(self._closes(con)["date"], "2999-10-15")
+        self.assertEqual(len(held), 1)
+
+    def test_restating_stored_date_applies(self):
+        con = self._con(closes="2999-06-02")
+        changes, held = self._merge(con, self._post("2999-06-02"))
+        self.assertEqual(held, [])
+        self.assertEqual([c["verb"] for c in changes], ["update"])
+
+    def test_today_without_midnight_applies(self):
+        # "today" is a common call to action beside a real next-day deadline
+        con = self._con()
+        changes, held = self._merge(con, self._post(
+            "2999-06-02", text="Register today! Pre-reg closes tomorrow at 11:59 PM"))
+        self.assertEqual(held, [])
+        self.assertEqual(self._closes(con)["date"], "2999-06-02")
+
+    def test_explicit_midnight_date_applies(self):
+        con = self._con()
+        changes, held = self._merge(con, self._post(
+            "2999-06-02", text="Registration closes June 2nd at midnight!"))
+        self.assertEqual(held, [])
+        self.assertEqual(self._closes(con)["date"], "2999-06-02")
+
+    def test_two_days_later_applies(self):
+        con = self._con()
+        changes, held = self._merge(con, self._post("2999-06-03"))
+        self.assertEqual(held, [])
+        self.assertEqual(self._closes(con)["date"], "2999-06-03")
+
+    def test_opens_untouched(self):
+        con = self._con()
+        changes, held = self._merge(con, self._post(
+            "2999-06-02", slot=("testcon-2999", "registration", "opens")))
+        self.assertEqual(held, [])
+        self.assertEqual(len(changes), 1)
+
+    def test_midnight_spellings(self):
+        for when in ("12AM", "12 am", "12:00am", "12 a.m.", "MIDNIGHT", "00:00"):
+            with self.subTest(when=when):
+                _, held = self._merge(self._con(), self._post(
+                    "2999-06-02", text=f"Reg closes TONIGHT at {when}!"))
+                self.assertEqual(len(held), 1)
+
+    def test_lookalike_times_not_held(self):
+        for when in ("12PM", "112am", "10:00"):
+            with self.subTest(when=when):
+                _, held = self._merge(self._con(), self._post(
+                    "2999-06-02", text=f"Reg closes tonight, last call {when}"))
+                self.assertEqual(held, [])
+
+    def test_missing_post_text_applies(self):
+        # ledger entries carry _post_text, but a missing one can't be judged
+        con = self._con()
+        p = self._post("2999-06-02")
+        del p["_post_text"]
+        changes, held = self._merge(con, p)
+        self.assertEqual(held, [])
+        self.assertEqual(len(changes), 1)
+
+    def test_malformed_post_date_does_not_crash(self):
+        con = self._con()
+        changes, held = self._merge(con, self._post("2999-06-02", post_date="not-a-date"))
+        self.assertEqual(held, [])
+        self.assertEqual(len(changes), 1)
+
+    def test_utc_day_fallback(self):
+        # no _post_date: the UTC day (06-02) is the post day, so 06-03 slips
+        _, held = self._merge(self._con(), self._post("2999-06-03", post_date=None))
+        self.assertEqual(len(held), 1)
+
+    def test_held_reason_survives_summary_cap(self):
+        _, held = self._merge(self._con(), self._post("2999-06-02"))
+        body = kw.render_summary([], [], held, [], "")
+        held_line = next(line for line in body.splitlines() if "registration.closes" in line)
+        self.assertIn("/reject", held_line)
 
 
 class ChatClientTest(unittest.TestCase):
@@ -3642,6 +3792,18 @@ class LaterClosesPairCheckTest(unittest.TestCase):
         self.assertEqual(refuted, [])
         self.assertIn("own day", held[0]["_verdicts"][-1]["reason"])
         self.assertEqual((self.chat_calls, self.getposts_calls), ([], []))
+
+    def test_tonight_slip_goes_to_con71_hold_not_pair_check(self):
+        # CON-71: stored 03-01, a "TONIGHT at 12AM" post on 04-01 came back as
+        # 04-02 — merge() holds it, so no pair-check call is spent on it
+        self._write(self._old())
+        _, refuted, held, _, _ = self._run("2999-04-02", "Reg closes today! Closing TONIGHT at 12AM!",
+                                           post_asof="2999-04-01T12:00:00.000Z")
+        self.assertEqual(refuted, [])
+        self.assertEqual([h["date"] for h in held], ["2999-04-02"])
+        self.assertIn("tonight at midnight", held[0]["_verdicts"][-1]["reason"])
+        self.assertEqual((self.chat_calls, self.getposts_calls), ([], []))
+        self.assertEqual(self._stored()["date"], "2999-03-01")
 
     def test_pair_batches_respect_request_token_budget(self):
         # two pair checks whose combined payload exceeds the request budget go
