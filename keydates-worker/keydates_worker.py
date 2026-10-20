@@ -832,13 +832,14 @@ def mechanical_refute(reason):
 
 # a post that says "closes TONIGHT at 12AM" can come back dated the next day:
 # 12AM read as 00:00 of the following date (CON-71). "today"/"tonight" must
-# describe the midnight itself — same clause, a few words apart, no digits
-# between — since "Register today!" is a common call to action next to a real
-# next-day deadline, and "today… June 2 at midnight" names the date explicitly
+# describe the midnight itself — "tonight at 12AM" (same clause, a few words
+# apart, no digits or "tomorrow" between) or "midnight tonight" (adjacent) —
+# since "Register today!" is a common call to action next to a real next-day
+# deadline, and "today… June 2 at midnight" names the date explicitly
 _MIDNIGHT = r"(?:\bmidnight\b|\b12(?::00)?\s*a\.?m\b|\b00:00\b)"
-_GAP = r"[^.!?\n\d]{0,15}"
+_GAP = r"(?:(?!tomorrow)[^.!?\n\d]){0,15}"
 TONIGHT_MIDNIGHT_RE = re.compile(
-    rf"\b(?:today|tonight)\b{_GAP}{_MIDNIGHT}|{_MIDNIGHT}{_GAP}\b(?:today|tonight)\b", re.I)
+    rf"\b(?:today|tonight)\b{_GAP}{_MIDNIGHT}|{_MIDNIGHT}\s+(?:today|tonight)\b", re.I)
 
 
 def tonight_slip(d):

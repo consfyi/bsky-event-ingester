@@ -2348,7 +2348,9 @@ class TonightSlipHoldTest(unittest.TestCase):
         for text in ("Registration closes June 2nd at midnight!",
                      "Register today! Registration closes June 2 at midnight",
                      "Register today, reg closes June 2 at midnight",
-                     "Last call today. Pre-reg closes tomorrow at midnight"):
+                     "Last call today. Pre-reg closes tomorrow at midnight",
+                     "Pre-reg closes tomorrow at midnight, so register today",
+                     "Register today or tomorrow at midnight"):
             with self.subTest(text=text):
                 con = self._con()
                 _, held = self._merge(con, self._post("2999-06-02", text=text))
@@ -2357,7 +2359,8 @@ class TonightSlipHoldTest(unittest.TestCase):
 
     def test_tonight_wording_variants_held(self):
         for text in ("Reg closes today at midnight", "closing at midnight tonight!",
-                     "Registration closes at 12AM tonight", "Ends TONIGHT, 12 a.m. sharp"):
+                     "Registration closes at 12AM tonight", "Ends TONIGHT, 12 a.m. sharp",
+                     "Registration closes tonight at midnight for tomorrow's event"):
             with self.subTest(text=text):
                 _, held = self._merge(self._con(), self._post("2999-06-02", text=text))
                 self.assertEqual(len(held), 1)
