@@ -1,0 +1,46 @@
+{
+  "issue": "CON-71",
+  "synthetic": true,
+  "description": "A \"closes today… Closing TONIGHT at 12AM\" pre-registration post sent 18:32 local time was confirmed at 0.9 as registration.closes = the NEXT day (consfyi/data#130): 12AM read as 00:00 of the following date. The right close is the post's own local day. Post text is Confuror's, captured from the run log; the con, DID, URL, and timestamps are synthetic. The post's UTC day is also the next day, so a UTC-day rule would mistake the slip for a same-day close.",
+  "con": {
+    "name": "Synthetic Desert Con",
+    "bluesky": {
+      "did": "did:plc:aaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    "events": [
+      {
+        "id": "synthetic-desert-con-2026",
+        "name": "Synthetic Desert Con 2026",
+        "startDate": "TODAY+40",
+        "endDate": "TODAY+42"
+      }
+    ]
+  },
+  "timezone": "America/Mexico_City",
+  "posts": [
+    {
+      "url": "https://bsky.app/profile/did:plc:aaaaaaaaaaaaaaaaaaaaaaaa/post/3synth71tonight",
+      "createdAt": "TODAY+1T00:32:00.000Z",
+      "text": "🏜 Pre-Registration for #Confuror2026 closes today! Last chance to get a General Pass, which includes access to all days of the event. You will also be able to get a Day Pass in the future. 📅 Closing TONIGHT at 12AM! 🎟 Get your tickets: confuror.org/en/registrat... 🎨: The Neighbor Yeen"
+    }
+  ],
+  "expect": [
+    {
+      "event_id": "synthetic-desert-con-2026",
+      "category": "registration",
+      "kind": "closes",
+      "date": "TODAY+0",
+      "source": "https://bsky.app/profile/did:plc:aaaaaaaaaaaaaaaaaaaaaaaa/post/3synth71tonight"
+    }
+  ],
+  "expect_absent": [
+    {
+      "event_id": "synthetic-desert-con-2026",
+      "category": "registration",
+      "kind": "closes",
+      "date": "TODAY+1",
+      "reason": "\"TONIGHT at 12AM\" closes at the end of the post's own local day, not on the next date"
+    }
+  ],
+  "_comment": "Local post time is TODAY+0 18:32 (UTC-6). The extract and verify prompts carry the midnight rule; nothing in merge() catches a next-day slip. With no deadline stored, the correct close is then held as a same-day close (CON-60)."
+}

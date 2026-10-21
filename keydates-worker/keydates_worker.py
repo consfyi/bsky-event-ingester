@@ -247,6 +247,15 @@ DO NOT extract (these are the known failure classes — none of them qualify):
   now open!" weeks after applications opened) — only the post that announces the opening
   (or explicitly states its date) sets an opens date
 
+MIDNIGHT RULE (overrides the clock reading). A deadline of "tonight at midnight", "TONIGHT at
+12AM", "today at midnight", or "midnight tonight" is the END of the post's own local date, so its
+date IS the post's own local date. Never move it to the next calendar date, even though 12AM is
+technically 00:00 of the next day. Example: posted 2026-09-29 18:32 local, "Pre-Registration closes
+today! Closing TONIGHT at 12AM!" -> registration closes 2026-09-29, NOT 2026-09-30. This applies only
+to the deadline the midnight wording describes: "Reg closes tonight at midnight. Dealer apps close
+tomorrow" -> registration closes on the post's date, dealers close the next date. A date the post
+states explicitly ("closes October 11th at midnight") is kept as written.
+
 Rules:
 - kind is "opens" or "closes" (a submission "deadline" is closes).
 - date MUST be the bare calendar date, yyyy-MM-dd. If the post states a time of day,
@@ -311,6 +320,15 @@ Strict category definitions:
   itself signals that broader performance signups are separate or still to come.
 - djs = DJ set applications only.
 - volunteers = general staff/volunteer signups. NOT recruitment for one named sub-group only.
+
+MIDNIGHT RULE (overrides the clock reading; refute a claim that breaks it, confirm one that
+follows it). A deadline of "tonight at midnight", "TONIGHT at 12AM", "today at midnight", or "midnight tonight" is the END of the post's own local date, so its
+date IS the post's own local date. Never move it to the next calendar date, even though 12AM is
+technically 00:00 of the next day. Example: posted 2026-09-29 18:32 local, "Pre-Registration closes
+today! Closing TONIGHT at 12AM!" -> registration closes 2026-09-29, NOT 2026-09-30. This applies only
+to the deadline the midnight wording describes: "Reg closes tonight at midnight. Dealer apps close
+tomorrow" -> registration closes on the post's date, dealers close the next date. A date the post
+states explicitly ("closes October 11th at midnight") is kept as written.
 
 Refute when ANY of: the date is a price change rather than a true open/close; the post refers to
 a different edition/year than the stated event (check the edition dates given — a post written
