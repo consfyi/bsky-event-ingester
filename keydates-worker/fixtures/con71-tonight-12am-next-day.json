@@ -1,11 +1,12 @@
 {
   "issue": "CON-71",
   "synthetic": true,
-  "requires_merge": true,
   "description": "A \"closes today… Closing TONIGHT at 12AM\" pre-registration post sent 18:32 local time was confirmed at 0.9 as registration.closes = the NEXT day (consfyi/data#130): 12AM read as 00:00 of the following date. The right close is the post's own local day. Post text is Confuror's, captured from the run log; the con, DID, URL, and timestamps are synthetic. The post's UTC day is also the next day, so a UTC-day rule would mistake the slip for a same-day close.",
   "con": {
     "name": "Synthetic Desert Con",
-    "bluesky": {"did": "did:plc:aaaaaaaaaaaaaaaaaaaaaaaa"},
+    "bluesky": {
+      "did": "did:plc:aaaaaaaaaaaaaaaaaaaaaaaa"
+    },
     "events": [
       {
         "id": "synthetic-desert-con-2026",
@@ -41,5 +42,5 @@
       "reason": "\"TONIGHT at 12AM\" closes at the end of the post's own local day, not on the next date"
     }
   ],
-  "_comment": "Local post time is TODAY+0 18:32 (UTC-6). The expect entry pins what the prompt rule should produce; merge() then holds it as a same-day close (CON-60) when no deadline is stored."
+  "_comment": "Local post time is TODAY+0 18:32 (UTC-6). The extract and verify prompts carry the midnight rule; nothing in merge() catches a next-day slip. With no deadline stored, the correct close is then held as a same-day close (CON-60)."
 }

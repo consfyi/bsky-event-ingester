@@ -247,16 +247,22 @@ DO NOT extract (these are the known failure classes — none of them qualify):
   now open!" weeks after applications opened) — only the post that announces the opening
   (or explicitly states its date) sets an opens date
 
+MIDNIGHT RULE (overrides the clock reading). A deadline of "tonight at midnight", "TONIGHT at
+12AM", "today at midnight", or "midnight tonight" is the END of the post's own local date, so its
+date IS the post's own local date. Never move it to the next calendar date, even though 12AM is
+technically 00:00 of the next day. Example: posted 2026-09-29 18:32 local, "Pre-Registration closes
+today! Closing TONIGHT at 12AM!" -> registration closes 2026-09-29, NOT 2026-09-30. This applies only
+to the deadline the midnight wording describes: "Reg closes tonight at midnight. Dealer apps close
+tomorrow" -> registration closes on the post's date, dealers close the next date. A date the post
+states explicitly ("closes October 11th at midnight") is kept as written.
+
 Rules:
 - kind is "opens" or "closes" (a submission "deadline" is closes).
 - date MUST be the bare calendar date, yyyy-MM-dd. If the post states a time of day,
   drop the time and keep the date.
 - Resolve relative dates against that post's own timestamp. Post timestamps (asOf) are
   already converted to the venue's local time, named by the payload's "timezone" field;
-  "today"/"tonight" means the post's own LOCAL calendar date as given, never the UTC date.
-  A close "tonight at midnight" / "TONIGHT at 12AM" falls on the post's own local date,
-  not the next one; a date the post states explicitly ("October 11th at midnight") is
-  kept as written. A weekday reference ("this Sunday", "next Friday") means the next such
+  "today"/"tonight" means the post's own LOCAL calendar date as given, never the UTC date. A weekday reference ("this Sunday", "next Friday") means the next such
   weekday ON OR AFTER the post's date. Anything announced as upcoming ("in a few days",
   "next week") lies in the future. A same-day signal ("now open", "starts today",
   attendee-tickets "sold out") means the event happens on the post's own date, and
@@ -314,6 +320,15 @@ Strict category definitions:
   itself signals that broader performance signups are separate or still to come.
 - djs = DJ set applications only.
 - volunteers = general staff/volunteer signups. NOT recruitment for one named sub-group only.
+
+MIDNIGHT RULE (overrides the clock reading; refute a claim that breaks it, confirm one that
+follows it). A deadline of "tonight at midnight", "TONIGHT at 12AM", "today at midnight", or "midnight tonight" is the END of the post's own local date, so its
+date IS the post's own local date. Never move it to the next calendar date, even though 12AM is
+technically 00:00 of the next day. Example: posted 2026-09-29 18:32 local, "Pre-Registration closes
+today! Closing TONIGHT at 12AM!" -> registration closes 2026-09-29, NOT 2026-09-30. This applies only
+to the deadline the midnight wording describes: "Reg closes tonight at midnight. Dealer apps close
+tomorrow" -> registration closes on the post's date, dealers close the next date. A date the post
+states explicitly ("closes October 11th at midnight") is kept as written.
 
 Refute when ANY of: the date is a price change rather than a true open/close; the post refers to
 a different edition/year than the stated event (check the edition dates given — a post written
@@ -830,34 +845,6 @@ def mechanical_refute(reason):
     return [{"model": "mechanical", "verdict": "refute", "reason": reason}]
 
 
-# a post that says "closes TONIGHT at 12AM" can come back dated the next day:
-# 12AM read as 00:00 of the following date (CON-71). "today"/"tonight" must
-# describe the midnight itself — "tonight at 12AM" (same clause, a few words
-# apart, no digits or "tomorrow" between) or "midnight tonight" (adjacent) —
-# since "Register today!" is a common call to action next to a real next-day
-# deadline, and "today… June 2 at midnight" names the date explicitly
-_MIDNIGHT = r"(?:\bmidnight\b|\b12(?::00)?\s*a\.?m\b|\b00:00\b)"
-_GAP = r"(?:(?!tomorrow)[^.!?\n\d]){0,15}"
-TONIGHT_MIDNIGHT_RE = re.compile(
-    rf"\b(?:today|tonight)\b{_GAP}{_MIDNIGHT}|{_MIDNIGHT}\s+(?:today|tonight)\b", re.I)
-
-
-def tonight_slip(d):
-    """True for a closes dated the day after its post's local day when the
-    post says today/tonight at midnight — the model read 12AM as the next
-    day. A malformed post date or a missing post text is never a slip."""
-    if d.get("kind") != "closes" or not isinstance(d.get("date"), str):
-        return False
-    if not TONIGHT_MIDNIGHT_RE.search(d.get("_post_text") or ""):
-        return False
-    post_day = d.get("_post_date") or str(d.get("asOf") or "")[:10]
-    try:
-        next_day = datetime.date.fromisoformat(post_day) + datetime.timedelta(days=1)
-    except (TypeError, ValueError):
-        return False
-    return d["date"] == next_day.isoformat()
-
-
 def merge(con, dates, dropped=None, held=None):
     """Apply confirmed dates. Returns list of change descriptions. Entries the
     after-end backstop drops are appended to `dropped` (when given) with a
@@ -929,20 +916,6 @@ def merge(con, dates, dropped=None, held=None):
                     "model": "mechanical", "verdict": "hold",
                     "reason": "closes on the post's own day: likely a status post "
                               "(\"closed!\", \"closing today\"); hand-apply if real, "
-                              "else /reject"}]})
-            continue
-        # the next-day twin of the hold above (CON-71): "closes TONIGHT at
-        # 12AM" dated the day after the post. Unlike a same-day close, moving
-        # an existing deadline earlier is no exemption — it's the same slip —
-        # so only a restatement of the stored date applies.
-        if (tonight_slip(d)
-                and not (existing and existing.get("date") == d["date"])):
-            log(f"  tonight-midnight close held: {d['event_id']} {d['category']}.closes {d['date']}")
-            if held is not None:
-                held.append({**d, "_verdicts": d.get("_verdicts", []) + [{
-                    "model": "mechanical", "verdict": "hold",
-                    "reason": "closes the day after a \"tonight at midnight\" post: "
-                              "likely 12AM read as the next day; hand-apply if real, "
                               "else /reject"}]})
             continue
         new_val = {
@@ -1656,13 +1629,11 @@ def needs_pair_check(d, existing):
     """True for a newer post that moves a stored closes LATER. A move earlier
     always applies (the earliest deadline wins), merge() already keeps an
     opens from moving later (CON-30), and a later close on the post's own day
-    is merge()'s same-day hold (CON-60), which needs no model call — nor
-    does its next-day "tonight at midnight" twin (CON-71)."""
+    is merge()'s same-day hold (CON-60), which needs no model call."""
     return (existing is not None and d["kind"] == "closes"
             and isinstance(existing.get("date"), str)
             and d["date"] > existing["date"]
             and d["date"] != d.get("_post_date")
-            and not tonight_slip(d)
             and (d.get("asOf") or "") > (existing.get("asOf") or ""))
 
 
@@ -1900,9 +1871,8 @@ def process_con(fn, cache, rejections, provided_posts=None, extra_post=None, led
         ledger_entry = ledger.get(outstanding_key(d))
         if ledger_entry and is_rejected(rejections, ledger_entry):
             ledger_entry = None
-        # before pair_check_base: needs_pair_check reads it (CON-71)
-        d["_post_text"] = (post or {}).get("text", "")
         d["_existing"] = pair_check_base(d, already, ledger_entry)
+        d["_post_text"] = (post or {}).get("text", "")
         d["_ev_dates"] = ev_meta.get(d["event_id"], ("?", "?"))
         d["_siblings"] = [
             {"id": e["id"], "startDate": e["startDate"]} for e in events if e["id"] != d["event_id"]
@@ -2346,7 +2316,7 @@ def main():
     first_holds = [d for d in ledger_held if d.get("_first_hold")]
     if first_holds and not (all_changes or removals or pins):
         ops_notify(f"⚠️ keydates: {len(first_holds)} outstanding entr(ies) held "
-                   f"on re-apply (close dated on or just after its post's own day): {ops_slots(first_holds)} — "
+                   f"on re-apply (close dated on its post's own day): {ops_slots(first_holds)} — "
                    "the open bot PR still shows them as applied until the next publish; "
                    "/reject them there before merging.")
 
