@@ -1952,10 +1952,26 @@ def md_id(event_id, category, kind, date=None):
     smuggle a live [x](y) link out of it. These are all con-file/ledger values
     — attacker-influenceable under this project's threat model — so every
     render_summary section that prints an id tuple routes it through here."""
+    return f"`{id_text(event_id, category, kind, date)}`"
+
+
+def id_text(event_id, category, kind, date=None):
+    """md_id's span interior, shared with md_reject."""
     inner = f"{md_inline(event_id, 60)} {md_inline(category, 20)}.{md_inline(kind, 10)}"
     if date:  # falsy (None or "") omits the field rather than trailing a space
         inner += f" {md_inline(date, 20)}"
-    return f"`{inner}`"
+    return inner
+
+
+# Must match GRAMMAR in consfyi/data .github/scripts/keydates_reject.py, which
+# parses these comments (test_keydates_worker.py keeps a copy to check against).
+REJECT_SYNTAX = "/reject <event_id> <category>.<kind> <YYYY-MM-DD> — <reason>"
+
+
+def md_reject(event_id, category, kind, date):
+    """A ready-to-paste /reject command for one entry, in one code span with
+    the same md_inline'd fields as md_id; the reviewer replaces <reason>."""
+    return f"`/reject {id_text(event_id, category, kind, date)} — <reason>`"
 
 
 def render_summary(all_changes, all_refuted, all_held, all_rejected, skipped_note,
@@ -1963,7 +1979,7 @@ def render_summary(all_changes, all_refuted, all_held, all_rejected, skipped_not
     lines = ["## Key dates from Bluesky", ""]
     lines.append(f"_Extract: `{EXTRACT_MODEL}` · Verify (unanimous): `{'` + `'.join(VERIFY_MODELS)}` · {TODAY.isoformat()}_")
     if all_changes:
-        lines.append("\n### Applied (unanimously verified — `/reject <event> <category>.<kind>` to drop a bad entry for good)")
+        lines.append(f"\n### Applied (unanimously verified — `{REJECT_SYNTAX}` to drop a bad entry for good)")
         for c in all_changes:
             # ledger re-applies land here without this run's passes_guardrails
             # (they were validated by merge()'s wholesale guard, but keep the
@@ -1974,6 +1990,7 @@ def render_summary(all_changes, all_refuted, all_held, all_rejected, skipped_not
                          f"**{md_inline(c['date'], 20)}** ({c['verb']}, conf {c['confidence']})")
             lines.append(f"> {md_post(c['_post_text'], 400)}")
             lines.append(f"> — {md_link('source post', c['source'])} at {md_post(c['asOf'], 40)}")
+            lines.append(f"> {md_reject(c['event_id'], c['category'], c['kind'], c['date'])}")
             if c.get("_prev"):
                 prev = c["_prev"]
                 # prev date/asOf are con-file text; md_post (not md_inline) so a
@@ -1985,7 +2002,8 @@ def render_summary(all_changes, all_refuted, all_held, all_rejected, skipped_not
         lines.append("\n### Held — verifier disagreement, same-run conflict, or same-day close; needs a human (`/reject` or hand-apply)")
         for p in all_held:
             lines.append(f"- {md_id(p['event_id'], p['category'], p['kind'], p['date'])} — {md_link('post', p.get('source'))} — " +
-                         "; ".join(f"{md_reason(v['model'].split('/')[-1], 40)}: {md_reason(v['verdict'], 20)} ({md_reason(v['reason'], 120)})" for v in p["_verdicts"]))
+                         "; ".join(f"{md_reason(v['model'].split('/')[-1], 40)}: {md_reason(v['verdict'], 20)} ({md_reason(v['reason'], 120)})" for v in p["_verdicts"]) +
+                         f" — {md_reject(p['event_id'], p['category'], p['kind'], p['date'])}")
     if all_refuted:
         lines.append("\n### Refuted by verification (not applied)")
         for p in all_refuted:
