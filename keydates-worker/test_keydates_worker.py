@@ -726,6 +726,70 @@ class SummaryTest(unittest.TestCase):
         self.assertNotIn("``", line)
 
 
+# Copy of GRAMMAR in consfyi/data .github/scripts/keydates_reject.py, which
+# parses /reject comments. Keep the two in sync: if the parser changes, update
+# this copy so the commands the PR body prints are checked against it.
+REJECT_GRAMMAR = re.compile(
+    r"^/reject\s+([a-z0-9-]+)\s+"
+    r"(registration|hotel|dealers|panels|performances|djs|volunteers)\.(opens|closes)\s+"
+    r"(\d{4}-\d{2}-\d{2})(?!\S)\s*(?:[—–-]+\s*)?(.*)$",
+    re.S,
+)
+
+
+class RejectCommandTest(unittest.TestCase):
+    # The PR body's /reject hints must be commands the data repo's parser
+    # accepts. The old hint left out the date, so a copied command failed.
+
+    def setUp(self):
+        self.change = {"_file": "testcon.json", "event_id": "testcon-2999",
+                       "category": "registration", "kind": "opens",
+                       "date": "2999-01-01", "verb": "add", "confidence": 0.9,
+                       "source": did_entry("3aaa")["source"],
+                       "asOf": "2998-12-01T00:00:00.000Z",
+                       "_post_text": "reg opens"}
+        self.held = {"event_id": "othercon-2999", "category": "panels",
+                     "kind": "closes", "date": "2999-02-02",
+                     "source": did_entry("3bbb")["source"],
+                     "_verdicts": [{"model": "m", "verdict": "hold", "reason": "why"}]}
+
+    def commands(self, body):
+        return [span for line in body.splitlines()
+                for span in line.split("`")[1::2] if span.startswith("/reject ")]
+
+    def test_printed_commands_parse_to_the_entry(self):
+        body = kw.render_summary([self.change], [], [self.held], [], "")
+        parsed = []
+        for cmd in self.commands(body):
+            if "<event_id>" in cmd:
+                continue  # the heading's syntax line, checked below
+            m = REJECT_GRAMMAR.match(cmd.replace("<reason>", "wrong date"))
+            self.assertIsNotNone(m, cmd)
+            parsed.append(m.groups())
+        self.assertEqual(parsed, [
+            ("testcon-2999", "registration", "opens", "2999-01-01", "wrong date"),
+            ("othercon-2999", "panels", "closes", "2999-02-02", "wrong date"),
+        ])
+
+    def test_heading_syntax_parses_when_filled_in(self):
+        body = kw.render_summary([self.change], [], [], [], "")
+        syntax = [c for c in self.commands(body) if "<event_id>" in c]
+        self.assertEqual(len(syntax), 1)
+        filled = (syntax[0].replace("<event_id>", "testcon-2999")
+                  .replace("<category>", "hotel").replace("<kind>", "closes")
+                  .replace("<YYYY-MM-DD>", "2999-03-03").replace("<reason>", "x"))
+        m = REJECT_GRAMMAR.match(filled)
+        self.assertIsNotNone(m, filled)
+        self.assertEqual(m.groups(), ("testcon-2999", "hotel", "closes", "2999-03-03", "x"))
+
+    def test_command_fields_stay_inside_the_code_span(self):
+        evil = dict(self.change, event_id="x`[go](http://e.co)", date="2999-01-01`y")
+        body = kw.render_summary([evil], [], [], [], "")
+        for line in body.splitlines():
+            for bare in line.split("`")[0::2]:
+                self.assertNotIn("](http://e.co", bare)
+
+
 class SourceIdentTest(unittest.TestCase):
     def test_pin_source_url(self):
         handle_url = entry("3aaa")["source"]
