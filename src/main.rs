@@ -813,13 +813,13 @@ async fn service_jetstream_once(
 
                     let assoc_event = events_state.events.get(&id).unwrap();
 
+                    let Some(cts) = event_time(event.time_us) else {
+                        return Ok(());
+                    };
+
                     let label: atrium_api::com::atproto::label::defs::Label =
                         atrium_api::com::atproto::label::defs::LabelData {
-                            cts: atrium_api::types::string::Datetime::new(
-                                chrono::DateTime::from_timestamp_micros(event.time_us as i64)
-                                    .unwrap()
-                                    .fixed_offset(),
-                            ),
+                            cts: atrium_api::types::string::Datetime::new(cts.fixed_offset()),
                             exp: Some(atrium_api::types::string::Datetime::new(
                                 (assoc_event.event.end_time() + EXPIRY_DATE_GRACE_PERIOD)
                                     .to_utc()
@@ -860,13 +860,13 @@ async fn service_jetstream_once(
                         return Ok(());
                     };
 
+                    let Some(cts) = event_time(event.time_us) else {
+                        return Ok(());
+                    };
+
                     let label: atrium_api::com::atproto::label::defs::Label =
                         atrium_api::com::atproto::label::defs::LabelData {
-                            cts: atrium_api::types::string::Datetime::new(
-                                chrono::DateTime::from_timestamp_micros(event.time_us as i64)
-                                    .unwrap()
-                                    .fixed_offset(),
-                            ),
+                            cts: atrium_api::types::string::Datetime::new(cts.fixed_offset()),
                             exp: None,
                             src: did.clone(),
                             cid: None,
@@ -914,6 +914,20 @@ async fn service_jetstream_once(
     }
 
     Ok(cursor)
+}
+
+/// The event's Jetstream timestamp, or `None` (logged) when `time_us` is out
+/// of range. `as i64` would wrap values above `i64::MAX` to a pre-1970 date,
+/// and a panic or an error would take down or replay the connection, so the
+/// caller skips the event instead.
+fn event_time(time_us: u64) -> Option<chrono::DateTime<chrono::Utc>> {
+    let time = i64::try_from(time_us)
+        .ok()
+        .and_then(chrono::DateTime::from_timestamp_micros);
+    if time.is_none() {
+        log::warn!("skipping event with out-of-range time_us {time_us}");
+    }
+    time
 }
 
 /// The rkey of the post in `did`'s repo that a like's subject URI points at,
@@ -1264,6 +1278,23 @@ mod tests {
                 "{bad:?}"
             );
         }
+    }
+
+    #[test]
+    fn event_time_skips_out_of_range_time_us() {
+        // Wraps negative through `as i64`.
+        assert!(event_time(u64::MAX).is_none());
+        assert!(event_time(i64::MAX as u64 + 1).is_none());
+        // Fits in i64 but is past chrono's range.
+        assert!(event_time(i64::MAX as u64).is_none());
+    }
+
+    #[test]
+    fn event_time_converts_valid_time_us() {
+        assert_eq!(
+            event_time(1_700_000_000_123_456).unwrap().to_rfc3339(),
+            "2023-11-14T22:13:20.123456+00:00"
+        );
     }
 
     #[test]
