@@ -801,36 +801,13 @@ async fn service_jetstream_once(
                         return Ok(());
                     };
 
-                    let parts = like
-                        .subject
-                        .uri
-                        .strip_prefix("at://")
-                        .map(|v| v.splitn(3, '/').collect::<Vec<_>>());
-
-                    let Some(&[record_did, collection, target_rkey]) =
-                        parts.as_ref().map(|v| &v[..])
-                    else {
+                    let Some(target_rkey) = liked_post_rkey(&like.subject.uri, did.as_str()) else {
                         return Ok(());
                     };
 
-                    if record_did != did.to_string() {
-                        return Ok(());
-                    }
-
-                    if collection != atrium_api::app::bsky::feed::Post::NSID {
-                        return Ok(());
-                    }
-
                     let events_state = events_state.lock().await;
 
-                    let Some(id) = events_state
-                        .rkeys_to_ids
-                        .get(
-                            &atrium_api::types::string::RecordKey::new(target_rkey.to_string())
-                                .unwrap(),
-                        )
-                        .cloned()
-                    else {
+                    let Some(id) = events_state.rkeys_to_ids.get(&target_rkey).cloned() else {
                         return Ok(());
                     };
 
@@ -937,6 +914,34 @@ async fn service_jetstream_once(
     }
 
     Ok(cursor)
+}
+
+/// The rkey of the post in `did`'s repo that a like's subject URI points at,
+/// or `None` when the like is for anything else.
+fn liked_post_rkey(subject_uri: &str, did: &str) -> Option<atrium_api::types::string::RecordKey> {
+    // Runs on every like in the firehose, nearly all for other repos, so
+    // reject on the DID before doing anything that allocates.
+    let (collection, target_rkey) = subject_uri
+        .strip_prefix("at://")?
+        .strip_prefix(did)?
+        .strip_prefix('/')?
+        .split_once('/')?;
+
+    if collection != atrium_api::app::bsky::feed::Post::NSID {
+        return None;
+    }
+
+    // Anyone can put any string in a like's subject URI, so a bad rkey is
+    // skipped, not unwrapped: a panic here would take the ingester down, and
+    // an error would reconnect and replay the same event from the cursor.
+    match atrium_api::types::string::RecordKey::new(target_rkey.to_string()) {
+        Ok(rkey) => Some(rkey),
+        Err(err) => {
+            let shown = target_rkey.chars().take(64).collect::<String>();
+            log::warn!("skipping like with malformed subject rkey {shown:?}: {err}");
+            None
+        }
+    }
 }
 
 /// A pinned `jetstream_endpoint` goes first; the list follows, minus any
@@ -1235,5 +1240,43 @@ mod tests {
             jetstream_dial_order(None, &[u("wss://a/subscribe"), u("wss://a/subscribe")]),
             vec![u("wss://a/subscribe")]
         );
+    }
+
+    const DID: &str = "did:plc:labeler";
+
+    fn uri(did: &str, collection: &str, rkey: &str) -> String {
+        format!("at://{did}/{collection}/{rkey}")
+    }
+
+    #[test]
+    fn liked_post_rkey_returns_valid_rkey() {
+        let rkey = liked_post_rkey(&uri(DID, "app.bsky.feed.post", "3kabc2xyz"), DID).unwrap();
+        assert_eq!(rkey.as_str(), "3kabc2xyz");
+    }
+
+    #[test]
+    fn liked_post_rkey_skips_malformed_rkey() {
+        // The subject URI is whatever the liker wrote; none of these is a
+        // valid rkey, and none may take the process down.
+        for bad in ["", ".", "..", "a/b", "has space", "a#b", &"x".repeat(513)] {
+            assert!(
+                liked_post_rkey(&uri(DID, "app.bsky.feed.post", bad), DID).is_none(),
+                "{bad:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn liked_post_rkey_ignores_other_subjects() {
+        assert!(
+            liked_post_rkey(&uri("did:plc:other", "app.bsky.feed.post", "3kabc"), DID).is_none()
+        );
+        assert!(liked_post_rkey(&uri(DID, "app.bsky.feed.like", "3kabc"), DID).is_none());
+        // A DID that merely starts with ours is someone else's repo.
+        assert!(
+            liked_post_rkey(&uri("did:plc:labelerx", "app.bsky.feed.post", "3kabc"), DID).is_none()
+        );
+        assert!(liked_post_rkey("https://example.com/x", DID).is_none());
+        assert!(liked_post_rkey(&format!("at://{DID}/app.bsky.feed.post"), DID).is_none());
     }
 }
