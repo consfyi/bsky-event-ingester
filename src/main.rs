@@ -891,6 +891,10 @@ async fn service_jetstream_once(
         }
         .await?;
 
+        let Some(event_cursor) = event_cursor(event.time_us) else {
+            continue;
+        };
+
         let now = std::time::SystemTime::now();
         if now >= last_firehose_commit_time + commit_firehose_cursor_every {
             let mut tx = db_conn.begin().await?;
@@ -902,7 +906,7 @@ async fn service_jetstream_once(
                 INSERT INTO jetstream_cursor (cursor) VALUES ($1)
                 ON CONFLICT ((true)) DO UPDATE SET cursor = excluded.cursor
                 "#,
-                event.time_us as i64,
+                event_cursor,
             )
             .execute(&mut *tx)
             .await?;
@@ -910,24 +914,39 @@ async fn service_jetstream_once(
             last_firehose_commit_time = now;
         }
 
-        cursor = Some(event.time_us as i64);
+        cursor = Some(event_cursor);
     }
 
     Ok(cursor)
 }
 
 /// The event's Jetstream timestamp, or `None` (logged) when `time_us` is out
-/// of range. `as i64` would wrap values above `i64::MAX` to a pre-1970 date,
-/// and a panic or an error would take down or replay the connection, so the
-/// caller skips the event instead.
+/// of range. A panic or an error would take down or replay the connection,
+/// so the caller skips the event instead.
 fn event_time(time_us: u64) -> Option<chrono::DateTime<chrono::Utc>> {
-    let time = i64::try_from(time_us)
-        .ok()
-        .and_then(chrono::DateTime::from_timestamp_micros);
+    let time = parse_time_us(time_us);
     if time.is_none() {
         log::warn!("skipping event with out-of-range time_us {time_us}");
     }
     time
+}
+
+/// `time_us` as a timestamp, if it is one we can use. `as i64` would wrap
+/// values above `i64::MAX` to a pre-1970 date, and atrium's `Datetime::new`
+/// panics outside the i64-nanosecond range (about 1677 to 2262), which is
+/// much narrower than chrono's.
+fn parse_time_us(time_us: u64) -> Option<chrono::DateTime<chrono::Utc>> {
+    i64::try_from(time_us)
+        .ok()
+        .and_then(chrono::DateTime::from_timestamp_micros)
+        .filter(|time| time.timestamp_nanos_opt().is_some())
+}
+
+/// The cursor to save after an event, or `None` to leave it where it is.
+/// An unusable `time_us` must not become the cursor: the next reconnect
+/// would resume from it.
+fn event_cursor(time_us: u64) -> Option<i64> {
+    parse_time_us(time_us).map(|time| time.timestamp_micros())
 }
 
 /// The rkey of the post in `did`'s repo that a like's subject URI points at,
@@ -1287,6 +1306,37 @@ mod tests {
         assert!(event_time(i64::MAX as u64 + 1).is_none());
         // Fits in i64 but is past chrono's range.
         assert!(event_time(i64::MAX as u64).is_none());
+        // In chrono's range but one microsecond past i64 nanoseconds, where
+        // atrium's Datetime::new panics.
+        assert!(event_time(9_223_372_036_854_776).is_none());
+    }
+
+    #[test]
+    fn event_time_accepts_last_nanosecond_representable_time_us() {
+        let time = event_time(9_223_372_036_854_775).unwrap();
+        // The label path must not panic on it.
+        let cts = atrium_api::types::string::Datetime::new(time.fixed_offset());
+        assert_eq!(cts.as_str(), "2262-04-11T23:47:16.854775Z");
+    }
+
+    #[test]
+    fn event_cursor_only_advances_on_usable_time_us() {
+        assert_eq!(
+            event_cursor(1_700_000_000_123_456),
+            Some(1_700_000_000_123_456)
+        );
+        assert_eq!(
+            event_cursor(9_223_372_036_854_775),
+            Some(9_223_372_036_854_775)
+        );
+        for bad in [
+            u64::MAX,
+            i64::MAX as u64 + 1,
+            i64::MAX as u64,
+            9_223_372_036_854_776,
+        ] {
+            assert_eq!(event_cursor(bad), None, "{bad}");
+        }
     }
 
     #[test]
