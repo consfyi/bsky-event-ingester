@@ -1360,4 +1360,105 @@ mod tests {
         assert!(liked_post_rkey("https://example.com/x", DID).is_none());
         assert!(liked_post_rkey(&format!("at://{DID}/app.bsky.feed.post"), DID).is_none());
     }
+
+    /// A one-shot Jetstream host on localhost: accepts one connection, sends
+    /// `frames` as uncompressed text, then closes.
+    async fn fake_jetstream(frames: Vec<String>) -> url::Url {
+        use futures::SinkExt as _;
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            let (tcp, _) = listener.accept().await.unwrap();
+            let mut ws = tokio_tungstenite::accept_async(tcp).await.unwrap();
+            for frame in frames {
+                ws.send(tokio_tungstenite::tungstenite::Message::Text(frame))
+                    .await
+                    .unwrap();
+            }
+            let _ = ws.close(None).await;
+            while ws.next().await.is_some() {}
+        });
+        url::Url::parse(&format!("ws://{addr}/subscribe")).unwrap()
+    }
+
+    /// A like commit as Jetstream sends it.
+    fn like_event(time_us: u64, subject_uri: &str) -> String {
+        serde_json::json!({
+            "did": "did:plc:liker",
+            "time_us": time_us,
+            "kind": "commit",
+            "commit": {
+                "rev": "3kaaaaaaaaa22",
+                "operation": "create",
+                "collection": "app.bsky.feed.like",
+                "rkey": "3kbbbbbbbbb22",
+                "cid": "bafyreigh2akiscaildcqabsyg3dfr6chu3fgpregiymsck7e7aqa4s52zy",
+                "record": {
+                    "$type": "app.bsky.feed.like",
+                    "subject": {
+                        "uri": subject_uri,
+                        "cid": "bafyreigh2akiscaildcqabsyg3dfr6chu3fgpregiymsck7e7aqa4s52zy",
+                    },
+                    "createdAt": "2026-01-01T00:00:00Z",
+                },
+            },
+        })
+        .to_string()
+    }
+
+    // The event loop end to end, against a fake Jetstream host and a fresh
+    // Postgres database. A like with a malformed subject is skipped, but the
+    // cursor still moves past it, to the same value in memory and in the
+    // database. An event with an unusable time_us after it is skipped
+    // without moving the cursor either way, and neither event drops the
+    // connection.
+    //
+    // Needs Postgres: CI's "sqlx cache up to date" job runs it. Locally, set
+    // DATABASE_URL and run `cargo test pg_ -- --ignored`.
+    #[sqlx::test(migrations = false)]
+    #[ignore = "needs Postgres (DATABASE_URL)"]
+    async fn pg_event_loop_skips_bad_events_and_saves_the_cursor(pool: sqlx::PgPool) {
+        sqlx::raw_sql(include_str!("../schema.sql"))
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        let good_time_us: u64 = 1_700_000_000_123_456;
+        let malformed = uri(DID, "app.bsky.feed.post", "has space");
+        let endpoint = fake_jetstream(vec![
+            like_event(good_time_us, &malformed),
+            like_event(u64::MAX, &malformed),
+        ])
+        .await;
+
+        let did: atrium_api::types::string::Did = DID.parse().unwrap();
+        let keypair = atrium_crypto::keypair::Secp256k1Keypair::import(&[7u8; 32]).unwrap();
+        let events_state = std::sync::Arc::new(tokio::sync::Mutex::new(EventsState {
+            rkeys_to_ids: Default::default(),
+            events: Default::default(),
+        }));
+        let mut lifetime = None;
+
+        let cursor = service_jetstream_once(
+            &pool,
+            &did,
+            &keypair,
+            events_state,
+            &endpoint,
+            // Save the cursor after every event.
+            std::time::Duration::ZERO,
+            Some(1),
+            &mut lifetime,
+        )
+        .await
+        .expect("the loop should skip both events and end cleanly on Close");
+
+        let want = Some(i64::try_from(good_time_us).unwrap());
+        assert_eq!(cursor, want, "returned cursor");
+        assert_eq!(
+            read_jetstream_cursor(&pool).await.unwrap(),
+            want,
+            "saved cursor"
+        );
+    }
 }
