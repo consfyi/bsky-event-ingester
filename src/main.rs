@@ -801,48 +801,25 @@ async fn service_jetstream_once(
                         return Ok(());
                     };
 
-                    let parts = like
-                        .subject
-                        .uri
-                        .strip_prefix("at://")
-                        .map(|v| v.splitn(3, '/').collect::<Vec<_>>());
-
-                    let Some(&[record_did, collection, target_rkey]) =
-                        parts.as_ref().map(|v| &v[..])
-                    else {
+                    let Some(target_rkey) = liked_post_rkey(&like.subject.uri, did.as_str()) else {
                         return Ok(());
                     };
 
-                    if record_did != did.to_string() {
-                        return Ok(());
-                    }
-
-                    if collection != atrium_api::app::bsky::feed::Post::NSID {
-                        return Ok(());
-                    }
-
                     let events_state = events_state.lock().await;
 
-                    let Some(id) = events_state
-                        .rkeys_to_ids
-                        .get(
-                            &atrium_api::types::string::RecordKey::new(target_rkey.to_string())
-                                .unwrap(),
-                        )
-                        .cloned()
-                    else {
+                    let Some(id) = events_state.rkeys_to_ids.get(&target_rkey).cloned() else {
                         return Ok(());
                     };
 
                     let assoc_event = events_state.events.get(&id).unwrap();
 
+                    let Some(cts) = event_time(event.time_us) else {
+                        return Ok(());
+                    };
+
                     let label: atrium_api::com::atproto::label::defs::Label =
                         atrium_api::com::atproto::label::defs::LabelData {
-                            cts: atrium_api::types::string::Datetime::new(
-                                chrono::DateTime::from_timestamp_micros(event.time_us as i64)
-                                    .unwrap()
-                                    .fixed_offset(),
-                            ),
+                            cts: atrium_api::types::string::Datetime::new(cts.fixed_offset()),
                             exp: Some(atrium_api::types::string::Datetime::new(
                                 (assoc_event.event.end_time() + EXPIRY_DATE_GRACE_PERIOD)
                                     .to_utc()
@@ -883,13 +860,13 @@ async fn service_jetstream_once(
                         return Ok(());
                     };
 
+                    let Some(cts) = event_time(event.time_us) else {
+                        return Ok(());
+                    };
+
                     let label: atrium_api::com::atproto::label::defs::Label =
                         atrium_api::com::atproto::label::defs::LabelData {
-                            cts: atrium_api::types::string::Datetime::new(
-                                chrono::DateTime::from_timestamp_micros(event.time_us as i64)
-                                    .unwrap()
-                                    .fixed_offset(),
-                            ),
+                            cts: atrium_api::types::string::Datetime::new(cts.fixed_offset()),
                             exp: None,
                             src: did.clone(),
                             cid: None,
@@ -914,6 +891,10 @@ async fn service_jetstream_once(
         }
         .await?;
 
+        let Some(event_cursor) = event_cursor(event.time_us) else {
+            continue;
+        };
+
         let now = std::time::SystemTime::now();
         if now >= last_firehose_commit_time + commit_firehose_cursor_every {
             let mut tx = db_conn.begin().await?;
@@ -925,7 +906,7 @@ async fn service_jetstream_once(
                 INSERT INTO jetstream_cursor (cursor) VALUES ($1)
                 ON CONFLICT ((true)) DO UPDATE SET cursor = excluded.cursor
                 "#,
-                event.time_us as i64,
+                event_cursor,
             )
             .execute(&mut *tx)
             .await?;
@@ -933,10 +914,67 @@ async fn service_jetstream_once(
             last_firehose_commit_time = now;
         }
 
-        cursor = Some(event.time_us as i64);
+        cursor = Some(event_cursor);
     }
 
     Ok(cursor)
+}
+
+/// The event's Jetstream timestamp, or `None` (logged) when `time_us` is out
+/// of range. A panic or an error would take down or replay the connection,
+/// so the caller skips the event instead.
+fn event_time(time_us: u64) -> Option<chrono::DateTime<chrono::Utc>> {
+    let time = parse_time_us(time_us);
+    if time.is_none() {
+        log::warn!("skipping event with out-of-range time_us {time_us}");
+    }
+    time
+}
+
+/// `time_us` as a timestamp, if it is one we can use. `as i64` would wrap
+/// values above `i64::MAX` to a pre-1970 date, and atrium's `Datetime::new`
+/// panics outside the i64-nanosecond range (about 1677 to 2262), which is
+/// much narrower than chrono's.
+fn parse_time_us(time_us: u64) -> Option<chrono::DateTime<chrono::Utc>> {
+    i64::try_from(time_us)
+        .ok()
+        .and_then(chrono::DateTime::from_timestamp_micros)
+        .filter(|time| time.timestamp_nanos_opt().is_some())
+}
+
+/// The cursor to save after an event, or `None` to leave it where it is.
+/// An unusable `time_us` must not become the cursor: the next reconnect
+/// would resume from it.
+fn event_cursor(time_us: u64) -> Option<i64> {
+    parse_time_us(time_us).map(|time| time.timestamp_micros())
+}
+
+/// The rkey of the post in `did`'s repo that a like's subject URI points at,
+/// or `None` when the like is for anything else.
+fn liked_post_rkey(subject_uri: &str, did: &str) -> Option<atrium_api::types::string::RecordKey> {
+    // Runs on every like in the firehose, nearly all for other repos, so
+    // reject on the DID before doing anything that allocates.
+    let (collection, target_rkey) = subject_uri
+        .strip_prefix("at://")?
+        .strip_prefix(did)?
+        .strip_prefix('/')?
+        .split_once('/')?;
+
+    if collection != atrium_api::app::bsky::feed::Post::NSID {
+        return None;
+    }
+
+    // Anyone can put any string in a like's subject URI, so a bad rkey is
+    // skipped, not unwrapped: a panic here would take the ingester down, and
+    // an error would reconnect and replay the same event from the cursor.
+    match atrium_api::types::string::RecordKey::new(target_rkey.to_string()) {
+        Ok(rkey) => Some(rkey),
+        Err(err) => {
+            let shown = target_rkey.chars().take(64).collect::<String>();
+            log::warn!("skipping like with malformed subject rkey {shown:?}: {err}");
+            None
+        }
+    }
 }
 
 /// A pinned `jetstream_endpoint` goes first; the list follows, minus any
@@ -1235,5 +1273,245 @@ mod tests {
             jetstream_dial_order(None, &[u("wss://a/subscribe"), u("wss://a/subscribe")]),
             vec![u("wss://a/subscribe")]
         );
+    }
+
+    const DID: &str = "did:plc:labeler";
+
+    fn uri(did: &str, collection: &str, rkey: &str) -> String {
+        format!("at://{did}/{collection}/{rkey}")
+    }
+
+    #[test]
+    fn liked_post_rkey_returns_valid_rkey() {
+        let rkey = liked_post_rkey(&uri(DID, "app.bsky.feed.post", "3kabc2xyz"), DID).unwrap();
+        assert_eq!(rkey.as_str(), "3kabc2xyz");
+    }
+
+    #[test]
+    fn liked_post_rkey_skips_malformed_rkey() {
+        // The subject URI is whatever the liker wrote; none of these is a
+        // valid rkey, and none may take the process down.
+        for bad in ["", ".", "..", "a/b", "has space", "a#b", &"x".repeat(513)] {
+            assert!(
+                liked_post_rkey(&uri(DID, "app.bsky.feed.post", bad), DID).is_none(),
+                "{bad:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn event_time_skips_out_of_range_time_us() {
+        // Wraps negative through `as i64`.
+        assert!(event_time(u64::MAX).is_none());
+        assert!(event_time(i64::MAX as u64 + 1).is_none());
+        // Fits in i64 but is past chrono's range.
+        assert!(event_time(i64::MAX as u64).is_none());
+        // In chrono's range but one microsecond past i64 nanoseconds, where
+        // atrium's Datetime::new panics.
+        assert!(event_time(9_223_372_036_854_776).is_none());
+    }
+
+    #[test]
+    fn event_time_accepts_last_nanosecond_representable_time_us() {
+        let time = event_time(9_223_372_036_854_775).unwrap();
+        // The label path must not panic on it.
+        let cts = atrium_api::types::string::Datetime::new(time.fixed_offset());
+        assert_eq!(cts.as_str(), "2262-04-11T23:47:16.854775Z");
+    }
+
+    #[test]
+    fn event_cursor_only_advances_on_usable_time_us() {
+        assert_eq!(
+            event_cursor(1_700_000_000_123_456),
+            Some(1_700_000_000_123_456)
+        );
+        assert_eq!(
+            event_cursor(9_223_372_036_854_775),
+            Some(9_223_372_036_854_775)
+        );
+        for bad in [
+            u64::MAX,
+            i64::MAX as u64 + 1,
+            i64::MAX as u64,
+            9_223_372_036_854_776,
+        ] {
+            assert_eq!(event_cursor(bad), None, "{bad}");
+        }
+    }
+
+    #[test]
+    fn event_time_converts_valid_time_us() {
+        assert_eq!(
+            event_time(1_700_000_000_123_456).unwrap().to_rfc3339(),
+            "2023-11-14T22:13:20.123456+00:00"
+        );
+    }
+
+    #[test]
+    fn liked_post_rkey_ignores_other_subjects() {
+        assert!(
+            liked_post_rkey(&uri("did:plc:other", "app.bsky.feed.post", "3kabc"), DID).is_none()
+        );
+        assert!(liked_post_rkey(&uri(DID, "app.bsky.feed.like", "3kabc"), DID).is_none());
+        // A DID that merely starts with ours is someone else's repo.
+        assert!(
+            liked_post_rkey(&uri("did:plc:labelerx", "app.bsky.feed.post", "3kabc"), DID).is_none()
+        );
+        assert!(liked_post_rkey("https://example.com/x", DID).is_none());
+        assert!(liked_post_rkey(&format!("at://{DID}/app.bsky.feed.post"), DID).is_none());
+    }
+
+    /// A one-shot Jetstream host on localhost: accepts one connection, sends
+    /// `frames` as uncompressed text, then closes.
+    async fn fake_jetstream(frames: Vec<String>) -> url::Url {
+        use futures::SinkExt as _;
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            let (tcp, _) = listener.accept().await.unwrap();
+            let mut ws = tokio_tungstenite::accept_async(tcp).await.unwrap();
+            for frame in frames {
+                ws.send(tokio_tungstenite::tungstenite::Message::Text(frame))
+                    .await
+                    .unwrap();
+            }
+            let _ = ws.close(None).await;
+            while ws.next().await.is_some() {}
+        });
+        url::Url::parse(&format!("ws://{addr}/subscribe")).unwrap()
+    }
+
+    /// A like delete as Jetstream sends it.
+    fn unlike_event(time_us: u64, like_rkey: &str) -> String {
+        serde_json::json!({
+            "did": "did:plc:liker",
+            "time_us": time_us,
+            "kind": "commit",
+            "commit": {
+                "rev": "3kaaaaaaaaa22",
+                "operation": "delete",
+                "collection": "app.bsky.feed.like",
+                "rkey": like_rkey,
+            },
+        })
+        .to_string()
+    }
+
+    /// A like commit as Jetstream sends it.
+    fn like_event(time_us: u64, subject_uri: &str) -> String {
+        serde_json::json!({
+            "did": "did:plc:liker",
+            "time_us": time_us,
+            "kind": "commit",
+            "commit": {
+                "rev": "3kaaaaaaaaa22",
+                "operation": "create",
+                "collection": "app.bsky.feed.like",
+                "rkey": "3kbbbbbbbbb22",
+                "cid": "bafyreigh2akiscaildcqabsyg3dfr6chu3fgpregiymsck7e7aqa4s52zy",
+                "record": {
+                    "$type": "app.bsky.feed.like",
+                    "subject": {
+                        "uri": subject_uri,
+                        "cid": "bafyreigh2akiscaildcqabsyg3dfr6chu3fgpregiymsck7e7aqa4s52zy",
+                    },
+                    "createdAt": "2026-01-01T00:00:00Z",
+                },
+            },
+        })
+        .to_string()
+    }
+
+    // The event loop end to end, against a fake Jetstream host and a fresh
+    // Postgres database. A like with a malformed subject is skipped, but the
+    // cursor still moves past it, to the same value in memory and in the
+    // database. Two events with an unusable time_us follow: a like of a
+    // tracked post, and the delete of a like that already has a label. Both
+    // are skipped at the label timestamp check, so neither writes a label or
+    // moves the cursor. No event drops the connection.
+    //
+    // Needs Postgres: CI's "sqlx cache up to date" job runs it. Locally, set
+    // DATABASE_URL and run `cargo test pg_ -- --ignored`.
+    #[sqlx::test(migrations = false)]
+    #[ignore = "needs Postgres (DATABASE_URL)"]
+    async fn pg_event_loop_skips_bad_events_and_saves_the_cursor(pool: sqlx::PgPool) {
+        sqlx::raw_sql(include_str!("../schema.sql"))
+            .execute(&pool)
+            .await
+            .unwrap();
+        // The label an earlier like produced, so the delete gets past its
+        // lookup and reaches the label timestamp check.
+        sqlx::query(
+            "INSERT INTO labels (val, uri, payload, like_rkey) \
+             VALUES ('testcon', 'did:plc:liker', '\\x00', '3klabeled22')",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        let good_time_us: u64 = 1_700_000_000_123_456;
+        let malformed = uri(DID, "app.bsky.feed.post", "has space");
+        let tracked = uri(DID, "app.bsky.feed.post", "3kpost222");
+        let endpoint = fake_jetstream(vec![
+            like_event(good_time_us, &malformed),
+            like_event(u64::MAX, &tracked),
+            unlike_event(u64::MAX, "3klabeled22"),
+        ])
+        .await;
+
+        let did: atrium_api::types::string::Did = DID.parse().unwrap();
+        let keypair = atrium_crypto::keypair::Secp256k1Keypair::import(&[7u8; 32]).unwrap();
+        // The second like targets this event's post, so it gets past the
+        // rkey lookups and reaches the label timestamp check.
+        let post_rkey: atrium_api::types::string::RecordKey = "3kpost222".parse().unwrap();
+        let event: IngestedEvent = serde_json::from_value(serde_json::json!({
+            "id": "testcon-2026",
+            "name": "TestCon 2026",
+            "venue": "Hall",
+            "locale": "en",
+            "startDate": "2026-01-01",
+            "endDate": "2026-01-02",
+        }))
+        .unwrap();
+        let events_state = std::sync::Arc::new(tokio::sync::Mutex::new(EventsState {
+            rkeys_to_ids: [(post_rkey.clone(), "testcon-2026".to_string())].into(),
+            events: [(
+                "testcon-2026".to_string(),
+                AssociatedEvent {
+                    event,
+                    rkey: Some(post_rkey),
+                    label_id: "testcon".to_string(),
+                },
+            )]
+            .into(),
+        }));
+        let mut lifetime = None;
+
+        let cursor = service_jetstream_once(
+            &pool,
+            &did,
+            &keypair,
+            events_state,
+            &endpoint,
+            // Save the cursor after every event.
+            std::time::Duration::ZERO,
+            Some(1),
+            &mut lifetime,
+        )
+        .await
+        .expect("the loop should skip both events and end cleanly on Close");
+
+        let want = Some(i64::try_from(good_time_us).unwrap());
+        assert_eq!(cursor, want, "returned cursor");
+        assert_eq!(
+            read_jetstream_cursor(&pool).await.unwrap(),
+            want,
+            "saved cursor"
+        );
+        let labels: i64 = sqlx::query_scalar("SELECT count(*) FROM labels")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(labels, 1, "no label beyond the seeded one");
     }
 }

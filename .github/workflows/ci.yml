@@ -75,3 +75,6 @@ jobs:
       - run: cargo install sqlx-cli --no-default-features --features postgres,rustls --locked
       # Fails if the committed .sqlx cache has drifted from the queries in the code.
       - run: cargo sqlx prepare --check
+      # Tests marked `pg_` need Postgres, which only this job has. Each one
+      # gets its own fresh database from #[sqlx::test].
+      - run: cargo test --locked --bin bsky-event-ingester pg_ -- --ignored
