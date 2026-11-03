@@ -1409,9 +1409,9 @@ mod tests {
     // The event loop end to end, against a fake Jetstream host and a fresh
     // Postgres database. A like with a malformed subject is skipped, but the
     // cursor still moves past it, to the same value in memory and in the
-    // database. An event with an unusable time_us after it is skipped
-    // without moving the cursor either way, and neither event drops the
-    // connection.
+    // database. A like of a tracked post with an unusable time_us is then
+    // skipped at the label timestamp check: no label, no cursor move either
+    // way. Neither event drops the connection.
     //
     // Needs Postgres: CI's "sqlx cache up to date" job runs it. Locally, set
     // DATABASE_URL and run `cargo test pg_ -- --ignored`.
@@ -1425,17 +1425,38 @@ mod tests {
 
         let good_time_us: u64 = 1_700_000_000_123_456;
         let malformed = uri(DID, "app.bsky.feed.post", "has space");
+        let tracked = uri(DID, "app.bsky.feed.post", "3kpost222");
         let endpoint = fake_jetstream(vec![
             like_event(good_time_us, &malformed),
-            like_event(u64::MAX, &malformed),
+            like_event(u64::MAX, &tracked),
         ])
         .await;
 
         let did: atrium_api::types::string::Did = DID.parse().unwrap();
         let keypair = atrium_crypto::keypair::Secp256k1Keypair::import(&[7u8; 32]).unwrap();
+        // The second like targets this event's post, so it gets past the
+        // rkey lookups and reaches the label timestamp check.
+        let post_rkey: atrium_api::types::string::RecordKey = "3kpost222".parse().unwrap();
+        let event: IngestedEvent = serde_json::from_value(serde_json::json!({
+            "id": "testcon-2026",
+            "name": "TestCon 2026",
+            "venue": "Hall",
+            "locale": "en",
+            "startDate": "2026-01-01",
+            "endDate": "2026-01-02",
+        }))
+        .unwrap();
         let events_state = std::sync::Arc::new(tokio::sync::Mutex::new(EventsState {
-            rkeys_to_ids: Default::default(),
-            events: Default::default(),
+            rkeys_to_ids: [(post_rkey.clone(), "testcon-2026".to_string())].into(),
+            events: [(
+                "testcon-2026".to_string(),
+                AssociatedEvent {
+                    event,
+                    rkey: Some(post_rkey),
+                    label_id: "testcon".to_string(),
+                },
+            )]
+            .into(),
         }));
         let mut lifetime = None;
 
@@ -1460,5 +1481,10 @@ mod tests {
             want,
             "saved cursor"
         );
+        let labels: i64 = sqlx::query_scalar("SELECT count(*) FROM labels")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(labels, 0, "no label for either skipped like");
     }
 }
