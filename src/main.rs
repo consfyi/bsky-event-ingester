@@ -1381,6 +1381,22 @@ mod tests {
         url::Url::parse(&format!("ws://{addr}/subscribe")).unwrap()
     }
 
+    /// A like delete as Jetstream sends it.
+    fn unlike_event(time_us: u64, like_rkey: &str) -> String {
+        serde_json::json!({
+            "did": "did:plc:liker",
+            "time_us": time_us,
+            "kind": "commit",
+            "commit": {
+                "rev": "3kaaaaaaaaa22",
+                "operation": "delete",
+                "collection": "app.bsky.feed.like",
+                "rkey": like_rkey,
+            },
+        })
+        .to_string()
+    }
+
     /// A like commit as Jetstream sends it.
     fn like_event(time_us: u64, subject_uri: &str) -> String {
         serde_json::json!({
@@ -1409,9 +1425,10 @@ mod tests {
     // The event loop end to end, against a fake Jetstream host and a fresh
     // Postgres database. A like with a malformed subject is skipped, but the
     // cursor still moves past it, to the same value in memory and in the
-    // database. A like of a tracked post with an unusable time_us is then
-    // skipped at the label timestamp check: no label, no cursor move either
-    // way. Neither event drops the connection.
+    // database. Two events with an unusable time_us follow: a like of a
+    // tracked post, and the delete of a like that already has a label. Both
+    // are skipped at the label timestamp check, so neither writes a label or
+    // moves the cursor. No event drops the connection.
     //
     // Needs Postgres: CI's "sqlx cache up to date" job runs it. Locally, set
     // DATABASE_URL and run `cargo test pg_ -- --ignored`.
@@ -1422,6 +1439,15 @@ mod tests {
             .execute(&pool)
             .await
             .unwrap();
+        // The label an earlier like produced, so the delete gets past its
+        // lookup and reaches the label timestamp check.
+        sqlx::query(
+            "INSERT INTO labels (val, uri, payload, like_rkey) \
+             VALUES ('testcon', 'did:plc:liker', '\\x00', '3klabeled22')",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
 
         let good_time_us: u64 = 1_700_000_000_123_456;
         let malformed = uri(DID, "app.bsky.feed.post", "has space");
@@ -1429,6 +1455,7 @@ mod tests {
         let endpoint = fake_jetstream(vec![
             like_event(good_time_us, &malformed),
             like_event(u64::MAX, &tracked),
+            unlike_event(u64::MAX, "3klabeled22"),
         ])
         .await;
 
@@ -1485,6 +1512,6 @@ mod tests {
             .fetch_one(&pool)
             .await
             .unwrap();
-        assert_eq!(labels, 0, "no label for either skipped like");
+        assert_eq!(labels, 1, "no label beyond the seeded one");
     }
 }
