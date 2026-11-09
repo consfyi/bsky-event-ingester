@@ -1514,4 +1514,57 @@ mod tests {
             .unwrap();
         assert_eq!(labels, 1, "no label beyond the seeded one");
     }
+
+    // A frame that doesn't decode, between two good events, must not end the
+    // connection: the cursor moves past it to the event after it (CON-77).
+    // Before the fix the loop returned an error here, and every reconnect
+    // resumed before the bad frame and failed on it again.
+    #[sqlx::test(migrations = false)]
+    #[ignore = "needs Postgres (DATABASE_URL)"]
+    async fn pg_event_loop_skips_an_undecodable_frame(pool: sqlx::PgPool) {
+        sqlx::raw_sql(include_str!("../schema.sql"))
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        let first_time_us: u64 = 1_700_000_000_000_001;
+        let second_time_us: u64 = 1_700_000_000_000_002;
+        let elsewhere = uri("did:plc:other", "app.bsky.feed.post", "3kpost222");
+        let endpoint = fake_jetstream(vec![
+            like_event(first_time_us, &elsewhere),
+            "not json".to_string(),
+            like_event(second_time_us, &elsewhere),
+        ])
+        .await;
+
+        let did: atrium_api::types::string::Did = DID.parse().unwrap();
+        let keypair = atrium_crypto::keypair::Secp256k1Keypair::import(&[7u8; 32]).unwrap();
+        let events_state = std::sync::Arc::new(tokio::sync::Mutex::new(EventsState {
+            rkeys_to_ids: Default::default(),
+            events: Default::default(),
+        }));
+        let mut lifetime = None;
+
+        let cursor = service_jetstream_once(
+            &pool,
+            &did,
+            &keypair,
+            events_state,
+            &endpoint,
+            // Save the cursor after every event.
+            std::time::Duration::ZERO,
+            Some(1),
+            &mut lifetime,
+        )
+        .await
+        .expect("the loop should skip the bad frame and end cleanly on Close");
+
+        let want = Some(i64::try_from(second_time_us).unwrap());
+        assert_eq!(cursor, want, "returned cursor");
+        assert_eq!(
+            read_jetstream_cursor(&pool).await.unwrap(),
+            want,
+            "saved cursor"
+        );
+    }
 }

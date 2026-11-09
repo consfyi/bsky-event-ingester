@@ -277,33 +277,45 @@ pub async fn connect(
     let stream = async_stream::try_stream! {
         let mut rx = rx;
         while let Some(message) = rx.recv().await {
-            match message? {
-                tokio_tungstenite::tungstenite::Message::Binary(body) => {
-                    // Compressed. MAX_MESSAGE_BYTES bounds the frame, not its
-                    // expansion: a compression bomb inside a 1 MiB frame would
-                    // otherwise force an unbounded transient allocation. The
-                    // `take` truncates the read instead, which surfaces as a
-                    // serde_json error → reconnect.
-                    let mut body = &body[..];
-                    let mut decoder = zstd::stream::Decoder::with_prepared_dictionary(
-                        &mut body,
-                        &ZSTD_DICTIONARY,
-                    )?;
-                    // The frame header can otherwise demand up to libzstd's
-                    // 128 MiB default window before `take` bounds a byte;
-                    // 2^23 = 8 MiB matches MAX_DECODED_BYTES.
-                    decoder.window_log_max(23)?;
-                    yield serde_json::from_reader(std::io::Read::take(decoder, MAX_DECODED_BYTES))?;
-                }
+            // A transport error ends the stream; the caller reconnects.
+            let decoded = match message? {
+                tokio_tungstenite::tungstenite::Message::Binary(body) => decode_compressed(&body),
+                // Uncompressed.
                 tokio_tungstenite::tungstenite::Message::Text(body) => {
-                    // Uncompressed.
-                    yield serde_json::from_str(&body)?;
+                    serde_json::from_str(&body).map_err(Error::from)
                 }
-                _ => {}
+                _ => continue,
+            };
+            // A frame that doesn't decode is skipped, not returned as an
+            // error. An error would end the stream, and the reconnect resumes
+            // from the saved cursor, which is before this frame, so the same
+            // frame would fail again on every reconnect. The cursor only moves
+            // on events the caller sees, so skipping one leaves it on the last
+            // good event.
+            match decoded {
+                Ok(event) => yield event,
+                Err(e) => log::warn!("jetstream: skipping a frame that did not decode: {e}"),
             }
         }
     };
     Ok((stream, lifetime))
+}
+
+/// Decodes a zstd-compressed frame. MAX_MESSAGE_BYTES bounds the frame, not
+/// its expansion: a compression bomb inside a 1 MiB frame would otherwise
+/// force an unbounded transient allocation. The `take` truncates the read
+/// instead, which surfaces as a serde_json error.
+fn decode_compressed(body: &[u8]) -> Result<event::Event, Error> {
+    let mut body = body;
+    let mut decoder = zstd::stream::Decoder::with_prepared_dictionary(&mut body, &ZSTD_DICTIONARY)?;
+    // The frame header can otherwise demand up to libzstd's 128 MiB default
+    // window before `take` bounds a byte; 2^23 = 8 MiB matches
+    // MAX_DECODED_BYTES.
+    decoder.window_log_max(23)?;
+    Ok(serde_json::from_reader(std::io::Read::take(
+        decoder,
+        MAX_DECODED_BYTES,
+    ))?)
 }
 
 #[cfg(test)]
@@ -509,22 +521,74 @@ mod tests {
     }
 
     // A frame under MAX_MESSAGE_BYTES that inflates past MAX_DECODED_BYTES
-    // must be an error, not an allocation: the decode is truncated and the
-    // JSON parse fails.
-    #[tokio::test]
-    async fn compression_bomb_is_an_error() {
+    // must not be decoded in full: the decode is truncated and the JSON parse
+    // fails.
+    #[test]
+    fn compression_bomb_is_truncated() {
+        let Message::Binary(bomb) =
+            compressed(&identity_event(&"x".repeat(MAX_DECODED_BYTES as usize + 1)))
+        else {
+            unreachable!()
+        };
+        assert!(bomb.len() < MAX_MESSAGE_BYTES, "frame is {}", bomb.len());
+        let decoded = decode_compressed(&bomb);
+        assert!(
+            matches!(decoded, Err(Error::SerdeJson(_))),
+            "expected a truncated-JSON error, got {decoded:?}"
+        );
+    }
+
+    /// Sends each bad frame, then a good event. Only the good event may come
+    /// through, and the stream must stay open.
+    async fn assert_frames_are_skipped(bad: Vec<Message>) {
         let (client, mut server) = local_pair().await;
         futures::pin_mut!(client);
-        let bomb = compressed(&identity_event(&"x".repeat(MAX_DECODED_BYTES as usize + 1)));
-        assert!(bomb.len() < MAX_MESSAGE_BYTES, "frame is {}", bomb.len());
-        server.send(bomb).await.unwrap();
+        for frame in bad {
+            server.send(frame).await.unwrap();
+        }
+        server
+            .send(Message::Text(identity_event("good")))
+            .await
+            .unwrap();
         let next = tokio::time::timeout(std::time::Duration::from_secs(5), client.next())
             .await
             .expect("stream did not yield within 5s");
-        assert!(
-            matches!(next, Some(Err(Error::SerdeJson(_)))),
-            "expected a truncated-JSON error, got {next:?}"
-        );
+        match next {
+            Some(Ok(e)) => assert_eq!(e.time_us, 7),
+            other => panic!("expected the good event, got {other:?}"),
+        }
+        // Still open: a ping is answered and nothing else is pending.
+        server.send(Message::Ping(vec![])).await.unwrap();
+        expect_pong(&mut server).await;
+        let pending =
+            tokio::time::timeout(std::time::Duration::from_millis(200), client.next()).await;
+        assert!(pending.is_err(), "stream yielded more: {pending:?}");
+    }
+
+    // A frame that doesn't decode must not end the stream: the reconnect
+    // would resume before it and fail on it again, forever (CON-77).
+    #[tokio::test]
+    async fn undecodable_text_frames_are_skipped() {
+        assert_frames_are_skipped(vec![
+            Message::Text("not json".into()),
+            // Valid JSON with a bad envelope. A bad record inside a commit
+            // doesn't get here: it falls back to `CommitOperation::Other`.
+            Message::Text(
+                identity_event("x").replace("did:plc:x\",\"time_us", "not a did\",\"time_us"),
+            ),
+            Message::Text(identity_event("x").replace("\"time_us\":7", "\"time_us\":-1")),
+        ])
+        .await;
+    }
+
+    #[tokio::test]
+    async fn undecodable_compressed_frames_are_skipped() {
+        assert_frames_are_skipped(vec![
+            Message::Binary(b"not zstd".to_vec()),
+            compressed("not json"),
+            compressed(&identity_event(&"x".repeat(MAX_DECODED_BYTES as usize + 1))),
+        ])
+        .await;
     }
 
     // The dial cap must trip before a hung dial could count as healthy.
