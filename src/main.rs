@@ -1515,10 +1515,10 @@ mod tests {
         assert_eq!(labels, 1, "no label beyond the seeded one");
     }
 
-    // A frame that doesn't decode, between two good events, must not end the
-    // connection: the cursor moves past it to the event after it (CON-77).
-    // Before the fix the loop returned an error here, and every reconnect
-    // resumed before the bad frame and failed on it again.
+    /// A frame that doesn't decode, between two good events, must not end the
+    /// connection: the cursor moves past it to the event after it (CON-77).
+    /// Before the fix the loop returned an error here, and every reconnect
+    /// resumed before the bad frame and failed on it again.
     #[sqlx::test(migrations = false)]
     #[ignore = "needs Postgres (DATABASE_URL)"]
     async fn pg_event_loop_skips_an_undecodable_frame(pool: sqlx::PgPool) {

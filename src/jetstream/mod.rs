@@ -540,9 +540,9 @@ mod tests {
         assert_eq!(e.time_us, 7);
     }
 
-    // A frame under MAX_MESSAGE_BYTES that inflates past MAX_DECODED_BYTES
-    // must not be decoded in full: the decode is truncated and the JSON parse
-    // fails.
+    /// A frame under MAX_MESSAGE_BYTES that inflates past MAX_DECODED_BYTES
+    /// must not be decoded in full: the decode is truncated and the JSON parse
+    /// fails.
     #[test]
     fn compression_bomb_is_truncated() {
         let Message::Binary(bomb) =
@@ -585,8 +585,8 @@ mod tests {
         assert!(pending.is_err(), "stream yielded more: {pending:?}");
     }
 
-    // A frame that doesn't decode must not end the stream: the reconnect
-    // would resume before it and fail on it again, forever (CON-77).
+    /// A frame that doesn't decode must not end the stream: the reconnect
+    /// would resume before it and fail on it again, forever (CON-77).
     #[tokio::test]
     async fn undecodable_text_frames_are_skipped() {
         assert_frames_are_skipped(vec![
@@ -601,8 +601,8 @@ mod tests {
         .await;
     }
 
-    // One short of the limit is still skipped, and a good event resets the
-    // count.
+    /// One short of the limit is still skipped, and a good event resets the
+    /// count.
     #[tokio::test]
     async fn a_good_event_resets_the_decode_failure_count() {
         let mut bad = Vec::new();
@@ -628,8 +628,8 @@ mod tests {
         }
     }
 
-    // A host that sends nothing but garbage must not keep the stream open
-    // forever: con_posts has no event deadline, so it would never reconnect.
+    /// A host that sends nothing but garbage must not keep the stream open
+    /// forever: con_posts has no event deadline, so it would never reconnect.
     #[tokio::test]
     async fn sustained_decode_failures_end_the_stream() {
         let (client, mut server) = local_pair().await;
@@ -646,6 +646,8 @@ mod tests {
         );
     }
 
+    /// The same for compressed frames: bad zstd, bad JSON inside good zstd,
+    /// and a compression bomb.
     #[tokio::test]
     async fn undecodable_compressed_frames_are_skipped() {
         assert_frames_are_skipped(vec![
