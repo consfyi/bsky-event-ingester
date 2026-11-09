@@ -73,6 +73,11 @@ pub const MAX_MESSAGE_BYTES: usize = 1 << 20;
 /// far beyond any real event's zstd ratio (~3-4×).
 pub const MAX_DECODED_BYTES: u64 = 8 << 20;
 
+/// Consecutive frames that fail to decode before the stream ends with the
+/// last error. One bad event is skipped; this many in a row means the host is
+/// sending garbage, and the caller should reconnect.
+pub const MAX_CONSECUTIVE_DECODE_FAILURES: u32 = 10;
+
 /// Messages buffered between the socket reader and the consumer, reserved
 /// before each read so a stalled consumer parks the reader instead of
 /// growing memory without limit (TCP backpressure then fills the server's
@@ -276,6 +281,7 @@ pub async fn connect(
 
     let stream = async_stream::try_stream! {
         let mut rx = rx;
+        let mut decode_failures = 0u32;
         while let Some(message) = rx.recv().await {
             // A transport error ends the stream; the caller reconnects.
             let decoded = match message? {
@@ -292,9 +298,23 @@ pub async fn connect(
             // frame would fail again on every reconnect. The cursor only moves
             // on events the caller sees, so skipping one leaves it on the last
             // good event.
+            //
+            // A run of failures with nothing good between them is the host,
+            // not one bad event: end the stream so the caller reconnects and,
+            // if it keeps happening, fails over.
             match decoded {
-                Ok(event) => yield event,
-                Err(e) => log::warn!("jetstream: skipping a frame that did not decode: {e}"),
+                Ok(event) => {
+                    decode_failures = 0;
+                    yield event;
+                }
+                Err(e) => {
+                    decode_failures += 1;
+                    if decode_failures >= MAX_CONSECUTIVE_DECODE_FAILURES {
+                        Err(e)?;
+                    } else {
+                        log::warn!("jetstream: skipping a frame that did not decode: {e}");
+                    }
+                }
             }
         }
     };
@@ -579,6 +599,51 @@ mod tests {
             Message::Text(identity_event("x").replace("\"time_us\":7", "\"time_us\":-1")),
         ])
         .await;
+    }
+
+    // One short of the limit is still skipped, and a good event resets the
+    // count.
+    #[tokio::test]
+    async fn a_good_event_resets_the_decode_failure_count() {
+        let mut bad = Vec::new();
+        for _ in 0..2 {
+            for _ in 1..MAX_CONSECUTIVE_DECODE_FAILURES {
+                bad.push(Message::Text("not json".into()));
+            }
+            bad.push(Message::Text(identity_event("reset")));
+        }
+        let (client, mut server) = local_pair().await;
+        futures::pin_mut!(client);
+        for frame in bad {
+            server.send(frame).await.unwrap();
+        }
+        for _ in 0..2 {
+            let next = tokio::time::timeout(std::time::Duration::from_secs(5), client.next())
+                .await
+                .expect("stream did not yield within 5s");
+            assert!(
+                matches!(next, Some(Ok(_))),
+                "expected an event, got {next:?}"
+            );
+        }
+    }
+
+    // A host that sends nothing but garbage must not keep the stream open
+    // forever: con_posts has no event deadline, so it would never reconnect.
+    #[tokio::test]
+    async fn sustained_decode_failures_end_the_stream() {
+        let (client, mut server) = local_pair().await;
+        futures::pin_mut!(client);
+        for _ in 0..MAX_CONSECUTIVE_DECODE_FAILURES {
+            server.send(Message::Text("not json".into())).await.unwrap();
+        }
+        let next = tokio::time::timeout(std::time::Duration::from_secs(5), client.next())
+            .await
+            .expect("stream did not yield within 5s");
+        assert!(
+            matches!(next, Some(Err(Error::SerdeJson(_)))),
+            "expected the stream to end with the decode error, got {next:?}"
+        );
     }
 
     #[tokio::test]
