@@ -1567,4 +1567,70 @@ mod tests {
             "saved cursor"
         );
     }
+
+    /// A valid unlike negates the label its like produced, for that liker
+    /// only: someone else's unlike with the same like rkey must not touch it
+    /// (CON-78).
+    #[sqlx::test(migrations = false)]
+    #[ignore = "needs Postgres (DATABASE_URL)"]
+    async fn pg_event_loop_negates_the_label_on_unlike(pool: sqlx::PgPool) {
+        sqlx::raw_sql(include_str!("../schema.sql"))
+            .execute(&pool)
+            .await
+            .unwrap();
+        // The label did:plc:liker's like produced.
+        sqlx::query(
+            "INSERT INTO labels (val, uri, payload, like_rkey) \
+             VALUES ('testcon', 'did:plc:liker', '\\x00', '3klabeled22')",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        let other_time_us: u64 = 1_700_000_000_000_001;
+        let unlike_time_us: u64 = 1_700_000_000_000_002;
+        let endpoint = fake_jetstream(vec![
+            unlike_event(other_time_us, "3klabeled22")
+                .replace("did:plc:liker", "did:plc:someoneelse"),
+            unlike_event(unlike_time_us, "3klabeled22"),
+        ])
+        .await;
+
+        let did: atrium_api::types::string::Did = DID.parse().unwrap();
+        let keypair = atrium_crypto::keypair::Secp256k1Keypair::import(&[7u8; 32]).unwrap();
+        let events_state = std::sync::Arc::new(tokio::sync::Mutex::new(EventsState {
+            rkeys_to_ids: Default::default(),
+            events: Default::default(),
+        }));
+        let mut lifetime = None;
+
+        let cursor = service_jetstream_once(
+            &pool,
+            &did,
+            &keypair,
+            events_state,
+            &endpoint,
+            std::time::Duration::ZERO,
+            Some(1),
+            &mut lifetime,
+        )
+        .await
+        .expect("the loop should process both unlikes and end cleanly on Close");
+
+        assert_eq!(cursor, Some(i64::try_from(unlike_time_us).unwrap()));
+        let negs: Vec<(String, String, String)> =
+            sqlx::query_as("SELECT val, uri, like_rkey FROM labels WHERE neg ORDER BY seq")
+                .fetch_all(&pool)
+                .await
+                .unwrap();
+        assert_eq!(
+            negs,
+            vec![(
+                "testcon".to_string(),
+                "did:plc:liker".to_string(),
+                "3klabeled22".to_string()
+            )],
+            "exactly one negation, for the liker who unliked"
+        );
+    }
 }
