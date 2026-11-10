@@ -294,6 +294,12 @@ async fn fetch_old_events(
         }))
 }
 
+/// Syncs the labeler's posts and label definitions with the events feed, then
+/// refreshes the con-post watchlist and announces new key dates.
+///
+/// Holds the events-state lock throughout, so likes wait for the new posts.
+/// Both maps in `EventsState` are set together before the first await that
+/// follows the writes, so cancelling this future leaves them consistent.
 #[allow(clippy::too_many_arguments)]
 async fn sync_labels(
     reqwest_client: &reqwest::Client,
@@ -605,12 +611,16 @@ async fn sync_labels(
                 .map(|rkey| (rkey.clone(), (*key).clone()))
         })
         .collect();
+    // Set both maps before the next await. The /trigger handler that runs
+    // this can be cancelled at any await (the client disconnects), and the
+    // lock would then be released with one map new and the other old.
+    events_state.events = events;
 
     // Rebuild the con-post watchlist (did -> series id) for key-date detection.
     {
         let mut watchlist = watchlist.write().await;
         watchlist.clear();
-        for assoc_event in events.values() {
+        for assoc_event in events_state.events.values() {
             if let (Some(series_id), Some(bluesky)) = (
                 assoc_event.event.series_id.as_ref(),
                 assoc_event.event.bluesky.as_ref(),
@@ -627,7 +637,8 @@ async fn sync_labels(
     // Announce newly published key dates (post-merge data only) and advance
     // the snapshot. Failures are logged inside run(), never propagated.
     if let Some(announcer) = announcer {
-        let announce_events = events
+        let announce_events = events_state
+            .events
             .values()
             .map(|assoc_event| keydates_announce::EventKeyDates {
                 event_id: assoc_event.event.id.clone(),
@@ -637,8 +648,6 @@ async fn sync_labels(
             .collect::<Vec<_>>();
         announcer.run(&announce_events).await;
     }
-
-    events_state.events = events;
 
     Ok(())
 }
@@ -745,6 +754,13 @@ async fn service_jetstream(
 /// nothing and gets cut here can never be scored healthy.
 const EVENT_DEADLINE: std::time::Duration = std::time::Duration::from_secs(30);
 
+/// Runs one Jetstream connection: labels likes of the labeler's posts, negates
+/// labels on unlikes, and saves the cursor every
+/// `commit_firehose_cursor_every`. Returns the last cursor when the stream
+/// ends, or an error, so the caller can reconnect.
+///
+/// A like on a post whose event is missing from the events state is skipped
+/// with a warning instead of panicking.
 // The `lifetime` out-param tips this over clippy's limit; bundling the
 // arguments into a struct for that alone isn't worth it.
 #[allow(clippy::too_many_arguments)]
@@ -811,7 +827,14 @@ async fn service_jetstream_once(
                         return Ok(());
                     };
 
-                    let assoc_event = events_state.events.get(&id).unwrap();
+                    // sync_labels sets both maps together, so this only misses
+                    // if that invariant breaks. Skip rather than panic.
+                    let Some(assoc_event) = events_state.events.get(&id) else {
+                        log::warn!(
+                            "skipping like: post {target_rkey:?} maps to unknown event {id}"
+                        );
+                        return Ok(());
+                    };
 
                     let Some(cts) = event_time(event.time_us) else {
                         return Ok(());
@@ -1513,6 +1536,148 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(labels, 1, "no label beyond the seeded one");
+    }
+
+    /// If the two maps ever disagree, a like on the post is skipped instead of
+    /// panicking the process (CON-76).
+    #[sqlx::test(migrations = false)]
+    #[ignore = "needs Postgres (DATABASE_URL)"]
+    async fn pg_event_loop_skips_a_like_on_a_post_with_no_event(pool: sqlx::PgPool) {
+        sqlx::raw_sql(include_str!("../schema.sql"))
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        let like_time_us: u64 = 1_700_000_000_000_001;
+        let endpoint = fake_jetstream(vec![like_event(
+            like_time_us,
+            &uri(DID, "app.bsky.feed.post", "3kpost222"),
+        )])
+        .await;
+
+        let did: atrium_api::types::string::Did = DID.parse().unwrap();
+        let keypair = atrium_crypto::keypair::Secp256k1Keypair::import(&[7u8; 32]).unwrap();
+        // The post maps to an event id that `events` doesn't have.
+        let post_rkey: atrium_api::types::string::RecordKey = "3kpost222".parse().unwrap();
+        let events_state = std::sync::Arc::new(tokio::sync::Mutex::new(EventsState {
+            rkeys_to_ids: [(post_rkey, "testcon-2026".to_string())].into(),
+            events: Default::default(),
+        }));
+        let mut lifetime = None;
+
+        let cursor = service_jetstream_once(
+            &pool,
+            &did,
+            &keypair,
+            events_state,
+            &endpoint,
+            std::time::Duration::ZERO,
+            Some(1),
+            &mut lifetime,
+        )
+        .await
+        .expect("the loop should skip the like and end cleanly on Close");
+
+        assert_eq!(cursor, Some(i64::try_from(like_time_us).unwrap()));
+        let labels: i64 = sqlx::query_scalar("SELECT count(*) FROM labels")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(labels, 0, "no label for a post with no event");
+    }
+
+    /// A local stand-in for the events feed and the labeler's PDS: the feed
+    /// has one event, the account has no labeler record or posts yet, and
+    /// every write is accepted. Returns the base URL.
+    async fn fake_sync_backend(event_line: String) -> String {
+        use axum::routing::{get, post};
+        let app = axum::Router::new()
+            .route("/events.jsonl", get(move || async move { event_line }))
+            .route(
+                "/xrpc/com.atproto.repo.getRecord",
+                get(|| async {
+                    (
+                        axum::http::StatusCode::BAD_REQUEST,
+                        axum::Json(serde_json::json!({
+                            "error": "RecordNotFound",
+                            "message": "no labeler record",
+                        })),
+                    )
+                }),
+            )
+            .route(
+                "/xrpc/com.atproto.repo.listRecords",
+                get(|| async { axum::Json(serde_json::json!({ "records": [] })) }),
+            )
+            .route(
+                "/xrpc/com.atproto.repo.applyWrites",
+                post(|| async { axum::Json(serde_json::json!({})) }),
+            );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        format!("http://{addr}")
+    }
+
+    /// Cancelling `sync_labels` at the watchlist await (a /trigger client
+    /// disconnecting) leaves both maps in the events state set, so the new
+    /// post resolves to its event (CON-76).
+    #[tokio::test]
+    async fn sync_labels_cancelled_after_writes_keeps_both_maps_set() {
+        let event_line = serde_json::json!({
+            "id": "testcon-2030",
+            "name": "TestCon 2030",
+            "venue": "Hall",
+            "locale": "en",
+            "startDate": "2030-01-01",
+            "endDate": "2030-01-02",
+        })
+        .to_string();
+        let base = fake_sync_backend(event_line).await;
+
+        let reqwest_client = reqwest::Client::new();
+        let agent = bsky_session::BskyAgent::new(
+            atrium_xrpc_client::reqwest::ReqwestClientBuilder::new(&base)
+                .client(reqwest_client.clone())
+                .build(),
+            atrium_api::agent::atp_agent::store::MemorySessionStore::default(),
+        );
+        let did: atrium_api::types::string::Did = DID.parse().unwrap();
+        let events_state = std::sync::Arc::new(tokio::sync::Mutex::new(EventsState {
+            rkeys_to_ids: Default::default(),
+            events: Default::default(),
+        }));
+        let watchlist = con_posts::Watchlist::default();
+
+        // Hold the watchlist so sync_labels blocks on it after the writes,
+        // then cancel it there.
+        let held = watchlist.write().await;
+        let result = tokio::time::timeout(
+            std::time::Duration::from_secs(2),
+            sync_labels(
+                &reqwest_client,
+                &format!("{base}/events.jsonl"),
+                "https://cons.fyi",
+                &did,
+                &agent,
+                events_state.clone(),
+                watchlist.clone(),
+                None,
+            ),
+        )
+        .await;
+        assert!(result.is_err(), "sync_labels finished: {result:?}");
+        drop(held);
+
+        let state = events_state.lock().await;
+        assert_eq!(state.rkeys_to_ids.len(), 1, "one new post");
+        let (rkey, id) = state.rkeys_to_ids.iter().next().unwrap();
+        assert_eq!(id, "testcon-2030");
+        let assoc_event = state
+            .events
+            .get(id)
+            .expect("the new post's event is in the events map");
+        assert_eq!(assoc_event.rkey.as_ref(), Some(rkey));
     }
 
     /// A frame that doesn't decode, between two good events, must not end the
