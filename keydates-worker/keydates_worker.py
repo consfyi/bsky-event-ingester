@@ -1429,16 +1429,17 @@ def ops_notify(text):
     same bot the labeler health monitor uses (CON-10). Additive to the stderr
     log lines, never a replacement: this must never raise or block a sweep, and
     both secrets unset is a silent no-op (log-only, like the monitor). DRY_RUN
-    shows the text in the log instead of sending."""
+    shows the text in the log instead of sending. Returns True only when
+    Telegram accepted the message, for callers that must retry a lost send."""
     if not OPS_TELEGRAM_BOT_TOKEN or not OPS_TELEGRAM_CHAT_ID:
-        return
+        return False
     # Telegram rejects a sendMessage payload over 4096 chars outright, which
     # would drop the one alert that matters — truncate every payload defensively
     if len(text) > 4096:
         text = text[:4095] + "…"
     if DRY_RUN:
         log(f"ops_notify (DRY_RUN, not sent): {text}")
-        return
+        return False
     try:
         data = urllib.parse.urlencode({
             "chat_id": OPS_TELEGRAM_CHAT_ID,
@@ -1451,8 +1452,96 @@ def ops_notify(text):
             headers={"Content-Type": "application/x-www-form-urlencoded"})
         with urllib.request.urlopen(req, timeout=20):
             pass
+        return True
     except Exception as e:
         log(f"ops_notify: could not send ops alert: {e}")
+        return False
+
+
+# --- next-edition notices (CON-79) -------------------------------------------
+# A con with no future edition is skipped by process_con, and the key-date
+# extractor has no slot for a new edition's own dates anyway. So once a week the
+# sweep reads those cons' posts and pages ops when one names a year past the
+# newest edition's — a person checks the post and adds the edition by hand.
+NOTICED_FILE = os.path.join(os.path.dirname(CACHE_FILE), "next_edition_noticed.json")
+# Telegram allows a bot ~20 messages a minute in a group; the first run after
+# deploy can find dozens of matches at once
+NOTICE_SEND_INTERVAL = 3.5
+YEAR_RE = re.compile(r"\b(20\d\d)\b")
+
+
+def load_noticed():
+    if os.path.exists(NOTICED_FILE):
+        try:
+            with open(NOTICED_FILE) as f:
+                data = json.load(f)
+            if isinstance(data, dict):
+                return data
+        except (OSError, ValueError) as e:
+            log(f"next-edition: could not read {NOTICED_FILE}: {e}")
+    return {}
+
+
+def save_noticed(noticed):
+    os.makedirs(os.path.dirname(NOTICED_FILE), exist_ok=True)
+    tmp = NOTICED_FILE + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump(noticed, f, indent=2, sort_keys=True)
+    os.replace(tmp, NOTICED_FILE)
+
+
+def next_edition_candidate(con):
+    """Start year of the con's newest edition when the con has a Bluesky DID and
+    no edition starting after today; otherwise None."""
+    if not (con.get("bluesky") or {}).get("did"):
+        return None
+    starts = [e.get("startDate", "") for e in con.get("events", []) if e.get("startDate")]
+    if not starts or max(starts) > TODAY.isoformat():
+        return None
+    return int(max(starts)[:4])
+
+
+def names_later_year(text, newest_year):
+    return any(int(y) > newest_year for y in YEAR_RE.findall(text or ""))
+
+
+def notice_next_editions(files, sleep=time.sleep):
+    """Page ops once per post that names a year past a candidate con's newest
+    edition. A post is recorded only after Telegram accepts the message, so a
+    failed send retries at the next sweep. Returns the number sent."""
+    noticed = load_noticed()
+    sent = 0
+    for fn in files:
+        try:
+            with open(fn) as f:
+                con = json.load(f)
+        except (OSError, ValueError) as e:
+            log(f"next-edition: skipping {os.path.basename(fn)}: {e}")
+            continue
+        newest_year = next_edition_candidate(con)
+        if newest_year is None:
+            continue
+        bsky = con["bluesky"]
+        actor = bsky["did"]
+        if not SOURCE_URL_RE.match(f"https://bsky.app/profile/{actor}/post/3x") and bsky.get("handle"):
+            actor = bsky["handle"]  # same exotic-DID fallback as process_con
+        for post in fetch_posts(actor):
+            url = post.get("url")
+            if not url or url in noticed or not names_later_year(post.get("text"), newest_year):
+                continue
+            if sent:
+                sleep(NOTICE_SEND_INTERVAL)
+            text = (f"📅 {con.get('name', os.path.basename(fn))} may have announced a new "
+                    f"edition (newest listed: {newest_year}).\n{url}\n\n{post.get('text', '')[:1500]}")
+            if not ops_notify(text):
+                log(f"next-edition: notice for {url} not sent; will retry next sweep")
+                continue
+            sent += 1
+            noticed[url] = {"series": os.path.basename(fn)[:-5], "noticedAt": TODAY.isoformat()}
+            save_noticed(noticed)  # per send, so a crash mid-burst can't re-send the earlier ones
+    if sent:
+        log(f"next-edition: sent {sent} notice(s)")
+    return sent
 
 
 def realtime_page_on_cooldown(now):
@@ -2091,7 +2180,8 @@ def publish(summary):
     status = git("status", "--porcelain").stdout
     # never stage worker state files (ledger, pending, cache), even if CACHE_FILE is misconfigured to
     # sit inside DATA_DIR — it is worker state, not con data
-    state_names = {os.path.basename(p) for p in (OUTSTANDING_FILE, DEAD_PENDING_FILE, CACHE_FILE)}
+    state_names = {os.path.basename(p) for p in (OUTSTANDING_FILE, DEAD_PENDING_FILE, CACHE_FILE,
+                                                 NOTICED_FILE)}
     changed = [l[3:] for l in status.splitlines()
                if l.endswith(".json") and "/" not in l[3:] and l[3:] not in state_names]
     if not changed:
@@ -2310,6 +2400,14 @@ def main():
             alert.append("See the keydates bot PR: "
                          "https://github.com/consfyi/data/pulls?q=is%3Apr+is%3Aopen+head%3Abot%2Fbsky-keydates")
             ops_notify("\n".join(alert))
+
+        # every file in this shard, not just `processed`: the cons this exists
+        # for never reach an extraction pass. DRY_RUN neither sends nor records.
+        if not DRY_RUN:
+            try:
+                notice_next_editions([fn for fn, _, _ in targets])
+            except Exception as e:
+                log(f"ERROR in next-edition notices: {e}")
 
     # a hold whose exact slot+date this run also applies (e.g. a re-applied
     # ledger entry from an earlier post) would tell the reviewer to /reject a

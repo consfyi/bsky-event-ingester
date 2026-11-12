@@ -3746,3 +3746,189 @@ class LaterClosesPairCheckTest(unittest.TestCase):
         self.assertEqual([len(items) for items in self.chat_calls], [1, 1])
         self.assertEqual(sorted(r["category"] for r in refuted), ["dealers", "registration"])
         self.assertEqual(held, [])
+
+
+class NextEditionNoticeTest(unittest.TestCase):
+    """CON-79: page ops when a con with no future edition posts about a later
+    year. Network (feed + Telegram) is faked; state lives in a temp dir."""
+
+    TODAY = datetime.date(2026, 10, 16)
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.feeds = {}  # actor -> raw getAuthorFeed items
+        self.sent = []   # texts Telegram accepted
+        self.fail_sends = False
+        for p in [
+            unittest.mock.patch.object(kw, "NOTICED_FILE", os.path.join(self.tmp.name, "noticed.json")),
+            unittest.mock.patch.object(kw, "TODAY", self.TODAY),
+            unittest.mock.patch.object(kw, "appget", self.fake_appget),
+            unittest.mock.patch.object(kw, "ops_notify", self.fake_notify),
+        ]:
+            p.start()
+            self.addCleanup(p.stop)
+
+    def fake_appget(self, method, params):
+        assert method == "app.bsky.feed.getAuthorFeed", method
+        return {"feed": self.feeds.get(params["actor"], [])}
+
+    def fake_notify(self, text):
+        if self.fail_sends:
+            return False
+        self.sent.append(text)
+        return True
+
+    def write_con(self, name, editions, did=DID):
+        con = {"name": name, "events": [
+            {"id": f"{name.lower()}-{s[:4]}", "name": f"{name} {s[:4]}",
+             "startDate": s, "endDate": e} for s, e in editions]}
+        if did:
+            con["bluesky"] = {"did": did, "handle": "testcon.example"}
+        fn = os.path.join(self.tmp.name, f"{name.lower()}.json")
+        with open(fn, "w") as f:
+            json.dump(con, f)
+        return fn
+
+    def post(self, rkey, text, repost=False, did=DID):
+        item = {"post": {"uri": uri(rkey, did),
+                         "record": {"text": text, "createdAt": "2026-10-16T18:00:00.000Z"}}}
+        if repost:
+            item["reason"] = {"$type": "app.bsky.feed.defs#reasonRepost"}
+        return item
+
+    def run_notice(self, files):
+        return kw.notice_next_editions(files, sleep=lambda s: None)
+
+    # Paraphrase of the BLFC Oct 16 2026 post, not its verbatim text.
+    BLFC_TEXT = ("Thank you all for an amazing BLFC! Mark your calendars: "
+                 "BLFC 2027 is scheduled for October 28-31, 2027.")
+
+    def test_announcement_after_last_edition_sends_one_notice(self):
+        fn = self.write_con("Blfc", [("2026-10-12", "2026-10-15"), ("2025-10-13", "2025-10-16")])
+        self.feeds[DID] = [self.post("3aaa", self.BLFC_TEXT)]
+        self.assertEqual(self.run_notice([fn]), 1)
+        self.assertEqual(len(self.sent), 1)
+        self.assertIn(f"https://bsky.app/profile/{DID}/post/3aaa", self.sent[0])
+        self.assertIn("Blfc", self.sent[0])
+        self.assertIn("October 28-31, 2027", self.sent[0])
+
+    def test_same_post_is_not_noticed_twice(self):
+        fn = self.write_con("Blfc", [("2026-10-12", "2026-10-15")])
+        self.feeds[DID] = [self.post("3aaa", self.BLFC_TEXT)]
+        self.run_notice([fn])
+        self.assertEqual(self.run_notice([fn]), 0)
+        self.assertEqual(len(self.sent), 1)
+
+    def test_failed_send_is_retried_next_sweep(self):
+        fn = self.write_con("Blfc", [("2026-10-12", "2026-10-15")])
+        self.feeds[DID] = [self.post("3aaa", self.BLFC_TEXT)]
+        self.fail_sends = True
+        self.assertEqual(self.run_notice([fn]), 0)
+        self.fail_sends = False
+        self.assertEqual(self.run_notice([fn]), 1)
+        self.assertEqual(len(self.sent), 1)
+
+    def test_post_naming_only_the_newest_editions_year_is_ignored(self):
+        fn = self.write_con("Blfc", [("2026-10-12", "2026-10-15")])
+        self.feeds[DID] = [self.post("3aaa", "BLFC 2026 was our biggest year yet! Since 2012."),
+                           self.post("3bbb", "Hotel block for October closes soon")]
+        self.assertEqual(self.run_notice([fn]), 0)
+        self.assertEqual(self.sent, [])
+
+    def test_repost_is_ignored(self):
+        fn = self.write_con("Blfc", [("2026-10-12", "2026-10-15")])
+        self.feeds[DID] = [self.post("3aaa", "Othercon 2027 is March 4-7!", repost=True)]
+        self.assertEqual(self.run_notice([fn]), 0)
+
+    def test_con_with_future_edition_is_not_checked(self):
+        fn = self.write_con("Blfc", [("2027-10-28", "2027-10-31"), ("2026-10-12", "2026-10-15")])
+        self.feeds[DID] = [self.post("3aaa", "See you at BLFC 2028!")]
+        self.assertEqual(self.run_notice([fn]), 0)
+
+    def test_unmapped_con_is_not_checked(self):
+        fn = self.write_con("Blfc", [("2026-10-12", "2026-10-15")], did=None)
+        self.assertEqual(self.run_notice([fn]), 0)
+
+    def test_state_survives_between_runs_on_disk(self):
+        fn = self.write_con("Blfc", [("2026-10-12", "2026-10-15")])
+        self.feeds[DID] = [self.post("3aaa", self.BLFC_TEXT)]
+        self.run_notice([fn])
+        with open(kw.NOTICED_FILE) as f:
+            self.assertIn(f"https://bsky.app/profile/{DID}/post/3aaa", json.load(f))
+
+    def test_corrupt_state_file_does_not_crash(self):
+        with open(kw.NOTICED_FILE, "w") as f:
+            f.write("{not json")
+        fn = self.write_con("Blfc", [("2026-10-12", "2026-10-15")])
+        self.feeds[DID] = [self.post("3aaa", self.BLFC_TEXT)]
+        self.assertEqual(self.run_notice([fn]), 1)
+
+
+class NextEditionWiringTest(MainSmokeTest):
+    """The notice runs in --sweep over every shard file, never in DRY_RUN, never
+    outside --sweep, and a crash in it can't stop the sweep from publishing."""
+
+    def setUp(self):
+        super().setUp()
+        # PUSH is on in the base fixture; keep git/format off the real machine
+        p = unittest.mock.patch.object(kw.subprocess, "run",
+                                       return_value=unittest.mock.Mock(returncode=0, stdout=""))
+        p.start()
+        self.addCleanup(p.stop)
+
+    def test_sweep_runs_notice_over_all_files(self):
+        with unittest.mock.patch.object(kw, "process_con", return_value=([], [], [], [], False)), \
+             unittest.mock.patch.object(kw, "notice_next_editions", return_value=0) as notice:
+            kw.main()
+        notice.assert_called_once()
+        self.assertEqual(sorted(os.path.basename(f) for f in notice.call_args[0][0]),
+                         ["con-a.json", "con-b.json"])
+
+    def test_dry_run_skips_notice(self):
+        with unittest.mock.patch.object(kw, "DRY_RUN", True), \
+             unittest.mock.patch.object(kw, "process_con", return_value=([], [], [], [], False)), \
+             unittest.mock.patch.object(kw, "notice_next_editions") as notice:
+            kw.main()
+        notice.assert_not_called()
+
+    def test_series_mode_skips_notice(self):
+        with unittest.mock.patch.object(sys, "argv", ["keydates_worker.py", "--series", "con-a"]), \
+             unittest.mock.patch.object(kw, "process_con", return_value=([], [], [], [], False)), \
+             unittest.mock.patch.object(kw, "notice_next_editions") as notice:
+            kw.main()
+        notice.assert_not_called()
+
+    def test_notice_crash_does_not_stop_publish(self):
+        slot = {"event_id": "testcon-2999", "category": "panels", "kind": "opens",
+                "date": "2999-01-01", "source": entry("3aaa")["source"],
+                "asOf": "2998-12-01T00:00:00.000Z", "confidence": 0.9,
+                "_post_text": "post", "_file": "con-a.json", "verb": "add"}
+        with unittest.mock.patch.object(kw, "process_con", return_value=([slot], [], [], [], True)), \
+             unittest.mock.patch.object(kw, "check_source_liveness", return_value=([], [], [], [], [])), \
+             unittest.mock.patch.object(kw, "notice_next_editions", side_effect=RuntimeError("boom")), \
+             unittest.mock.patch.object(kw, "publish") as publish:
+            kw.main()
+        publish.assert_called_once()
+
+
+class OpsNotifyReturnTest(unittest.TestCase):
+    """notice_next_editions records a post only on a True return."""
+
+    def test_returns_true_only_when_telegram_accepts(self):
+        base = [unittest.mock.patch.object(kw, "OPS_TELEGRAM_BOT_TOKEN", "tok"),
+                unittest.mock.patch.object(kw, "OPS_TELEGRAM_CHAT_ID", "-1"),
+                unittest.mock.patch.object(kw, "DRY_RUN", False)]
+        for p in base:
+            p.start()
+            self.addCleanup(p.stop)
+        with unittest.mock.patch.object(kw.urllib.request, "urlopen",
+                                        return_value=unittest.mock.MagicMock()):
+            self.assertTrue(kw.ops_notify("ok"))
+        with unittest.mock.patch.object(kw.urllib.request, "urlopen",
+                                        side_effect=OSError("429 Too Many Requests")):
+            self.assertFalse(kw.ops_notify("rate limited"))
+        with unittest.mock.patch.object(kw, "DRY_RUN", True):
+            self.assertFalse(kw.ops_notify("dry"))
+        with unittest.mock.patch.object(kw, "OPS_TELEGRAM_BOT_TOKEN", ""):
+            self.assertFalse(kw.ops_notify("unconfigured"))
