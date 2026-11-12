@@ -1467,7 +1467,8 @@ NOTICED_FILE = os.path.join(os.path.dirname(CACHE_FILE), "next_edition_noticed.j
 # Telegram allows a bot ~20 messages a minute in a group; the first run after
 # deploy can find dozens of matches at once
 NOTICE_SEND_INTERVAL = 3.5
-YEAR_RE = re.compile(r"\b(20\d\d)\b")
+# digit boundaries, not \b: "#BLFC2027" and "TFF2027" glue the year to letters
+YEAR_RE = re.compile(r"(?<!\d)(20\d\d)(?!\d)")
 
 
 def load_noticed():
@@ -1518,27 +1519,29 @@ def notice_next_editions(files, sleep=time.sleep):
         except (OSError, ValueError) as e:
             log(f"next-edition: skipping {os.path.basename(fn)}: {e}")
             continue
-        newest_year = next_edition_candidate(con)
-        if newest_year is None:
-            continue
-        bsky = con["bluesky"]
-        actor = bsky["did"]
-        if not SOURCE_URL_RE.match(f"https://bsky.app/profile/{actor}/post/3x") and bsky.get("handle"):
-            actor = bsky["handle"]  # same exotic-DID fallback as process_con
-        for post in fetch_posts(actor):
-            url = post.get("url")
-            if not url or url in noticed or not names_later_year(post.get("text"), newest_year):
+        # one malformed con file must not drop the notices for every later con
+        try:
+            newest_year = next_edition_candidate(con)
+            if newest_year is None:
                 continue
-            if sent:
-                sleep(NOTICE_SEND_INTERVAL)
-            text = (f"📅 {con.get('name', os.path.basename(fn))} may have announced a new "
-                    f"edition (newest listed: {newest_year}).\n{url}\n\n{post.get('text', '')[:1500]}")
-            if not ops_notify(text):
-                log(f"next-edition: notice for {url} not sent; will retry next sweep")
-                continue
-            sent += 1
-            noticed[url] = {"series": os.path.basename(fn)[:-5], "noticedAt": TODAY.isoformat()}
-            save_noticed(noticed)  # per send, so a crash mid-burst can't re-send the earlier ones
+            # the DID, never the handle: the URL is only a Telegram link and the
+            # dedup key, and a handle change would re-notice every post
+            for post in fetch_posts(con["bluesky"]["did"]):
+                url = post.get("url")
+                if not url or url in noticed or not names_later_year(post.get("text"), newest_year):
+                    continue
+                if sent:
+                    sleep(NOTICE_SEND_INTERVAL)
+                text = (f"📅 {con.get('name', os.path.basename(fn))} may have announced a new "
+                        f"edition (newest listed: {newest_year}).\n{url}\n\n{post.get('text', '')[:1500]}")
+                if not ops_notify(text):
+                    log(f"next-edition: notice for {url} not sent; will retry next sweep")
+                    continue
+                sent += 1
+                noticed[url] = {"series": os.path.basename(fn)[:-5], "noticedAt": TODAY.isoformat()}
+                save_noticed(noticed)  # per send, so a crash mid-burst can't re-send the earlier ones
+        except Exception as e:
+            log(f"next-edition: skipping {os.path.basename(fn)}: {e}")
     if sent:
         log(f"next-edition: sent {sent} notice(s)")
     return sent
@@ -2404,10 +2407,18 @@ def main():
         # every file in this shard, not just `processed`: the cons this exists
         # for never reach an extraction pass. DRY_RUN neither sends nor records.
         if not DRY_RUN:
+            # its feed fetches would count toward the CON-35 appview outage
+            # verdict below, and past-only cons are not this run's extraction
+            appview_failures_before = _run_health["appview_failures"]
             try:
                 notice_next_editions([fn for fn, _, _ in targets])
             except Exception as e:
                 log(f"ERROR in next-edition notices: {e}")
+            finally:
+                notice_fetch_failures = _run_health["appview_failures"] - appview_failures_before
+                if notice_fetch_failures:
+                    log(f"next-edition: {notice_fetch_failures} feed fetch(es) failed")
+                _run_health["appview_failures"] = appview_failures_before
 
     # a hold whose exact slot+date this run also applies (e.g. a re-applied
     # ledger entry from an earlier post) would tell the reviewer to /reject a

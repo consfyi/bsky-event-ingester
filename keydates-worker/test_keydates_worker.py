@@ -3864,6 +3864,100 @@ class NextEditionNoticeTest(unittest.TestCase):
         self.feeds[DID] = [self.post("3aaa", self.BLFC_TEXT)]
         self.assertEqual(self.run_notice([fn]), 1)
 
+    def test_year_glued_to_a_hashtag_or_name_counts(self):
+        self.assertTrue(kw.names_later_year("See you at #BLFC2027!", 2026))
+        self.assertTrue(kw.names_later_year("TFF2027 dates are out", 2026))
+        self.assertFalse(kw.names_later_year("#BLFC2026 was great", 2026))
+        self.assertFalse(kw.names_later_year("order 120270 shipped", 2026))
+
+    def test_send_that_raises_keeps_earlier_sends_recorded(self):
+        fn = self.write_con("Blfc", [("2026-10-12", "2026-10-15")])
+        self.feeds[DID] = [self.post("3aaa", self.BLFC_TEXT),
+                           self.post("3bbb", "Registration for BLFC 2027 opens in May")]
+        calls, on_disk = [], []
+
+        def notify_then_raise(text):
+            calls.append(text)
+            if len(calls) == 2:
+                # the first send is already on disk before the second goes out
+                with open(kw.NOTICED_FILE) as f:
+                    on_disk.extend(json.load(f))
+                raise RuntimeError("network died mid-burst")
+            self.sent.append(text)
+            return True
+
+        with unittest.mock.patch.object(kw, "ops_notify", notify_then_raise):
+            self.assertEqual(self.run_notice([fn]), 1)
+        self.assertEqual(on_disk, [f"https://bsky.app/profile/{DID}/post/3aaa"])
+        with open(kw.NOTICED_FILE) as f:
+            self.assertEqual(list(json.load(f)),
+                             [f"https://bsky.app/profile/{DID}/post/3aaa"])
+        self.assertEqual(self.run_notice([fn]), 1)
+        self.assertEqual(len(self.sent), 2)
+        self.assertIn("/post/3bbb", self.sent[1])
+
+    def test_sends_are_spaced_by_the_interval_only_between_sends(self):
+        fn = self.write_con("Blfc", [("2026-10-12", "2026-10-15")])
+        self.feeds[DID] = [self.post("3aaa", self.BLFC_TEXT),
+                           self.post("3bbb", "Registration for BLFC 2027 opens in May"),
+                           self.post("3ccc", "BLFC 2027 hotel block opens soon")]
+        events = []
+
+        def notify(text):
+            events.append("send")
+            return True
+
+        with unittest.mock.patch.object(kw, "ops_notify", notify):
+            kw.notice_next_editions([fn], sleep=lambda s: events.append(("sleep", s)))
+            sleep = ("sleep", kw.NOTICE_SEND_INTERVAL)
+            self.assertEqual(events, ["send", sleep, "send", sleep, "send"])
+            events.clear()
+            kw.notice_next_editions([fn], sleep=lambda s: events.append(("sleep", s)))
+        self.assertEqual(events, [])
+
+    def test_malformed_con_file_does_not_drop_later_notices(self):
+        bad_list = os.path.join(self.tmp.name, "a-list.json")
+        with open(bad_list, "w") as f:
+            json.dump([{"name": "x"}], f)
+        bad_events = os.path.join(self.tmp.name, "b-events.json")
+        with open(bad_events, "w") as f:
+            json.dump({"bluesky": {"did": DID}, "events": ["2026-01-01"]}, f)
+        bad_start = os.path.join(self.tmp.name, "c-start.json")
+        with open(bad_start, "w") as f:
+            json.dump({"bluesky": {"did": DID}, "events": [{"startDate": 2026}]}, f)
+        missing = os.path.join(self.tmp.name, "d-missing.json")
+        corrupt = os.path.join(self.tmp.name, "e-corrupt.json")
+        with open(corrupt, "w") as f:
+            f.write("{not json")
+        fn = self.write_con("Blfc", [("2026-10-12", "2026-10-15")])
+        self.feeds[DID] = [self.post("3aaa", self.BLFC_TEXT)]
+        self.assertEqual(
+            self.run_notice([bad_list, bad_events, bad_start, missing, corrupt, fn]), 1)
+        self.assertEqual(len(self.sent), 1)
+        self.assertIn("Blfc", self.sent[0])
+
+    def test_publish_never_stages_the_noticed_file(self):
+        data_dir = os.path.join(self.tmp.name, "data")
+        os.makedirs(os.path.join(data_dir, ".git"))
+        added = []
+
+        def fake_git(*args, check=True):
+            if args[0] == "status":
+                return unittest.mock.Mock(
+                    stdout="?? next_edition_noticed.json\n M con-a.json\n")
+            if args[0] == "add":
+                added.extend(args[2:])
+            return unittest.mock.Mock(stdout="")
+
+        with unittest.mock.patch.object(kw, "DATA_DIR", data_dir), \
+             unittest.mock.patch.object(kw, "NOTICED_FILE",
+                                        os.path.join(data_dir, "next_edition_noticed.json")), \
+             unittest.mock.patch.object(kw, "git", side_effect=fake_git), \
+             unittest.mock.patch.object(kw.subprocess, "run",
+                                        return_value=unittest.mock.Mock(returncode=0, stdout="")):
+            kw.publish("summary body")
+        self.assertEqual(added, ["con-a.json"])
+
 
 class NextEditionWiringTest(MainSmokeTest):
     """The notice runs in --sweep over every shard file, never in DRY_RUN, never
@@ -3910,6 +4004,29 @@ class NextEditionWiringTest(MainSmokeTest):
              unittest.mock.patch.object(kw, "publish") as publish:
             kw.main()
         publish.assert_called_once()
+
+    def test_notice_fetch_failures_do_not_trip_the_wholesale_verdict(self):
+        # a quiet shard (no model calls, healthy appview) whose two past-only
+        # cons both fail the notice step's feed fetch must still exit cleanly
+        for name in ("con-a.json", "con-b.json"):
+            with open(os.path.join(self.data_dir, name), "w") as f:
+                json.dump({"bluesky": {"did": DID},
+                           "events": [{"id": "x-2020", "startDate": "2020-01-01",
+                                       "endDate": "2020-01-03"}]}, f)
+        with unittest.mock.patch.object(
+                 kw, "reset_run_health",
+                 lambda: kw._run_health.update(attempted=0, succeeded=0,
+                                               backend_failures=0, appview_failures=0)), \
+             unittest.mock.patch.object(kw, "NOTICED_FILE",
+                                        os.path.join(self.tmp.name, "noticed.json")), \
+             unittest.mock.patch.object(kw, "process_con", return_value=([], [], [], [], False)), \
+             unittest.mock.patch.object(kw, "check_source_liveness", return_value=([], [], [], [], [])), \
+             unittest.mock.patch.object(kw.urllib.request, "urlopen",
+                                        side_effect=OSError("appview down")), \
+             unittest.mock.patch.object(kw.time, "sleep"):
+            kw.main()  # SystemExit(1) here is the false CON-35 page
+        for call in kw.ops_notify.call_args_list:
+            self.assertNotIn("wholesale", call.args[0])
 
 
 class OpsNotifyReturnTest(unittest.TestCase):
