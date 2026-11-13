@@ -853,6 +853,28 @@ class SourceIdentTest(unittest.TestCase):
                           f"https://bsky.app/profile/{DID}/post/3mal",
                           f"https://bsky.app/profile/{DID}/post/3abc"])
 
+    def test_fetch_posts_relevant_filter_default_and_opt_out(self):
+        # CON-79: key-date extraction keeps the RELEVANT pre-filter by default;
+        # only the next-edition notice opts out to see posts like "#BLFC2027"
+        feed = {"feed": [
+            {"post": {"uri": f"at://{DID}/app.bsky.feed.post/3rel",
+                      "author": {"did": DID},
+                      "record": {"text": "Registration opens March 3",
+                                 "createdAt": "2998-12-01"}}},
+            {"post": {"uri": f"at://{DID}/app.bsky.feed.post/3tag",
+                      "author": {"did": DID},
+                      "record": {"text": "See you at #BLFC2027!",
+                                 "createdAt": "2998-12-02"}}},
+        ]}
+        with unittest.mock.patch.object(kw, "appget", lambda method, params: feed):
+            filtered = kw.fetch_posts(DID)
+            unfiltered = kw.fetch_posts(DID, relevant_only=False)
+        self.assertEqual([p["url"] for p in filtered],
+                         [f"https://bsky.app/profile/{DID}/post/3rel"])
+        self.assertEqual([p["url"] for p in unfiltered],
+                         [f"https://bsky.app/profile/{DID}/post/3rel",
+                          f"https://bsky.app/profile/{DID}/post/3tag"])
+
     def test_handle_form_rejection_suppresses_did_form_candidate(self):
         # a /reject recorded before pinning must keep suppressing the same post
         rej = [{"event_id": "testcon-2999", "category": "panels", "kind": "opens",
