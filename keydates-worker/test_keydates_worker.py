@@ -3891,6 +3891,8 @@ class NextEditionNoticeTest(unittest.TestCase):
         self.assertTrue(kw.names_later_year("TFF2027 dates are out", 2026))
         self.assertFalse(kw.names_later_year("#BLFC2026 was great", 2026))
         self.assertFalse(kw.names_later_year("order 120270 shipped", 2026))
+        self.assertFalse(kw.names_later_year("raised $12027 so far", 2026))
+        self.assertFalse(kw.names_later_year("20270 badges sold", 2026))
 
     def test_hashtag_year_post_reaches_the_notice_through_the_feed(self):
         # RELEVANT's \b20\d\d\b misses "#BLFC2027", so the notice must not
@@ -3945,6 +3947,62 @@ class NextEditionNoticeTest(unittest.TestCase):
             events.clear()
             kw.notice_next_editions([fn], sleep=lambda s: events.append(("sleep", s)))
         self.assertEqual(events, [])
+
+    def test_attempt_after_a_raised_send_still_waits_the_interval(self):
+        # spacing counts attempts, not successes: a send that raised still hit
+        # Telegram's rate window, so the next con's send waits too
+        did_b = "did:plc:othertestothertestother"
+        fn_a = self.write_con("Blfc", [("2026-10-12", "2026-10-15")])
+        fn_b = self.write_con("Othercon", [("2026-09-01", "2026-09-03")], did=did_b)
+        self.feeds[DID] = [self.post("3aaa", self.BLFC_TEXT)]
+        self.feeds[did_b] = [self.post("3ccc", "Othercon 2027 is March 4-7!", did=did_b)]
+        events = []
+
+        def notify(text):
+            events.append("send")
+            if len(events) == 1:
+                raise RuntimeError("network blip")
+            return True
+
+        with unittest.mock.patch.object(kw, "ops_notify", notify):
+            kw.notice_next_editions([fn_a, fn_b], sleep=lambda s: events.append(("sleep", s)))
+        self.assertEqual(events, ["send", ("sleep", kw.NOTICE_SEND_INTERVAL), "send"])
+
+    def test_first_failed_send_stops_the_whole_pass(self):
+        did_b = "did:plc:othertestothertestother"
+        fn_a = self.write_con("Blfc", [("2026-10-12", "2026-10-15")])
+        fn_b = self.write_con("Othercon", [("2026-09-01", "2026-09-03")], did=did_b)
+        self.feeds[DID] = [self.post("3aaa", self.BLFC_TEXT),
+                           self.post("3bbb", "Registration for BLFC 2027 opens in May")]
+        self.feeds[did_b] = [self.post("3ccc", "Othercon 2027 is March 4-7!", did=did_b)]
+        calls = []
+
+        def refuse(text):
+            calls.append(text)
+            return False
+
+        with unittest.mock.patch.object(kw, "ops_notify", refuse):
+            self.assertEqual(self.run_notice([fn_a, fn_b]), 0)
+        self.assertEqual(len(calls), 1)
+        self.assertFalse(os.path.exists(kw.NOTICED_FILE))
+        # the next sweep sends everything the stopped pass skipped
+        self.assertEqual(self.run_notice([fn_a, fn_b]), 3)
+        self.assertEqual(len(self.sent), 3)
+
+    def test_state_write_failure_stops_the_pass(self):
+        did_b = "did:plc:othertestothertestother"
+        fn_a = self.write_con("Blfc", [("2026-10-12", "2026-10-15")])
+        fn_b = self.write_con("Othercon", [("2026-09-01", "2026-09-03")], did=did_b)
+        self.feeds[DID] = [self.post("3aaa", self.BLFC_TEXT),
+                           self.post("3bbb", "Registration for BLFC 2027 opens in May")]
+        self.feeds[did_b] = [self.post("3ccc", "Othercon 2027 is March 4-7!", did=did_b)]
+        with unittest.mock.patch.object(kw, "save_noticed", side_effect=OSError("disk full")), \
+             unittest.mock.patch.object(kw, "log") as log:
+            self.assertEqual(self.run_notice([fn_a, fn_b]), 1)
+        self.assertEqual(len(self.sent), 1)
+        lines = [c.args[0] for c in log.call_args_list]
+        self.assertTrue(any("state write" in line and "disk full" in line for line in lines), lines)
+        self.assertFalse(any("skipping" in line for line in lines), lines)
 
     def test_malformed_con_file_does_not_drop_later_notices(self):
         bad_list = os.path.join(self.tmp.name, "a-list.json")
@@ -4023,6 +4081,23 @@ class NextEditionWiringTest(MainSmokeTest):
              unittest.mock.patch.object(kw, "notice_next_editions") as notice:
             kw.main()
         notice.assert_not_called()
+
+    def test_notice_runs_after_save_and_publish(self):
+        # the notice's feed fetches and Telegram pacing must not delay the
+        # cache save or the publish of this sweep's changes
+        slot = {"event_id": "testcon-2999", "category": "panels", "kind": "opens",
+                "date": "2999-01-01", "source": entry("3aaa")["source"],
+                "asOf": "2998-12-01T00:00:00.000Z", "confidence": 0.9,
+                "_post_text": "post", "_file": "con-a.json", "verb": "add"}
+        order = []
+        with unittest.mock.patch.object(kw, "process_con", return_value=([slot], [], [], [], True)), \
+             unittest.mock.patch.object(kw, "check_source_liveness", return_value=([], [], [], [], [])), \
+             unittest.mock.patch.object(kw, "save_cache", lambda c: order.append("save_cache")), \
+             unittest.mock.patch.object(kw, "publish", lambda s: order.append("publish")), \
+             unittest.mock.patch.object(kw, "notice_next_editions",
+                                        lambda files: order.append("notice") or 0):
+            kw.main()
+        self.assertEqual(order, ["save_cache", "publish", "notice"])
 
     def test_notice_crash_does_not_stop_publish(self):
         slot = {"event_id": "testcon-2999", "category": "panels", "kind": "opens",

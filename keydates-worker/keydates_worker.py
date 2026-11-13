@@ -1511,10 +1511,14 @@ def names_later_year(text, newest_year):
 def notice_next_editions(files, sleep=time.sleep):
     """Page ops once per post that names a year past a candidate con's newest
     edition. A post is recorded only after Telegram accepts the message, so a
-    failed send retries at the next sweep. Returns the number sent."""
+    failed send retries at the next sweep. The first failed send or state write
+    ends the pass: the rest retry next sweep. Returns the number sent."""
     noticed = load_noticed()
-    sent = 0
+    sent = attempts = 0
+    stop = False
     for fn in files:
+        if stop:
+            break
         try:
             with open(fn) as f:
                 con = json.load(f)
@@ -1532,16 +1536,23 @@ def notice_next_editions(files, sleep=time.sleep):
                 url = post.get("url")
                 if not url or url in noticed or not names_later_year(post.get("text"), newest_year):
                     continue
-                if sent:
+                if attempts:
                     sleep(NOTICE_SEND_INTERVAL)
+                attempts += 1
                 text = (f"📅 {con.get('name', os.path.basename(fn))} may have announced a new "
                         f"edition (newest listed: {newest_year}).\n{url}\n\n{post.get('text', '')[:1500]}")
                 if not ops_notify(text):
-                    log(f"next-edition: notice for {url} not sent; will retry next sweep")
-                    continue
+                    log(f"next-edition: notice for {url} not sent; stopping, the rest retry next sweep")
+                    stop = True
+                    break
                 sent += 1
                 noticed[url] = {"series": os.path.basename(fn)[:-5], "noticedAt": TODAY.isoformat()}
-                save_noticed(noticed)  # per send, so a crash mid-burst can't re-send the earlier ones
+                try:
+                    save_noticed(noticed)  # per send, so a crash mid-burst can't re-send the earlier ones
+                except OSError as e:
+                    log(f"next-edition: state write failed after sending {url}: {e}; stopping this pass")
+                    stop = True
+                    break
         except Exception as e:
             log(f"next-edition: skipping {os.path.basename(fn)}: {e}")
     if sent:
@@ -2406,22 +2417,6 @@ def main():
                          "https://github.com/consfyi/data/pulls?q=is%3Apr+is%3Aopen+head%3Abot%2Fbsky-keydates")
             ops_notify("\n".join(alert))
 
-        # every file in this shard, not just `processed`: the cons this exists
-        # for never reach an extraction pass. DRY_RUN neither sends nor records.
-        if not DRY_RUN:
-            # its feed fetches would count toward the CON-35 appview outage
-            # verdict below, and past-only cons are not this run's extraction
-            appview_failures_before = _run_health["appview_failures"]
-            try:
-                notice_next_editions([fn for fn, _, _ in targets])
-            except Exception as e:
-                log(f"ERROR in next-edition notices: {e}")
-            finally:
-                notice_fetch_failures = _run_health["appview_failures"] - appview_failures_before
-                if notice_fetch_failures:
-                    log(f"next-edition: {notice_fetch_failures} feed fetch(es) failed")
-                _run_health["appview_failures"] = appview_failures_before
-
     # a hold whose exact slot+date this run also applies (e.g. a re-applied
     # ledger entry from an earlier post) would tell the reviewer to /reject a
     # date the PR carries, and a rejection would kill the applied one too.
@@ -2481,6 +2476,23 @@ def main():
             publish(summary)
     elif all_changes or removals or pins:
         log(f"\n{len(all_changes) + len(removals) + len(pins)} change(s) staged in {DATA_DIR} (PUSH not set — nothing pushed)")
+
+    # after save and publish, so its feed fetches and send pacing can't delay
+    # them. Every file in this shard, not just `processed`: the cons this exists
+    # for never reach an extraction pass. DRY_RUN neither sends nor records.
+    if args.sweep and not DRY_RUN:
+        # its feed fetches would count toward the CON-35 appview outage
+        # verdict below, and past-only cons are not this run's extraction
+        appview_failures_before = _run_health["appview_failures"]
+        try:
+            notice_next_editions([fn for fn, _, _ in targets])
+        except Exception as e:
+            log(f"ERROR in next-edition notices: {e}")
+        finally:
+            notice_fetch_failures = _run_health["appview_failures"] - appview_failures_before
+            if notice_fetch_failures:
+                log(f"next-edition: {notice_fetch_failures} feed fetch(es) failed")
+            _run_health["appview_failures"] = appview_failures_before
 
     # CON-35 wholesale-failure verdict (cache/state/summary/publish are already
     # persisted above, so exiting now loses nothing). Fire ONCE and exit non-zero
