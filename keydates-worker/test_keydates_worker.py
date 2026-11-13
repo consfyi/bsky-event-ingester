@@ -3870,6 +3870,15 @@ class NextEditionNoticeTest(unittest.TestCase):
         self.assertFalse(kw.names_later_year("#BLFC2026 was great", 2026))
         self.assertFalse(kw.names_later_year("order 120270 shipped", 2026))
 
+    def test_hashtag_year_post_reaches_the_notice_through_the_feed(self):
+        # RELEVANT's \b20\d\d\b misses "#BLFC2027", so the notice must not
+        # read the feed through the key-date pre-filter
+        fn = self.write_con("Blfc", [("2026-10-12", "2026-10-15")])
+        self.feeds[DID] = [self.post("3aaa", "See you at #BLFC2027!")]
+        self.assertEqual(self.run_notice([fn]), 1)
+        self.assertEqual(len(self.sent), 1)
+        self.assertIn("/post/3aaa", self.sent[0])
+
     def test_send_that_raises_keeps_earlier_sends_recorded(self):
         fn = self.write_con("Blfc", [("2026-10-12", "2026-10-15")])
         self.feeds[DID] = [self.post("3aaa", self.BLFC_TEXT),

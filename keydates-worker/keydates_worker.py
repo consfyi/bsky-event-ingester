@@ -749,7 +749,9 @@ def localize_timestamp(asof, tz):
     return local.isoformat(timespec="seconds"), local.date().isoformat()
 
 
-def fetch_posts(actor):
+def fetch_posts(actor, relevant_only=True):
+    """relevant_only=False skips the RELEVANT key-date pre-filter: the
+    next-edition notice needs posts like "#BLFC2027" whose glued year RELEVANT misses."""
     feed = appget("app.bsky.feed.getAuthorFeed",
                   {"actor": actor, "limit": POSTS_PER_CON, "filter": "posts_no_replies"})
     out = []
@@ -766,7 +768,7 @@ def fetch_posts(actor):
         p = it.get("post", {})
         rec = p.get("record", {})
         txt = (rec.get("text") or "").strip()
-        if not txt or not RELEVANT.search(txt):
+        if not txt or (relevant_only and not RELEVANT.search(txt)):
             continue
         rkey = p.get("uri", "").rsplit("/", 1)[-1]
         out.append({
@@ -1526,7 +1528,7 @@ def notice_next_editions(files, sleep=time.sleep):
                 continue
             # the DID, never the handle: the URL is only a Telegram link and the
             # dedup key, and a handle change would re-notice every post
-            for post in fetch_posts(con["bluesky"]["did"]):
+            for post in fetch_posts(con["bluesky"]["did"], relevant_only=False):
                 url = post.get("url")
                 if not url or url in noticed or not names_later_year(post.get("text"), newest_year):
                     continue
