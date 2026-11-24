@@ -3842,15 +3842,17 @@ class NextEditionNoticeTest(unittest.TestCase):
         self.assertEqual(self.run_notice([fn]), 0)
         self.assertEqual(len(self.sent), 1)
 
-    def failing_feed(self, *dids):
-        """Make getAuthorFeed for these DIDs behave like a down appview: count
-        an appview failure and return {}, as appget does after its retries."""
+    def failing_feed(self, *dids, client_error=False):
+        """Make getAuthorFeed for these DIDs fail as appget does after its
+        retries: a down appview, or with client_error a 4xx for a dead account."""
         fetched = []
 
         def fake(method, params):
             fetched.append(params["actor"])
             if params["actor"] in dids:
                 kw._run_health["appview_failures"] += 1
+                if client_error:
+                    kw._run_health["appview_client_errors"] += 1
                 return {}
             return self.fake_appget(method, params)
         p = unittest.mock.patch.object(kw, "appget", fake)
@@ -3869,6 +3871,18 @@ class NextEditionNoticeTest(unittest.TestCase):
         # two timeouts, not one per candidate
         self.assertEqual(fetched, dids[:2])
         self.assertEqual(self.sent, [])
+
+    def test_dead_accounts_in_a_row_do_not_end_the_pass(self):
+        # defunct cons cluster among the candidates; their 4xx feeds must not
+        # stop the pass at the same place on every sweep
+        dids = [f"did:plc:con{i}" for i in range(4)]
+        files = [self.write_con(f"Con{i}", [("2026-10-12", "2026-10-15")], did=d)
+                 for i, d in enumerate(dids)]
+        self.feeds[dids[3]] = [self.post("3ddd", self.BLFC_TEXT, did=dids[3])]
+        fetched = self.failing_feed(dids[0], dids[1], dids[2], client_error=True)
+        self.assertEqual(self.run_notice(files), 1)
+        self.assertEqual(fetched, dids)
+        self.assertIn("did:plc:con3", self.sent[0])
 
     def test_one_failed_fetch_does_not_end_the_pass(self):
         dids = [f"did:plc:con{i}" for i in range(4)]
@@ -4102,8 +4116,8 @@ class NextEditionWiringTest(MainSmokeTest):
         # the notice step skips on any, so start every run healthy
         p = unittest.mock.patch.object(
             kw, "reset_run_health",
-            lambda: kw._run_health.update(attempted=1, succeeded=1,
-                                          backend_failures=0, appview_failures=0))
+            lambda: kw._run_health.update(attempted=1, succeeded=1, backend_failures=0,
+                                          appview_failures=0, appview_client_errors=0))
         p.start()
         self.addCleanup(p.stop)
 
@@ -4112,8 +4126,8 @@ class NextEditionWiringTest(MainSmokeTest):
         # The CON-35 page must go out at once, not after ~63s per notice candidate.
         with unittest.mock.patch.object(
                  kw, "reset_run_health",
-                 lambda: kw._run_health.update(attempted=0, succeeded=0,
-                                               backend_failures=0, appview_failures=0)), \
+                 lambda: kw._run_health.update(attempted=0, succeeded=0, backend_failures=0,
+                                               appview_failures=0, appview_client_errors=0)), \
              unittest.mock.patch.object(kw, "process_con",
                                         side_effect=lambda *a, **k: (
                                             kw._run_health.__setitem__(
@@ -4141,6 +4155,22 @@ class NextEditionWiringTest(MainSmokeTest):
              unittest.mock.patch.object(kw, "notice_next_editions") as notice:
             kw.main()  # no SystemExit: a single blip is not a wholesale failure
         notice.assert_not_called()
+
+    def test_dead_account_during_extraction_still_runs_notice(self):
+        # a 4xx for one con's deleted account is not an outage: it must not
+        # switch off the notices for every other con on every sweep
+        calls = []
+
+        def process_con(*a, **k):
+            if not calls:
+                kw._run_health["appview_failures"] += 1
+                kw._run_health["appview_client_errors"] += 1
+            calls.append(1)
+            return ([], [], [], [], False)
+        with unittest.mock.patch.object(kw, "process_con", side_effect=process_con), \
+             unittest.mock.patch.object(kw, "notice_next_editions", return_value=0) as notice:
+            kw.main()
+        notice.assert_called_once()
 
     def test_sweep_runs_notice_over_all_files(self):
         with unittest.mock.patch.object(kw, "process_con", return_value=([], [], [], [], False)), \
@@ -4203,8 +4233,8 @@ class NextEditionWiringTest(MainSmokeTest):
                                        "endDate": "2020-01-03"}]}, f)
         with unittest.mock.patch.object(
                  kw, "reset_run_health",
-                 lambda: kw._run_health.update(attempted=0, succeeded=0,
-                                               backend_failures=0, appview_failures=0)), \
+                 lambda: kw._run_health.update(attempted=0, succeeded=0, backend_failures=0,
+                                               appview_failures=0, appview_client_errors=0)), \
              unittest.mock.patch.object(kw, "NOTICED_FILE",
                                         os.path.join(self.tmp.name, "noticed.json")), \
              unittest.mock.patch.object(kw, "process_con", return_value=([], [], [], [], False)), \
@@ -4215,6 +4245,38 @@ class NextEditionWiringTest(MainSmokeTest):
             kw.main()  # SystemExit(1) here is the false CON-35 page
         for call in kw.ops_notify.call_args_list:
             self.assertNotIn("wholesale", call.args[0])
+
+
+class AppgetClientErrorTest(unittest.TestCase):
+    """appget tells a 4xx for one account apart from an unreachable appview."""
+
+    def setUp(self):
+        p = unittest.mock.patch.dict(kw._run_health, {"appview_failures": 0,
+                                                      "appview_client_errors": 0})
+        p.start()
+        self.addCleanup(p.stop)
+        p = unittest.mock.patch.object(kw.time, "sleep")
+        p.start()
+        self.addCleanup(p.stop)
+
+    def fail_with(self, exc):
+        with unittest.mock.patch.object(kw.urllib.request, "urlopen", side_effect=exc):
+            self.assertEqual(kw.appget("app.bsky.feed.getAuthorFeed", {"actor": DID}), {})
+        return dict(kw._run_health)
+
+    def http_error(self, code):
+        return kw.urllib.error.HTTPError("https://example.invalid", code, "x", {}, None)
+
+    def test_4xx_counts_as_client_error(self):
+        h = self.fail_with(self.http_error(400))
+        self.assertEqual((h["appview_failures"], h["appview_client_errors"]), (1, 1))
+        self.assertEqual(kw.appview_outage_failures(), 0)
+
+    def test_outage_errors_are_not_client_errors(self):
+        for exc in (self.http_error(429), self.http_error(503), OSError("timed out")):
+            self.fail_with(exc)
+        self.assertEqual(kw._run_health["appview_client_errors"], 0)
+        self.assertEqual(kw.appview_outage_failures(), 3)
 
 
 class OpsNotifyReturnTest(unittest.TestCase):

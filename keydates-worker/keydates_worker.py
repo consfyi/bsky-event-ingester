@@ -438,11 +438,16 @@ class BackendUnavailable(Exception):
 #   appview_failures — appget() calls that exhausted every retry (appview down);
 #                      lets the verdict tell "appview unreachable" apart from a
 #                      genuinely quiet shard where cons simply had no relevant posts
-_run_health = {"attempted": 0, "succeeded": 0, "backend_failures": 0, "appview_failures": 0}
+#   appview_client_errors — the subset of appview_failures whose last try was a
+#                      4xx other than 429 (a deleted or deactivated account, not
+#                      an outage); only the CON-79 notice gates subtract it
+_run_health = {"attempted": 0, "succeeded": 0, "backend_failures": 0, "appview_failures": 0,
+               "appview_client_errors": 0}
 
 
 def reset_run_health():
-    _run_health.update(attempted=0, succeeded=0, backend_failures=0, appview_failures=0)
+    _run_health.update(attempted=0, succeeded=0, backend_failures=0, appview_failures=0,
+                       appview_client_errors=0)
 
 
 def estimate_tokens(*texts):
@@ -654,15 +659,20 @@ def catalog_check(sweep=False):
 def appget(method, params):
     url = f"{APPVIEW}/{method}?" + urllib.parse.urlencode(params, doseq=True)
     req = urllib.request.Request(url, headers={"User-Agent": APPVIEW_USER_AGENT})
+    client_error = False
     for _ in range(3):
         try:
             with urllib.request.urlopen(req, timeout=20) as r:
                 return json.load(r)
-        except Exception:
+        except Exception as e:
+            client_error = (isinstance(e, urllib.error.HTTPError)
+                            and 400 <= e.code < 500 and e.code != 429)
             time.sleep(1.0)
     # every retry exhausted: the appview is unreachable, not just quiet. Record it
     # so the end-of-run verdict can page on an appview outage (S1).
     _run_health["appview_failures"] += 1
+    if client_error:
+        _run_health["appview_client_errors"] += 1
     return {}
 
 
@@ -1462,8 +1472,8 @@ def ops_notify(text):
 
 # --- next-edition notices (CON-79) -------------------------------------------
 # A con with no future edition is skipped by process_con, and the key-date
-# extractor has no slot for a new edition's own dates anyway. So once a week the
-# sweep reads those cons' posts and pages ops when one names a year past the
+# extractor has no slot for a new edition's own dates anyway. So each sweep
+# reads those cons' posts and pages ops when one names a year past the
 # newest edition's — a person checks the post and adds the edition by hand.
 NOTICED_FILE = os.path.join(os.path.dirname(CACHE_FILE), "next_edition_noticed.json")
 # Telegram allows a bot ~20 messages a minute in a group; the first run after
@@ -1511,6 +1521,12 @@ def names_later_year(text, newest_year):
     return any(int(y) > newest_year for y in YEAR_RE.findall(text or ""))
 
 
+def appview_outage_failures():
+    """Exhausted appview fetches that look like an outage: a 4xx for one dead
+    account must not switch off the notices for every other con."""
+    return _run_health["appview_failures"] - _run_health["appview_client_errors"]
+
+
 def notice_next_editions(files, sleep=time.sleep):
     """Page ops once per post that names a year past a candidate con's newest
     edition. A post is recorded only after Telegram accepts the message, so a
@@ -1536,9 +1552,9 @@ def notice_next_editions(files, sleep=time.sleep):
                 continue
             # the DID, never the handle: the URL is only a Telegram link and the
             # dedup key, and a handle change would re-notice every post
-            failures_before = _run_health["appview_failures"]
+            failures_before = appview_outage_failures()
             posts = fetch_posts(con["bluesky"]["did"], relevant_only=False)
-            if _run_health["appview_failures"] > failures_before:
+            if appview_outage_failures() > failures_before:
                 fetch_failures += 1
                 if fetch_failures >= NOTICE_FETCH_FAILURE_LIMIT:
                     log(f"next-edition: {fetch_failures} feed fetches failed in a row; "
@@ -2546,7 +2562,7 @@ def main():
     # against a down appview, and the sweep holds the run lock that long.
     # DRY_RUN neither sends nor records.
     if args.sweep and not DRY_RUN:
-        if backend_failures or appview_failures:
+        if backend_failures or appview_outage_failures():
             log("next-edition: skipped, this run saw backend or appview failures")
         else:
             try:
