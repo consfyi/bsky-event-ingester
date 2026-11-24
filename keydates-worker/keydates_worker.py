@@ -439,7 +439,7 @@ class BackendUnavailable(Exception):
 #                      lets the verdict tell "appview unreachable" apart from a
 #                      genuinely quiet shard where cons simply had no relevant posts
 #   appview_client_errors — the subset of appview_failures whose last try was a
-#                      4xx other than 429 (a deleted or deactivated account, not
+#                      400/404/410 (a deleted or deactivated account, not
 #                      an outage); only the CON-79 notice gates subtract it
 _run_health = {"attempted": 0, "succeeded": 0, "backend_failures": 0, "appview_failures": 0,
                "appview_client_errors": 0}
@@ -665,8 +665,9 @@ def appget(method, params):
             with urllib.request.urlopen(req, timeout=20) as r:
                 return json.load(r)
         except Exception as e:
-            client_error = (isinstance(e, urllib.error.HTTPError)
-                            and 400 <= e.code < 500 and e.code != 429)
+            # what the appview returns for a missing or deactivated actor; a
+            # 401/403/408/429 points at the appview or our IP, not one account
+            client_error = isinstance(e, urllib.error.HTTPError) and e.code in (400, 404, 410)
             time.sleep(1.0)
     # every retry exhausted: the appview is unreachable, not just quiet. Record it
     # so the end-of-run verdict can page on an appview outage (S1).

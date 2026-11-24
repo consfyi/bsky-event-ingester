@@ -1044,6 +1044,9 @@ class MainSmokeTest(unittest.TestCase):
             unittest.mock.patch.object(kw, "OUTSTANDING_FILE", os.path.join(state, "outstanding.json")),
             unittest.mock.patch.object(kw, "DEAD_PENDING_FILE", os.path.join(state, "dead_pending.json")),
             unittest.mock.patch.object(kw, "REJECTIONS_FILE", os.path.join(state, "no_rejections.json")),
+            # set at import from the real CACHE_FILE, so patching CACHE_FILE
+            # above doesn't move it; keep sweeps off ~/.cache
+            unittest.mock.patch.object(kw, "NOTICED_FILE", os.path.join(state, "noticed.json")),
             unittest.mock.patch.object(kw, "MAX_EXTRACTS", 1),
             unittest.mock.patch.object(kw, "PUSH", True),
             unittest.mock.patch.object(kw, "DRY_RUN", False),
@@ -3081,6 +3084,7 @@ class WholesaleVerdictTest(unittest.TestCase):
             for p in [
                 unittest.mock.patch.object(kw, "DATA_DIR", self.data_dir),
                 unittest.mock.patch.object(kw, "CACHE_FILE", os.path.join(self.state, "verdict_cache.json")),
+                unittest.mock.patch.object(kw, "NOTICED_FILE", os.path.join(self.state, "noticed.json")),
                 unittest.mock.patch.object(kw, "OUTSTANDING_FILE", os.path.join(self.state, "outstanding.json")),
                 unittest.mock.patch.object(kw, "DEAD_PENDING_FILE", os.path.join(self.state, "dead_pending.json")),
                 unittest.mock.patch.object(kw, "REJECTIONS_FILE", os.path.join(self.state, "no_rej.json")),
@@ -3272,6 +3276,7 @@ class SweepShortCircuitTest(unittest.TestCase):
             for p in [
                 unittest.mock.patch.object(kw, "DATA_DIR", self.data_dir),
                 unittest.mock.patch.object(kw, "CACHE_FILE", os.path.join(self.state, "verdict_cache.json")),
+                unittest.mock.patch.object(kw, "NOTICED_FILE", os.path.join(self.state, "noticed.json")),
                 unittest.mock.patch.object(kw, "OUTSTANDING_FILE", os.path.join(self.state, "outstanding.json")),
                 unittest.mock.patch.object(kw, "DEAD_PENDING_FILE", os.path.join(self.state, "dead_pending.json")),
                 unittest.mock.patch.object(kw, "REJECTIONS_FILE", os.path.join(self.state, "no_rej.json")),
@@ -4273,10 +4278,12 @@ class AppgetClientErrorTest(unittest.TestCase):
         self.assertEqual(kw.appview_outage_failures(), 0)
 
     def test_outage_errors_are_not_client_errors(self):
-        for exc in (self.http_error(429), self.http_error(503), OSError("timed out")):
+        outage = (self.http_error(403), self.http_error(429), self.http_error(503),
+                  OSError("timed out"))
+        for exc in outage:
             self.fail_with(exc)
         self.assertEqual(kw._run_health["appview_client_errors"], 0)
-        self.assertEqual(kw.appview_outage_failures(), 3)
+        self.assertEqual(kw.appview_outage_failures(), len(outage))
 
 
 class OpsNotifyReturnTest(unittest.TestCase):
