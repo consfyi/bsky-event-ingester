@@ -3842,6 +3842,45 @@ class NextEditionNoticeTest(unittest.TestCase):
         self.assertEqual(self.run_notice([fn]), 0)
         self.assertEqual(len(self.sent), 1)
 
+    def failing_feed(self, *dids):
+        """Make getAuthorFeed for these DIDs behave like a down appview: count
+        an appview failure and return {}, as appget does after its retries."""
+        fetched = []
+
+        def fake(method, params):
+            fetched.append(params["actor"])
+            if params["actor"] in dids:
+                kw._run_health["appview_failures"] += 1
+                return {}
+            return self.fake_appget(method, params)
+        p = unittest.mock.patch.object(kw, "appget", fake)
+        p.start()
+        self.addCleanup(p.stop)
+        return fetched
+
+    def test_two_failed_fetches_in_a_row_end_the_pass(self):
+        dids = [f"did:plc:con{i}" for i in range(4)]
+        files = [self.write_con(f"Con{i}", [("2026-10-12", "2026-10-15")], did=d)
+                 for i, d in enumerate(dids)]
+        self.feeds[dids[3]] = [self.post("3ddd", self.BLFC_TEXT, did=dids[3])]
+        fetched = self.failing_feed(dids[0], dids[1])
+        self.assertEqual(self.run_notice(files), 0)
+        # the third and fourth cons are never fetched, so a down appview costs
+        # two timeouts, not one per candidate
+        self.assertEqual(fetched, dids[:2])
+        self.assertEqual(self.sent, [])
+
+    def test_one_failed_fetch_does_not_end_the_pass(self):
+        dids = [f"did:plc:con{i}" for i in range(4)]
+        files = [self.write_con(f"Con{i}", [("2026-10-12", "2026-10-15")], did=d)
+                 for i, d in enumerate(dids)]
+        self.feeds[dids[3]] = [self.post("3ddd", self.BLFC_TEXT, did=dids[3])]
+        # fail, succeed, fail, succeed: never two in a row
+        fetched = self.failing_feed(dids[0], dids[2])
+        self.assertEqual(self.run_notice(files), 1)
+        self.assertEqual(fetched, dids)
+        self.assertIn("did:plc:con3", self.sent[0])
+
     def test_failed_send_is_retried_next_sweep(self):
         fn = self.write_con("Blfc", [("2026-10-12", "2026-10-15")])
         self.feeds[DID] = [self.post("3aaa", self.BLFC_TEXT)]
@@ -4059,6 +4098,49 @@ class NextEditionWiringTest(MainSmokeTest):
                                        return_value=unittest.mock.Mock(returncode=0, stdout=""))
         p.start()
         self.addCleanup(p.stop)
+        # the base fixture leaves appview_failures from earlier tests in place;
+        # the notice step skips on any, so start every run healthy
+        p = unittest.mock.patch.object(
+            kw, "reset_run_health",
+            lambda: kw._run_health.update(attempted=1, succeeded=1,
+                                          backend_failures=0, appview_failures=0))
+        p.start()
+        self.addCleanup(p.stop)
+
+    def test_appview_outage_pages_without_running_notice(self):
+        # a full outage: every target's fetch failed and no model call succeeded.
+        # The CON-35 page must go out at once, not after ~63s per notice candidate.
+        with unittest.mock.patch.object(
+                 kw, "reset_run_health",
+                 lambda: kw._run_health.update(attempted=0, succeeded=0,
+                                               backend_failures=0, appview_failures=0)), \
+             unittest.mock.patch.object(kw, "process_con",
+                                        side_effect=lambda *a, **k: (
+                                            kw._run_health.__setitem__(
+                                                "appview_failures",
+                                                kw._run_health["appview_failures"] + 1),
+                                            ([], [], [], [], False))[1]), \
+             unittest.mock.patch.object(kw, "notice_next_editions") as notice:
+            with self.assertRaises(SystemExit) as cm:
+                kw.main()
+        self.assertEqual(cm.exception.code, 1)
+        notice.assert_not_called()
+        self.assertTrue(any("wholesale" in c.args[0] for c in kw.ops_notify.call_args_list))
+
+    def test_partial_appview_failure_skips_notice(self):
+        # one failed fetch is below the page threshold, but it still means the
+        # appview is struggling: don't spend ~63s per notice candidate on it
+        calls = []
+
+        def process_con(*a, **k):
+            if not calls:
+                kw._run_health["appview_failures"] += 1
+            calls.append(1)
+            return ([], [], [], [], False)
+        with unittest.mock.patch.object(kw, "process_con", side_effect=process_con), \
+             unittest.mock.patch.object(kw, "notice_next_editions") as notice:
+            kw.main()  # no SystemExit: a single blip is not a wholesale failure
+        notice.assert_not_called()
 
     def test_sweep_runs_notice_over_all_files(self):
         with unittest.mock.patch.object(kw, "process_con", return_value=([], [], [], [], False)), \

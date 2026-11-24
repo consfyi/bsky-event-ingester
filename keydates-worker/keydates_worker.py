@@ -1469,6 +1469,9 @@ NOTICED_FILE = os.path.join(os.path.dirname(CACHE_FILE), "next_edition_noticed.j
 # Telegram allows a bot ~20 messages a minute in a group; the first run after
 # deploy can find dozens of matches at once
 NOTICE_SEND_INTERVAL = 3.5
+# consecutive failed feed fetches that end a notice pass: each costs ~63s
+# against a down appview (appget: 3 tries x 20s timeout + 1s)
+NOTICE_FETCH_FAILURE_LIMIT = 2
 # digit boundaries, not \b: "#BLFC2027" and "TFF2027" glue the year to letters
 YEAR_RE = re.compile(r"(?<!\d)(20\d\d)(?!\d)")
 
@@ -1511,10 +1514,11 @@ def names_later_year(text, newest_year):
 def notice_next_editions(files, sleep=time.sleep):
     """Page ops once per post that names a year past a candidate con's newest
     edition. A post is recorded only after Telegram accepts the message, so a
-    failed send retries at the next sweep. The first failed send or state write
-    ends the pass: the rest retry next sweep. Returns the number sent."""
+    failed send retries at the next sweep. The first failed send or state write,
+    or NOTICE_FETCH_FAILURE_LIMIT failed feed fetches in a row, ends the pass:
+    the rest retry next sweep. Returns the number sent."""
     noticed = load_noticed()
-    sent = attempts = 0
+    sent = attempts = fetch_failures = 0
     stop = False
     for fn in files:
         if stop:
@@ -1532,7 +1536,17 @@ def notice_next_editions(files, sleep=time.sleep):
                 continue
             # the DID, never the handle: the URL is only a Telegram link and the
             # dedup key, and a handle change would re-notice every post
-            for post in fetch_posts(con["bluesky"]["did"], relevant_only=False):
+            failures_before = _run_health["appview_failures"]
+            posts = fetch_posts(con["bluesky"]["did"], relevant_only=False)
+            if _run_health["appview_failures"] > failures_before:
+                fetch_failures += 1
+                if fetch_failures >= NOTICE_FETCH_FAILURE_LIMIT:
+                    log(f"next-edition: {fetch_failures} feed fetches failed in a row; "
+                        "stopping, the rest retry next sweep")
+                    break
+                continue
+            fetch_failures = 0
+            for post in posts:
                 url = post.get("url")
                 if not url or url in noticed or not names_later_year(post.get("text"), newest_year):
                     continue
@@ -2477,23 +2491,6 @@ def main():
     elif all_changes or removals or pins:
         log(f"\n{len(all_changes) + len(removals) + len(pins)} change(s) staged in {DATA_DIR} (PUSH not set — nothing pushed)")
 
-    # after save and publish, so its feed fetches and send pacing can't delay
-    # them. Every file in this shard, not just `processed`: the cons this exists
-    # for never reach an extraction pass. DRY_RUN neither sends nor records.
-    if args.sweep and not DRY_RUN:
-        # its feed fetches would count toward the CON-35 appview outage
-        # verdict below, and past-only cons are not this run's extraction
-        appview_failures_before = _run_health["appview_failures"]
-        try:
-            notice_next_editions([fn for fn, _, _ in targets])
-        except Exception as e:
-            log(f"ERROR in next-edition notices: {e}")
-        finally:
-            notice_fetch_failures = _run_health["appview_failures"] - appview_failures_before
-            if notice_fetch_failures:
-                log(f"next-edition: {notice_fetch_failures} feed fetch(es) failed")
-            _run_health["appview_failures"] = appview_failures_before
-
     # CON-35 wholesale-failure verdict (cache/state/summary/publish are already
     # persisted above, so exiting now loses nothing). Fire ONCE and exit non-zero
     # when EITHER (a) any BackendUnavailable was seen this run, OR (b) a --sweep
@@ -2540,6 +2537,22 @@ def main():
                 f"{_run_health['succeeded']}/{_run_health['attempted']} model calls succeeded. "
                 "Exiting non-zero so no spooled post is deleted on a false success.")
         raise SystemExit(1)
+
+    # Next-edition notices (CON-79) run last: after save and publish, and after
+    # the verdict above, so their feed fetches and send pacing can't delay the
+    # outage page or count toward it. Every file in this shard, not just
+    # `processed`: the cons this exists for never reach an extraction pass.
+    # Skipped when this run already saw a failure: one feed fetch costs ~63s
+    # against a down appview, and the sweep holds the run lock that long.
+    # DRY_RUN neither sends nor records.
+    if args.sweep and not DRY_RUN:
+        if backend_failures or appview_failures:
+            log("next-edition: skipped, this run saw backend or appview failures")
+        else:
+            try:
+                notice_next_editions([fn for fn, _, _ in targets])
+            except Exception as e:
+                log(f"ERROR in next-edition notices: {e}")
 
 
 if __name__ == "__main__":
