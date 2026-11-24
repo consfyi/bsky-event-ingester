@@ -656,6 +656,9 @@ def catalog_check(sweep=False):
 
 
 # --- Bluesky fetch (free public appview) -------------------------------------
+ACCOUNT_METHODS = ("app.bsky.feed.getAuthorFeed", "app.bsky.actor.getProfile")
+
+
 def appget(method, params):
     url = f"{APPVIEW}/{method}?" + urllib.parse.urlencode(params, doseq=True)
     req = urllib.request.Request(url, headers={"User-Agent": APPVIEW_USER_AGENT})
@@ -667,7 +670,10 @@ def appget(method, params):
         except Exception as e:
             # what the appview returns for a missing or deactivated actor; a
             # 401/403/408/429 points at the appview or our IP, not one account
-            client_error = isinstance(e, urllib.error.HTTPError) and e.code in (400, 404, 410)
+            # Only for one-account requests: a batched getPosts 400 says
+            # nothing about whether an account exists.
+            client_error = (method in ACCOUNT_METHODS and isinstance(e, urllib.error.HTTPError)
+                            and e.code in (400, 404, 410))
             time.sleep(1.0)
     # every retry exhausted: the appview is unreachable, not just quiet. Record it
     # so the end-of-run verdict can page on an appview outage (S1).
@@ -1488,15 +1494,20 @@ YEAR_RE = re.compile(r"(?<!\d)(20\d\d)(?!\d)")
 
 
 def load_noticed():
-    if os.path.exists(NOTICED_FILE):
-        try:
-            with open(NOTICED_FILE) as f:
-                data = json.load(f)
-            if isinstance(data, dict):
-                return data
-        except (OSError, ValueError) as e:
-            log(f"next-edition: could not read {NOTICED_FILE}: {e}")
-    return {}
+    """The sent-notice record, {} when there is none yet, or None when the file
+    exists but can't be read: starting empty would re-send every old notice
+    and the first save would overwrite the history an operator could recover."""
+    if not os.path.exists(NOTICED_FILE):
+        return {}
+    try:
+        with open(NOTICED_FILE) as f:
+            data = json.load(f)
+        if isinstance(data, dict):
+            return data
+        log(f"next-edition: {NOTICED_FILE} is not a JSON object")
+    except (OSError, ValueError) as e:
+        log(f"next-edition: could not read {NOTICED_FILE}: {e}")
+    return None
 
 
 def save_noticed(noticed):
@@ -1535,6 +1546,10 @@ def notice_next_editions(files, sleep=time.sleep):
     or NOTICE_FETCH_FAILURE_LIMIT failed feed fetches in a row, ends the pass:
     the rest retry next sweep. Returns the number sent."""
     noticed = load_noticed()
+    if noticed is None:
+        ops_notify(f"⚠️ keydates: next-edition notices skipped, {NOTICED_FILE} is unreadable. "
+                   "Fix or remove the file; removing it re-sends notices for posts still in the feeds.")
+        return 0
     sent = attempts = fetch_failures = 0
     stop = False
     for fn in files:

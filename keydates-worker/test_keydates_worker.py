@@ -3937,12 +3937,22 @@ class NextEditionNoticeTest(unittest.TestCase):
         with open(kw.NOTICED_FILE) as f:
             self.assertIn(f"https://bsky.app/profile/{DID}/post/3aaa", json.load(f))
 
-    def test_corrupt_state_file_does_not_crash(self):
-        with open(kw.NOTICED_FILE, "w") as f:
-            f.write("{not json")
+    def test_unreadable_state_file_stops_the_pass_and_keeps_the_file(self):
+        # starting empty would re-send every old notice, and the first save
+        # would overwrite the history an operator could still recover
         fn = self.write_con("Blfc", [("2026-10-12", "2026-10-15")])
         self.feeds[DID] = [self.post("3aaa", self.BLFC_TEXT)]
-        self.assertEqual(self.run_notice([fn]), 1)
+        for bad in ("{not json", "[]"):
+            self.sent.clear()
+            with open(kw.NOTICED_FILE, "w") as f:
+                f.write(bad)
+            self.assertEqual(self.run_notice([fn]), 0)
+            with open(kw.NOTICED_FILE) as f:
+                self.assertEqual(f.read(), bad)
+            # the one message is the warning, not a notice for the post
+            self.assertEqual(len(self.sent), 1)
+            self.assertIn("unreadable", self.sent[0])
+            self.assertNotIn("3aaa", self.sent[0])
 
     def test_year_glued_to_a_hashtag_or_name_counts(self):
         self.assertTrue(kw.names_later_year("See you at #BLFC2027!", 2026))
@@ -4248,6 +4258,8 @@ class NextEditionWiringTest(MainSmokeTest):
                                         side_effect=OSError("appview down")), \
              unittest.mock.patch.object(kw.time, "sleep"):
             kw.main()  # SystemExit(1) here is the false CON-35 page
+        # the notice pass really ran and both of its fetches failed
+        self.assertEqual(kw.appview_outage_failures(), 2)
         for call in kw.ops_notify.call_args_list:
             self.assertNotIn("wholesale", call.args[0])
 
@@ -4276,6 +4288,13 @@ class AppgetClientErrorTest(unittest.TestCase):
         h = self.fail_with(self.http_error(400))
         self.assertEqual((h["appview_failures"], h["appview_client_errors"]), (1, 1))
         self.assertEqual(kw.appview_outage_failures(), 0)
+
+    def test_batched_getposts_4xx_is_not_a_client_error(self):
+        with unittest.mock.patch.object(kw.urllib.request, "urlopen",
+                                        side_effect=self.http_error(400)):
+            kw.appget("app.bsky.feed.getPosts", {"uris": ["at://x"]})
+        self.assertEqual(kw._run_health["appview_client_errors"], 0)
+        self.assertEqual(kw.appview_outage_failures(), 1)
 
     def test_outage_errors_are_not_client_errors(self):
         outage = (self.http_error(403), self.http_error(429), self.http_error(503),
