@@ -12,6 +12,20 @@ timestamp gate, closes dated on the post's own local day held, a closes moved
 later only when both models agree the old and new posts are the same sign-up)
 → rolling PR on `bot/bsky-keydates`.
 
+The sweep also sends next-edition notices (CON-79). For each Bluesky-mapped
+con with no edition starting after today, it reads the con's recent posts. When
+a post names a year later than the newest edition's start year, it sends the
+post link to the ops Telegram channel. Add the edition by hand after checking
+the post. Each post gets one notice; the record of sent notices lives in
+`next_edition_noticed.json` next to the verdict cache. A failed send retries at
+the next sweep. The step runs after the outage check (CON-35), so a run that
+pages for an outage exits before it. It also doesn't run when the sweep saw a
+model-backend failure or a failed Bluesky fetch, and it stops after 2 failed
+feed fetches in a row. A 400, 404 or 410 for one account's feed or profile
+means a deleted or deactivated account, so it doesn't count toward either
+check. If the state file exists but can't be read, the step sends ops one
+warning and sends no notices. `DRY_RUN` sends nothing.
+
 Calibration: the 2026-07-01 baseline showed small-model extraction alone has
 ~30% false positives; this verify stage refuted 19/19 of them. Live testing
 2026-07-02 confirmed all measured FP classes are handled (price tiers, DJ/art

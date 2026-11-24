@@ -438,11 +438,16 @@ class BackendUnavailable(Exception):
 #   appview_failures — appget() calls that exhausted every retry (appview down);
 #                      lets the verdict tell "appview unreachable" apart from a
 #                      genuinely quiet shard where cons simply had no relevant posts
-_run_health = {"attempted": 0, "succeeded": 0, "backend_failures": 0, "appview_failures": 0}
+#   appview_client_errors — the subset of appview_failures whose last try was a
+#                      400/404/410 (a deleted or deactivated account, not
+#                      an outage); only the CON-79 notice gates subtract it
+_run_health = {"attempted": 0, "succeeded": 0, "backend_failures": 0, "appview_failures": 0,
+               "appview_client_errors": 0}
 
 
 def reset_run_health():
-    _run_health.update(attempted=0, succeeded=0, backend_failures=0, appview_failures=0)
+    _run_health.update(attempted=0, succeeded=0, backend_failures=0, appview_failures=0,
+                       appview_client_errors=0)
 
 
 def estimate_tokens(*texts):
@@ -651,18 +656,30 @@ def catalog_check(sweep=False):
 
 
 # --- Bluesky fetch (free public appview) -------------------------------------
+ACCOUNT_METHODS = ("app.bsky.feed.getAuthorFeed", "app.bsky.actor.getProfile")
+
+
 def appget(method, params):
     url = f"{APPVIEW}/{method}?" + urllib.parse.urlencode(params, doseq=True)
     req = urllib.request.Request(url, headers={"User-Agent": APPVIEW_USER_AGENT})
+    client_error = False
     for _ in range(3):
         try:
             with urllib.request.urlopen(req, timeout=20) as r:
                 return json.load(r)
-        except Exception:
+        except Exception as e:
+            # what the appview returns for a missing or deactivated actor; a
+            # 401/403/408/429 points at the appview or our IP, not one account
+            # Only for one-account requests: a batched getPosts 400 says
+            # nothing about whether an account exists.
+            client_error = (method in ACCOUNT_METHODS and isinstance(e, urllib.error.HTTPError)
+                            and e.code in (400, 404, 410))
             time.sleep(1.0)
     # every retry exhausted: the appview is unreachable, not just quiet. Record it
     # so the end-of-run verdict can page on an appview outage (S1).
     _run_health["appview_failures"] += 1
+    if client_error:
+        _run_health["appview_client_errors"] += 1
     return {}
 
 
@@ -749,7 +766,9 @@ def localize_timestamp(asof, tz):
     return local.isoformat(timespec="seconds"), local.date().isoformat()
 
 
-def fetch_posts(actor):
+def fetch_posts(actor, relevant_only=True):
+    """relevant_only=False skips the RELEVANT key-date pre-filter: the
+    next-edition notice needs posts like "#BLFC2027" whose glued year RELEVANT misses."""
     feed = appget("app.bsky.feed.getAuthorFeed",
                   {"actor": actor, "limit": POSTS_PER_CON, "filter": "posts_no_replies"})
     out = []
@@ -766,7 +785,7 @@ def fetch_posts(actor):
         p = it.get("post", {})
         rec = p.get("record", {})
         txt = (rec.get("text") or "").strip()
-        if not txt or not RELEVANT.search(txt):
+        if not txt or (relevant_only and not RELEVANT.search(txt)):
             continue
         rkey = p.get("uri", "").rsplit("/", 1)[-1]
         out.append({
@@ -1429,16 +1448,17 @@ def ops_notify(text):
     same bot the labeler health monitor uses (CON-10). Additive to the stderr
     log lines, never a replacement: this must never raise or block a sweep, and
     both secrets unset is a silent no-op (log-only, like the monitor). DRY_RUN
-    shows the text in the log instead of sending."""
+    shows the text in the log instead of sending. Returns True only when
+    Telegram accepted the message, for callers that must retry a lost send."""
     if not OPS_TELEGRAM_BOT_TOKEN or not OPS_TELEGRAM_CHAT_ID:
-        return
+        return False
     # Telegram rejects a sendMessage payload over 4096 chars outright, which
     # would drop the one alert that matters — truncate every payload defensively
     if len(text) > 4096:
         text = text[:4095] + "…"
     if DRY_RUN:
         log(f"ops_notify (DRY_RUN, not sent): {text}")
-        return
+        return False
     try:
         data = urllib.parse.urlencode({
             "chat_id": OPS_TELEGRAM_CHAT_ID,
@@ -1451,8 +1471,139 @@ def ops_notify(text):
             headers={"Content-Type": "application/x-www-form-urlencoded"})
         with urllib.request.urlopen(req, timeout=20):
             pass
+        return True
     except Exception as e:
         log(f"ops_notify: could not send ops alert: {e}")
+        return False
+
+
+# --- next-edition notices (CON-79) -------------------------------------------
+# A con with no future edition is skipped by process_con, and the key-date
+# extractor has no slot for a new edition's own dates anyway. So each sweep
+# reads those cons' posts and pages ops when one names a year past the
+# newest edition's — a person checks the post and adds the edition by hand.
+NOTICED_FILE = os.path.join(os.path.dirname(CACHE_FILE), "next_edition_noticed.json")
+# Telegram allows a bot ~20 messages a minute in a group; the first run after
+# deploy can find dozens of matches at once
+NOTICE_SEND_INTERVAL = 3.5
+# consecutive failed feed fetches that end a notice pass: each costs ~63s
+# against a down appview (appget: 3 tries x 20s timeout + 1s)
+NOTICE_FETCH_FAILURE_LIMIT = 2
+# digit boundaries, not \b: "#BLFC2027" and "TFF2027" glue the year to letters
+YEAR_RE = re.compile(r"(?<!\d)(20\d\d)(?!\d)")
+
+
+def load_noticed():
+    """The sent-notice record, {} when there is none yet, or None when the file
+    exists but can't be read: starting empty would re-send every old notice
+    and the first save would overwrite the history an operator could recover."""
+    if not os.path.exists(NOTICED_FILE):
+        return {}
+    try:
+        with open(NOTICED_FILE) as f:
+            data = json.load(f)
+        if isinstance(data, dict):
+            return data
+        log(f"next-edition: {NOTICED_FILE} is not a JSON object")
+    except (OSError, ValueError) as e:
+        log(f"next-edition: could not read {NOTICED_FILE}: {e}")
+    return None
+
+
+def save_noticed(noticed):
+    os.makedirs(os.path.dirname(NOTICED_FILE), exist_ok=True)
+    tmp = NOTICED_FILE + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump(noticed, f, indent=2, sort_keys=True)
+    os.replace(tmp, NOTICED_FILE)
+
+
+def next_edition_candidate(con):
+    """Start year of the con's newest edition when the con has a Bluesky DID and
+    no edition starting after today; otherwise None."""
+    if not (con.get("bluesky") or {}).get("did"):
+        return None
+    starts = [e.get("startDate", "") for e in con.get("events", []) if e.get("startDate")]
+    if not starts or max(starts) > TODAY.isoformat():
+        return None
+    return int(max(starts)[:4])
+
+
+def names_later_year(text, newest_year):
+    return any(int(y) > newest_year for y in YEAR_RE.findall(text or ""))
+
+
+def appview_outage_failures():
+    """Exhausted appview fetches that look like an outage: a 4xx for one dead
+    account must not switch off the notices for every other con."""
+    return _run_health["appview_failures"] - _run_health["appview_client_errors"]
+
+
+def notice_next_editions(files, sleep=time.sleep):
+    """Page ops once per post that names a year past a candidate con's newest
+    edition. A post is recorded only after Telegram accepts the message, so a
+    failed send retries at the next sweep. The first failed send or state write,
+    or NOTICE_FETCH_FAILURE_LIMIT failed feed fetches in a row, ends the pass:
+    the rest retry next sweep. Returns the number sent."""
+    noticed = load_noticed()
+    if noticed is None:
+        ops_notify(f"⚠️ keydates: next-edition notices skipped, {NOTICED_FILE} is unreadable. "
+                   "Fix or remove the file; removing it re-sends notices for posts still in the feeds.")
+        return 0
+    sent = attempts = fetch_failures = 0
+    stop = False
+    for fn in files:
+        if stop:
+            break
+        try:
+            with open(fn) as f:
+                con = json.load(f)
+        except (OSError, ValueError) as e:
+            log(f"next-edition: skipping {os.path.basename(fn)}: {e}")
+            continue
+        # one malformed con file must not drop the notices for every later con
+        try:
+            newest_year = next_edition_candidate(con)
+            if newest_year is None:
+                continue
+            # the DID, never the handle: the URL is only a Telegram link and the
+            # dedup key, and a handle change would re-notice every post
+            failures_before = appview_outage_failures()
+            posts = fetch_posts(con["bluesky"]["did"], relevant_only=False)
+            if appview_outage_failures() > failures_before:
+                fetch_failures += 1
+                if fetch_failures >= NOTICE_FETCH_FAILURE_LIMIT:
+                    log(f"next-edition: {fetch_failures} feed fetches failed in a row; "
+                        "stopping, the rest retry next sweep")
+                    break
+                continue
+            fetch_failures = 0
+            for post in posts:
+                url = post.get("url")
+                if not url or url in noticed or not names_later_year(post.get("text"), newest_year):
+                    continue
+                if attempts:
+                    sleep(NOTICE_SEND_INTERVAL)
+                attempts += 1
+                text = (f"📅 {con.get('name', os.path.basename(fn))} may have announced a new "
+                        f"edition (newest listed: {newest_year}).\n{url}\n\n{post.get('text', '')[:1500]}")
+                if not ops_notify(text):
+                    log(f"next-edition: notice for {url} not sent; stopping, the rest retry next sweep")
+                    stop = True
+                    break
+                sent += 1
+                noticed[url] = {"series": os.path.basename(fn)[:-5], "noticedAt": TODAY.isoformat()}
+                try:
+                    save_noticed(noticed)  # per send, so a crash mid-burst can't re-send the earlier ones
+                except OSError as e:
+                    log(f"next-edition: state write failed after sending {url}: {e}; stopping this pass")
+                    stop = True
+                    break
+        except Exception as e:
+            log(f"next-edition: skipping {os.path.basename(fn)}: {e}")
+    if sent:
+        log(f"next-edition: sent {sent} notice(s)")
+    return sent
 
 
 def realtime_page_on_cooldown(now):
@@ -2091,7 +2242,8 @@ def publish(summary):
     status = git("status", "--porcelain").stdout
     # never stage worker state files (ledger, pending, cache), even if CACHE_FILE is misconfigured to
     # sit inside DATA_DIR — it is worker state, not con data
-    state_names = {os.path.basename(p) for p in (OUTSTANDING_FILE, DEAD_PENDING_FILE, CACHE_FILE)}
+    state_names = {os.path.basename(p) for p in (OUTSTANDING_FILE, DEAD_PENDING_FILE, CACHE_FILE,
+                                                 NOTICED_FILE)}
     changed = [l[3:] for l in status.splitlines()
                if l.endswith(".json") and "/" not in l[3:] and l[3:] not in state_names]
     if not changed:
@@ -2417,6 +2569,22 @@ def main():
                 f"{_run_health['succeeded']}/{_run_health['attempted']} model calls succeeded. "
                 "Exiting non-zero so no spooled post is deleted on a false success.")
         raise SystemExit(1)
+
+    # Next-edition notices (CON-79) run last: after save and publish, and after
+    # the verdict above, so their feed fetches and send pacing can't delay the
+    # outage page or count toward it. Every file in this shard, not just
+    # `processed`: the cons this exists for never reach an extraction pass.
+    # Skipped when this run already saw a failure: one feed fetch costs ~63s
+    # against a down appview, and the sweep holds the run lock that long.
+    # DRY_RUN neither sends nor records.
+    if args.sweep and not DRY_RUN:
+        if backend_failures or appview_outage_failures():
+            log("next-edition: skipped, this run saw backend or appview failures")
+        else:
+            try:
+                notice_next_editions([fn for fn, _, _ in targets])
+            except Exception as e:
+                log(f"ERROR in next-edition notices: {e}")
 
 
 if __name__ == "__main__":
