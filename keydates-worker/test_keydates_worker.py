@@ -967,7 +967,7 @@ class ProcessConPinningTest(unittest.TestCase):
         did_twin = {**post, "url": did_entry("3abc")["source"]}
         seen = {}
 
-        def fake_extract(con_, events, posts, tz="UTC"):
+        def fake_extract(con_, events, posts, tz="UTC", siblings=None):
             seen["posts"] = posts
             return [{"event_id": "testcon-2999", "category": "registration",
                      "kind": "opens", "date": "2999-06-01",
@@ -1703,7 +1703,7 @@ class AfterEndGuardTest(unittest.TestCase):
         post = {"url": did_entry("3abc")["source"], "asOf": "2999-05-01T00:00:00.000Z",
                 "text": "proposals for our 3000 con open September 1"}
 
-        def fake_extract(con_, events, posts, tz="UTC"):
+        def fake_extract(con_, events, posts, tz="UTC", siblings=None):
             # the model anchored the bare month-day to the wrong year:
             # 2999-09-01 is after endDate 2999-06-01
             return [{"event_id": "testcon-2999", "category": "djs",
@@ -1737,7 +1737,7 @@ class AfterEndGuardTest(unittest.TestCase):
         post = {"url": did_entry("3abc")["source"], "asOf": "2999-05-01T00:00:00.000Z",
                 "text": "DJ applications close June 1"}
 
-        def fake_extract(con_, events, posts, tz="UTC"):
+        def fake_extract(con_, events, posts, tz="UTC", siblings=None):
             return [{"event_id": "testcon-2999", "category": "djs",
                      "kind": "closes", "date": FUTURE,
                      "source": posts[0]["url"], "confidence": 0.95}]
@@ -2301,7 +2301,7 @@ class SameDayCloseHoldTest(unittest.TestCase):
         post = {"url": did_entry("3ccc")["source"], "asOf": "2999-06-02T00:26:00.000Z",
                 "text": "Registration will be closing today @ 9PM"}
 
-        def fake_extract(con_, events, posts, tz="UTC"):
+        def fake_extract(con_, events, posts, tz="UTC", siblings=None):
             return [{"event_id": "testcon-2999", "category": "registration", "kind": "closes",
                      "date": "2999-06-01", "source": posts[0]["url"], "confidence": 1.0}]
 
@@ -3535,7 +3535,7 @@ class LaterClosesPairCheckTest(unittest.TestCase):
              rejections=()):
         post = {"url": did_entry("3new")["source"], "asOf": post_asof, "text": text}
 
-        def fake_extract(con_, events, posts, tz="UTC"):
+        def fake_extract(con_, events, posts, tz="UTC", siblings=None):
             return [{"event_id": "testcon-2999", "category": "registration", "kind": "closes",
                      "date": new_date, "source": posts[0]["url"], "confidence": 1.0}]
 
@@ -3717,7 +3717,7 @@ class LaterClosesPairCheckTest(unittest.TestCase):
         with open(self.fn, "w") as f:
             json.dump(con, f)
 
-        def fake_extract(con_, events, posts_, tz="UTC"):
+        def fake_extract(con_, events, posts_, tz="UTC", siblings=None):
             return [{"event_id": "testcon-2999", "category": c, "kind": "closes",
                      "date": "2999-04-01", "source": posts_[i]["url"], "confidence": 1.0}
                     for i, c in enumerate(("registration", "dealers"))]
@@ -3746,3 +3746,122 @@ class LaterClosesPairCheckTest(unittest.TestCase):
         self.assertEqual([len(items) for items in self.chat_calls], [1, 1])
         self.assertEqual(sorted(r["category"] for r in refuted), ["dealers", "registration"])
         self.assertEqual(held, [])
+
+
+class SharedAccountTest(unittest.TestCase):
+    """Some organizers run several conventions from one Bluesky account (East
+    and Sachsen Fur Dance). A post on that account reaches every series using
+    it, and extraction is told which other conventions share the feed."""
+
+    SHARED = "did:plc:sharedsharedsharedshared"
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.data_dir = self.tmp.name
+        # written out of order: the index must come back sorted by series id
+        self._write("winter-ball", {**make_con({}, did=self.SHARED), "name": "Winter Ball"})
+        self._write("summer-con", {**make_con({}, did=self.SHARED), "name": "Summer Con"})
+        self._write("solo-con", make_con({}))
+        with open(os.path.join(self.data_dir, "broken.json"), "w") as f:
+            f.write("{not json")
+
+    def _write(self, slug, con):
+        with open(os.path.join(self.data_dir, slug + ".json"), "w") as f:
+            json.dump(con, f)
+
+    def _index(self):
+        with unittest.mock.patch.object(kw, "DATA_DIR", self.data_dir):
+            return kw.load_account_index()
+
+    def test_index_groups_series_by_account_and_skips_unreadable_files(self):
+        index = self._index()
+        self.assertEqual([sid for sid, _ in index[self.SHARED]], ["summer-con", "winter-ball"])
+        self.assertEqual([sid for sid, _ in index[DID]], ["solo-con"])
+
+    def test_siblings_name_the_other_conventions_only(self):
+        index = self._index()
+        siblings = kw.same_account_conventions(index, self.SHARED, "summer-con")
+        self.assertEqual([s["convention"] for s in siblings], ["Winter Ball"])
+        self.assertEqual([e["id"] for e in siblings[0]["upcomingEditions"]], ["testcon-2999"])
+        self.assertEqual(kw.same_account_conventions(index, DID, "solo-con"), [])
+
+    def _payload(self, con, siblings):
+        captured = {}
+
+        def fake_chat(model, system, user, schema, name):
+            captured["user"] = json.loads(user)
+            return {"dates": []}
+
+        events = kw.upcoming_events(con)
+        with unittest.mock.patch.object(kw, "chat", side_effect=fake_chat):
+            kw.extract_for_con(con, events, [{"asOf": "2999-01-01T00:00:00Z", "text": "hi",
+                                              "url": "https://bsky.app/profile/x/post/3a"}],
+                               siblings=siblings)
+        return captured["user"]
+
+    def test_single_account_payload_is_unchanged(self):
+        payload = self._payload(make_con({}), [])
+        self.assertEqual(sorted(payload), ["convention", "editions", "posts", "timezone"])
+
+    def test_shared_account_payload_lists_the_other_conventions(self):
+        siblings = kw.same_account_conventions(self._index(), self.SHARED, "summer-con")
+        payload = self._payload({**make_con({}, did=self.SHARED), "name": "Summer Con"}, siblings)
+        self.assertEqual(payload["convention"], "Summer Con")
+        self.assertEqual(payload["account"], "testcon.example")
+        self.assertEqual([s["convention"] for s in payload["sameAccountConventions"]],
+                         ["Winter Ball"])
+
+    def test_process_con_hands_extraction_the_other_conventions(self):
+        seen = {}
+
+        def fake_extract(con_, events, posts, tz="UTC", siblings=None):
+            seen["siblings"] = siblings
+            return []
+
+        with unittest.mock.patch.object(kw, "extract_for_con", side_effect=fake_extract), \
+             unittest.mock.patch.object(kw, "load_event_timezones", return_value={}):
+            kw.process_con(os.path.join(self.data_dir, "winter-ball.json"), {}, [],
+                           provided_posts=[{"url": did_entry("3abc")["source"],
+                                            "asOf": "2999-05-01T00:00:00.000Z", "text": "t"}],
+                           account_index=self._index())
+        self.assertEqual([s["convention"] for s in seen["siblings"]], ["Summer Con"])
+
+    def _route(self, spool):
+        post_file = os.path.join(self.tmp.name, "post.out")
+        with open(post_file, "w") as f:
+            json.dump({"url": "u", "asOf": "2999-01-01T00:00:00Z", "text": "t", **spool}, f)
+        state = os.path.join(self.tmp.name, "state")
+        process = unittest.mock.Mock(return_value=([], [], [], [], True))
+        import contextlib
+        with contextlib.ExitStack() as stack:
+            for p in [
+                unittest.mock.patch.object(kw, "DATA_DIR", self.data_dir),
+                unittest.mock.patch.object(kw, "CACHE_FILE", os.path.join(state, "verdict_cache.json")),
+                unittest.mock.patch.object(kw, "OUTSTANDING_FILE", os.path.join(state, "outstanding.json")),
+                unittest.mock.patch.object(kw, "DEAD_PENDING_FILE", os.path.join(state, "dead_pending.json")),
+                unittest.mock.patch.object(kw, "REJECTIONS_FILE", os.path.join(state, "no_rej.json")),
+                unittest.mock.patch.object(kw, "PUSH", False),
+                unittest.mock.patch.object(kw, "DRY_RUN", False),
+                unittest.mock.patch.object(kw, "catalog_check", lambda *a, **k: None),
+                unittest.mock.patch.object(kw, "ops_notify", unittest.mock.Mock()),
+                unittest.mock.patch.object(kw, "process_con", process),
+                unittest.mock.patch.object(sys, "argv", ["kw", "--post-file", post_file]),
+            ]:
+                stack.enter_context(p)
+            try:
+                kw.main()
+            except SystemExit:
+                pass
+        return [os.path.basename(c.args[0]) for c in process.call_args_list]
+
+    def test_realtime_post_on_shared_account_reaches_every_series(self):
+        self.assertEqual(self._route({"did": self.SHARED}),
+                         ["summer-con.json", "winter-ball.json"])
+
+    def test_realtime_post_on_single_account_reaches_only_its_series(self):
+        self.assertEqual(self._route({"did": DID}), ["solo-con.json"])
+
+    def test_realtime_post_naming_a_series_stays_on_that_series(self):
+        self.assertEqual(self._route({"did": self.SHARED, "series": "winter-ball"}),
+                         ["winter-ball.json"])

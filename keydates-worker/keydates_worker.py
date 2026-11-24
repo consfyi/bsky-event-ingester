@@ -283,6 +283,14 @@ Rules:
   which case it is a retroactive announcement for that edition and
   may be extracted. Never borrow the year from the edition under discussion;
   only a year stated in the date itself ("September 1st, 2027") overrides this.
+- SHARED ACCOUNT. When the payload has "sameAccountConventions", this account also posts
+  for those other conventions, so its feed mixes posts about all of them. Extract a date
+  only from a post that names THIS convention or one of its editions (its name, an
+  abbreviation of its name, or its hashtag). A year or date range alone does not name a
+  convention. A post that names one of the other conventions, or that names no
+  convention at all ("Registration is open!"), yields nothing for this convention. When
+  names overlap, the most specific match wins: a post that says only "Calfurry 2026" is
+  about Calfurry, not about "Calfurry's New Year's Furry Eve".
 - Attribute to the correct edition via event_id. If the convention has MORE THAN ONE
   upcoming edition, only extract when the post carries explicit edition evidence
   (year, hashtag like #FWA2027, or an unambiguous date range).
@@ -786,6 +794,32 @@ def upcoming_events(con):
         for e in con.get("events", [])
         if e.get("endDate", "") >= cutoff
     ]
+
+
+def load_account_index():
+    """Bluesky DID -> [(series id, con)] for every series in DATA_DIR, sorted by
+    series id. Some organizers run several conventions from one account
+    (East and Sachsen Fur Dance), so a DID can map to more than one series. A
+    file that won't parse is skipped here; process_con logs it when it reaches
+    that file."""
+    index = {}
+    for fn in sorted(glob.glob(os.path.join(DATA_DIR, "*.json"))):
+        try:
+            with open(fn) as f:
+                con = json.load(f)
+            did = (con.get("bluesky") or {}).get("did")
+        except (OSError, ValueError, AttributeError):
+            continue
+        if did:
+            index.setdefault(did, []).append((os.path.basename(fn)[:-5], con))
+    return index
+
+
+def same_account_conventions(account_index, did, series_id):
+    """The other conventions this account also posts for, as the extract payload
+    describes them; [] when the account belongs to this convention alone."""
+    return [{"convention": c.get("name"), "upcomingEditions": upcoming_events(c)}
+            for sid, c in (account_index or {}).get(did, []) if sid != series_id]
 
 
 def importer_owned(kind_obj):
@@ -1480,7 +1514,7 @@ def realtime_page_on_cooldown(now):
     return False
 
 
-def extract_for_con(con, events, posts, tz="UTC"):
+def extract_for_con(con, events, posts, tz="UTC", siblings=None):
     # budget the WHOLE request against MODEL_MAX_REQUEST_TOKENS (which already
     # reserves the output allowance), not just the payload, so prompt+output fits
     # one request under Groq's per-minute token cap. Trim oldest posts first (feed
@@ -1493,6 +1527,12 @@ def extract_for_con(con, events, posts, tz="UTC"):
     # instead of guessing when the previous edition ended
     editions = [{**e, "previousEditionEnd": previous_edition_end(con, e["id"])} for e in events]
     payload = {"convention": con["name"], "timezone": tz, "editions": editions, "posts": local_posts}
+    if siblings:
+        # a shared account's feed carries every convention it runs; name the
+        # others so the model can leave their posts alone. Absent for a
+        # single-convention account, so its request stays unchanged.
+        payload = {**payload, "account": (con.get("bluesky") or {}).get("handle"),
+                   "sameAccountConventions": siblings}
     while (len(payload["posts"]) > 1
            and estimate_tokens(EXTRACT_SYSTEM, json.dumps(payload, ensure_ascii=False))
                > MODEL_MAX_REQUEST_TOKENS):
@@ -1772,7 +1812,8 @@ def check_later_closes(confirmed, cache, did):
     return kept, refuted, held
 
 
-def process_con(fn, cache, rejections, provided_posts=None, extra_post=None, ledger=None):
+def process_con(fn, cache, rejections, provided_posts=None, extra_post=None, ledger=None,
+                account_index=None):
     """Returns (changes, refuted, held, rejected_skips, did_extract) for one
     con file; did_extract is False when the con was skipped before any model
     call (no mapping / no upcoming edition / no posts). `ledger` is the
@@ -1814,7 +1855,8 @@ def process_con(fn, cache, rejections, provided_posts=None, extra_post=None, led
         return [], [], [], [], False
 
     tz = venue_timezone(events, load_event_timezones())
-    dates = extract_for_con(con, events, posts, tz)
+    siblings = same_account_conventions(account_index, bsky["did"], os.path.basename(fn)[:-5])
+    dates = extract_for_con(con, events, posts, tz, siblings=siblings)
     url2post = {p["url"]: p for p in posts}
     by_id = {e["id"]: e for e in con.get("events", [])}
     ev_meta = {e["id"]: (e["startDate"], e["endDate"]) for e in events}
@@ -2147,6 +2189,7 @@ def main():
     catalog_check(sweep=args.sweep)
     cache = load_cache()
     rejections = load_rejections()
+    account_index = load_account_index()
 
     def series_path(series):
         # series ids become filesystem paths under DATA_DIR — refuse anything
@@ -2161,22 +2204,18 @@ def main():
     elif args.post_file:
         with open(args.post_file) as f:
             spool = json.load(f)
-        series = spool.get("series")
-        if not series:
-            did = spool["did"]
-            for fn in glob.glob(os.path.join(DATA_DIR, "*.json")):
-                with open(fn) as f:
-                    c = json.load(f)
-                if (c.get("bluesky") or {}).get("did") == did:
-                    series = os.path.basename(fn)[:-5]
-                    break
-        if not series:
+        # an account that runs several conventions posts for all of them, so a
+        # DID-addressed post goes to every series on that account; extraction
+        # sorts out which convention the post is about
+        series_ids = ([spool["series"]] if spool.get("series")
+                      else [sid for sid, _ in account_index.get(spool["did"], [])])
+        if not series_ids:
             raise SystemExit(f"no series found for spooled post {args.post_file}")
         # single post + its context: still fetch the feed so recency-wins sees
         # neighbours; the spooled post itself is injected in process_con so
         # appview indexing lag can't drop the trigger
         spool_post = {k: spool.get(k) for k in ("url", "asOf", "text")}
-        targets = [(series_path(series), None, spool_post)]
+        targets = [(series_path(sid), None, spool_post) for sid in series_ids]
     else:
         files = sorted(glob.glob(os.path.join(DATA_DIR, "*.json")))
         if args.shard:
@@ -2199,7 +2238,8 @@ def main():
             break
         try:
             changes, refuted, held, rejected, did_extract = process_con(
-                fn, cache, rejections, provided, extra_post, ledger=ledger)
+                fn, cache, rejections, provided, extra_post, ledger=ledger,
+                account_index=account_index)
         except DailyCapHit as e:
             skipped_note = f"Daily quota hit on {e}; remaining cons pick up next run."
             daily_cap_hit = True
